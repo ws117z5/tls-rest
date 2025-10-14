@@ -1,0 +1,32 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="google-signin-client_id" content="{{.Body.GoogleID}}">
+    <title>{{ .Title}}</title>
+    {{ range .Img}}
+        <link rel="prefetch" href="{{ . }}" as="image" type="{{ getImgType . }}">
+    {{ end }}
+    {{ range .JsHeader }}
+        <link rel="prefetch" href="{{ . }}" as="script">
+        <script src="{{ . }}" async defer></script>
+    {{end}}
+    {{ range .CssHeader }}
+        <link rel="preload" href="{{ . }}" as="style">
+    {{end}}
+</head>
+<body>
+    <canvas id="background"></canvas>
+    <div id="root"></div>
+    {{ .Body.intro }}
+    {{range .JsFooter}}
+        <link rel="preload" href="{{ . }}" as="script">
+        <script type="text/javascript" src="{{ . }}" async defer></script>
+    {{end}}
+</body>
+<script type="text/javascript">
+    var session = {{.Body.auth}};
+
+</script>
+</html>

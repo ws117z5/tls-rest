@@ -1,0 +1,18 @@
+canvas#graphs {
+    width: 1200px;
+    height: 800px;
+}
+
+.function-description {
+    position: absolute;
+    z-index: 10;
+    top: 30px;
+    left: 40px;
+}
+
+div.rect {
+    width: 10px;
+    height: 10px;
+    display:inline-block;
+    margin-right: 5px;
+}

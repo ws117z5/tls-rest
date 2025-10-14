@@ -1,0 +1,16 @@
+.DS_Store
+.idea/
+debug
+js/.DS_Store
+js/dist/
+js/node_modules/
+js/package-lock.json
+js/src/babel.js
+js/src/js/react-modules/
+js/src/package-lock.json
+constants/private.go
+main
+server.crt
+server.key
+tls-rest
+tls-rest.code-workspace

@@ -1,0 +1,18 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Generate FuncMap",
+      "type": "shell",
+      "command": "go run funcmap_generator.go",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run App",
+      "type": "shell",
+      "dependsOn": ["Generate FuncMap"],
+      "command": "go run main.go",
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Error { .ErrCode }</title>
+    {{ range .JsHeader }}
+        <script src="{{ . }}"></script>
+    {{end}}
+    {{ range .CssHeader }}
+        <link rel="stylesheet" href="{{ . }}">
+    {{end}}
+</head>
+<body>
+    <div id="root"></div>
+    {{ .Body.test }}
+    {{range .JsFooter}}
+        <script type="text/babel" src="{{ . }}"></script>
+    {{end}}
+</body>
+</html>

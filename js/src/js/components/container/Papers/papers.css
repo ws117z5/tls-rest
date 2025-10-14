@@ -1,0 +1,60 @@
+div.papers {
+    font-size: 20px;
+    display: flex;
+    position: relative;
+    align-content: flex-start;
+    align-items: flex-start;
+}
+
+div.room-list {
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 1em;
+    height: 10em;
+    width: 8em;
+    display: left;
+
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+
+    margin-left: 0.5em;
+}
+
+div.room-list > * {
+    font-size: 14px;
+    width: 8em;
+    margin-top: 0.5em;
+}
+
+div.room-list > span {
+    cursor: pointer;
+}
+
+div.participant-list {
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 1em;
+    height: 16em;
+    width: 10em;
+    display: left;
+
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+
+}
+
+div.participant-list > * {
+    margin-top: 0.5em;
+    font-size: 14px;
+    width: 10em;
+}
+
+div.participant-list > span {
+    cursor: pointer;
+}
+
+
+
