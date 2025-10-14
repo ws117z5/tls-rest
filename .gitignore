@@ -1,5 +1,6 @@
 .DS_Store
 .idea/
+.private/
 debug
 js/.DS_Store
 js/dist/
@@ -8,7 +9,7 @@ js/package-lock.json
 js/src/babel.js
 js/src/js/react-modules/
 js/src/package-lock.json
-constants/private.go
+go/constants/private.go
 main
 server.crt
 server.key
