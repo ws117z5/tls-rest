@@ -1,7 +1,6 @@
 package route
 
 import (
-	"flag"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -9,10 +8,14 @@ import (
 	"github.com/ws117z5/tls-rest/go/controllers"
 	"github.com/ws117z5/tls-rest/go/controllers/log"
 	"github.com/ws117z5/tls-rest/go/controllers/papers"
-	"github.com/ws117z5/tls-rest/go/controllers/posts"
-	"github.com/ws117z5/tls-rest/go/controllers/users"
 
-	"github.com/ws117z5/tls-rest/go/lib/auth"
+	// Import modules to trigger their init() functions for automatic registration
+	_ "github.com/ws117z5/tls-rest/go/controllers/modulerights"
+	_ "github.com/ws117z5/tls-rest/go/controllers/posts"
+	_ "github.com/ws117z5/tls-rest/go/controllers/usergroups"
+	_ "github.com/ws117z5/tls-rest/go/controllers/users"
+
+	"github.com/ws117z5/tls-rest/go/lib/module"
 	middleware "github.com/ws117z5/tls-rest/go/lib/route/middlware"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -102,85 +105,9 @@ var routes = []Route{
 			},
 		},
 	},
-	{
-		Name:    "Users",
-		Pattern: "/users",
-		Methods: []string{"GET"},
-		Handler: users.List,
-		Satatic: false,
-		Subroutes: []Route{
-			{
-				Name:    "UsersAuth",
-				Pattern: "/Auth/{authType}",
-				Methods: []string{"GET", "POST"},
-				Handler: auth.Auth,
-				Params:  []string{"authType"},
-			},
-			// {
-			// 	Name:    "UsersSession",
-			// 	Pattern: "/session",
-			// 	Methods: []string{"GET"},
-			// 	Handler: auth.ManageSession,
-			// },
-		},
-	},
-	{
-		Name:    "Posts",
-		Pattern: "/posts",
-		Methods: []string{"GET"},
-		Handler: posts.List,
-		Satatic: false,
-		Subroutes: []Route{
-			{
-				Name:    "PostsCreate",
-				Pattern: "/",
-				Methods: []string{"POST"},
-				Handler: posts.Create,
-			},
-			{
-				Name:    "PostsView",
-				Pattern: "/{postId}",
-				Methods: []string{"GET"},
-				Handler: posts.View,
-				Params:  []string{"postId"},
-			},
-			{
-				Name:    "PostsEdit",
-				Pattern: "/{postId}",
-				Methods: []string{"POST"},
-				Handler: posts.Edit,
-				Params:  []string{"postId"},
-			},
-			{
-				Name:    "PostsDelete",
-				Pattern: "/{postId}",
-				Methods: []string{"DELETE"},
-				Handler: posts.Delete,
-				Params:  []string{"postId"},
-			},
-		},
-	},
-	{
-		Name:    "StaticImg",
-		Methods: DefaultMethod,
-		Pattern: "/img/",
-		Handler: nil,
-		Satatic: true,
-	},
-	{
-		Name:    "StaticJs",
-		Methods: DefaultMethod,
-		Pattern: "/js/",
-		Handler: nil,
-		Satatic: true,
-	},
-	{
-		Name:    "StaticCss",
-		Methods: DefaultMethod,
-		Pattern: "/css/",
-		Handler: nil,
-		Satatic: true,
-	},
+	// Users routes are now automatically registered via module system
+	// Posts routes are now automatically registered via module system
+	// Static routes are now handled by RegisterStaticRoutes() function
 	{
 		Name:    "Metrics",
 		Methods: DefaultMethod,
@@ -190,86 +117,33 @@ var routes = []Route{
 	},
 }
 
-// GetRouter creates routes
-// return mux/router info
+// Legacy function - replaced by GetRouter()
+// Keeping for reference but should be removed after testing
+/*
 func GetRoute_() *mux.Router {
-
-	router := mux.NewRouter().StrictSlash(true)
-
-	var dir string
-	flag.StringVar(&dir, "dir", "js", "the directory to serve files from. Defaults to the current dir")
-	flag.Parse()
-
-	//http.Handle("/js/", http.StripPrefix("/js/", http.FileServer(http.Dir("./js"))))
-	router.HandleFunc("/", controllers.Index)
-
-	router.PathPrefix("/pages").HandlerFunc(controllers.Index)
-
-	router.PathPrefix("/log").HandlerFunc(log.Log1).Methods("POST")
-	router.HandleFunc("/login", controllers.Index)   //todo
-	router.HandleFunc("/profile", controllers.Index) //todo
-
-	router.HandleFunc("/papers", papers.List).Methods("GET")
-	router.HandleFunc("/papers/create", papers.CreateRoom).Methods("POST")
-	router.HandleFunc("/papers/{roomId}", papers.AddRoomUser).Methods("POST")
-	router.HandleFunc("/papers/{roomId}", papers.ViewRoomUsers).Methods("GET")
-	router.HandleFunc("/papers/{roomId}/{userId}", papers.RegisterUser).Methods("POST")
-	// router.HandleFunc("/graph", controllers.Index)
-	// router.HandleFunc("/imageproc", controllers.Index)
-	// router.HandleFunc("/papers", controllers.Index)
-
-	//router.HandleFunc("/opencv", opencv.Init).Methods("GET", "POST")
-
-	//router.HandleFunc("/users/GetInfo/{authType}", users.GetInfo).Methods("GET")
-	router.HandleFunc("/users", users.List).Methods("GET")
-	//router.HandleFunc("/users", controllers.Index).Methods("GET").
-	router.HandleFunc("/users/Auth/{authType}", auth.Auth).Methods("GET", "POST")
-	//router.HandleFunc("/users/session", auth.ManageSession).Methods("GET")
-	//router.HandleFunc("/users/AuthResponse/{authType}", auth.AuthResponse).Methods("GET")
-
-	router.HandleFunc("/posts", posts.List).Methods("GET")
-	router.HandleFunc("/posts/", posts.Create).Methods("POST")
-	router.HandleFunc("/posts/{postId}", posts.View).Methods("GET")
-	router.HandleFunc("/posts/{postId}", posts.Edit).Methods("POST")
-	router.HandleFunc("/posts/{postId}", posts.Delete).Methods("DELETE")
-
-	router.PathPrefix("/img/").Handler(http.FileServer(http.Dir(".")))
-	router.PathPrefix("/js/").Handler(http.FileServer(http.Dir(".")))
-	//router.PathPrefix("/css/").Handler(http.FileServer(http.Dir(".")))
-	//router.PathPrefix("/css/").Handler(http.StripPrefix("/css/", http.FileServer(http.FS(assets))))
-	router.PathPrefix("/css/").Handler(http.StripPrefix("/css/", http.FileServer(http.Dir("css"))))
-
-	router.Handle("/metrics", promhttp.Handler())
-	//router.PathPrefix("/users/").Handler(http.FileServer(http.Dir(".")))
-
-	amw := middleware.AuthenticationMiddleware{}
-	//amw.Populate()
-	router.Use(amw.Middleware)
-	//TODO Add midleware authenication bu cookie tokens
-
-	//TODO Convert {type} to enum const
-
-	var usersRouter = router.PathPrefix("/users").Subrouter()
-	usersRouter.HandleFunc("/Auth/{type}/", controllers.Index).Methods("GET")
-	//user]sRouter.HandleFunc("/Auth/{type}/", users.Auth).Methods("GET")
-
-	return router
+	// This function has been replaced by GetRouter() with automatic module and static route registration
+	// All functionality moved to the new system
+	return GetRouter()
 }
+*/
 
-// Helper to register routes recursively
+// registerRoutes registers application routes recursively
 func registerRoutes(router *mux.Router, routes []Route) {
 	for _, route := range routes {
+		// Static routes are now handled by RegisterStaticRoutes()
 		if route.Satatic {
-			// Static routes: no middleware, just file server
-			router.PathPrefix(route.Pattern).Handler(http.StripPrefix(route.Pattern, http.FileServer(http.Dir(route.Pattern[1:]))))
-			continue
+			continue // Skip static routes - they're handled separately
 		}
+
+		// Register dynamic routes with handlers
 		if route.Handler != nil {
 			r := router.HandleFunc(route.Pattern, route.Handler)
 			if len(route.Methods) > 0 {
 				r.Methods(route.Methods...)
 			}
 		}
+
+		// Register subroutes recursively
 		if len(route.Subroutes) > 0 {
 			sub := router.PathPrefix(route.Pattern).Subrouter()
 			registerRoutes(sub, route.Subroutes)
@@ -277,24 +151,49 @@ func registerRoutes(router *mux.Router, routes []Route) {
 	}
 }
 
-// In GetRouter:
+// GetRouter creates the main router with automatic module route registration
 func GetRouter() *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
+
+	// Set this router as the global router for automatic module registration
+	module.SetGlobalRouter(router)
+
+	// Register static file routes (css, js, img) - no middleware applied to these
+	RegisterStaticRoutes(router)
+
+	// Register predefined application routes
 	registerRoutes(router, routes)
+
+	// Register any remaining module routes (in case modules were loaded before SetGlobalRouter)
+	module.RegisterModuleRoutes(router)
 
 	// Attach middleware only to non-static routes
 	amw := middleware.AuthenticationMiddleware{}
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Check if the request is for a static route
+			// Check if the request is for a static route - skip middleware for these
 			path := r.URL.Path
-			for _, route := range routes {
-				if route.Satatic && len(route.Pattern) > 1 && len(path) >= len(route.Pattern) && path[:len(route.Pattern)] == route.Pattern {
+
+			// Check against static configurations
+			for _, config := range DefaultStaticConfigs {
+				if len(config.URLPath) > 1 && len(path) >= len(config.URLPath) &&
+					path[:len(config.URLPath)] == config.URLPath {
 					// Static route: skip middleware
 					next.ServeHTTP(w, r)
 					return
 				}
 			}
+
+			// Check legacy static routes in case any remain
+			for _, route := range routes {
+				if route.Satatic && len(route.Pattern) > 1 && len(path) >= len(route.Pattern) &&
+					path[:len(route.Pattern)] == route.Pattern {
+					// Static route: skip middleware
+					next.ServeHTTP(w, r)
+					return
+				}
+			}
+
 			// Non-static: apply middleware
 			amw.Middleware(next).ServeHTTP(w, r)
 		})

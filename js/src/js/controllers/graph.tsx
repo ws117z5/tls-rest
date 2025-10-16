@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Network } from 'vis-network/standalone';
-import { DataSet } from 'vis-data/peer';
+import visData from 'vis-data';
+
 import 'vis-network/styles/vis-network.css';
 
 type Node = { id: number; label: string };
@@ -23,8 +24,8 @@ const GraphTraversal: React.FC<{ data: GraphData }> = ({ data }) => {
   useEffect(() => {
     if (!containerRef.current) return;
 
-    const visNodes = new DataSet(data.nodes);
-    const visEdges = new DataSet(
+    const visNodes = new visData.DataSet(data.nodes);
+    const visEdges = new visData.DataSet(
       data.edges.map((edge, idx) => ({ ...edge, id: idx }))
     );
 

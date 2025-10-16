@@ -2,6 +2,7 @@ package module
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -19,9 +20,26 @@ func NewFieldsetHandler() *FieldsetHandler {
 	}
 }
 
-// RegisterModule registers a module for fieldset API
+// RegisterModule registers a module for fieldset API and ensures table exists
 func (fh *FieldsetHandler) RegisterModule(module *ModuleAbstract[interface{}]) {
 	fh.modules[module.ID] = module
+
+	// Try to ensure the table exists for this module, but don't panic if it fails
+	// This is deferred to avoid blocking module initialization
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				println("Warning: Panic during table creation for module", module.ID, ":", fmt.Sprintf("%v", r))
+			}
+		}()
+
+		err := module.EnsureTableExists()
+		if err != nil {
+			// Log the error but don't fail the registration
+			// This allows the application to continue running even if table creation fails
+			println("Warning: Failed to ensure table exists for module", module.ID, ":", err.Error())
+		}
+	}()
 }
 
 // GetFieldset handles GET /api/modules/{moduleId}/fieldset
@@ -88,3 +106,12 @@ func (fh *FieldsetHandler) GetModules(w http.ResponseWriter, r *http.Request) {
 
 // Global fieldset handler instance
 var GlobalFieldsetHandler = NewFieldsetHandler()
+
+// GetRegisteredModules returns a copy of registered modules for testing
+func (fh *FieldsetHandler) GetRegisteredModules() map[string]*ModuleAbstract[interface{}] {
+	modulesCopy := make(map[string]*ModuleAbstract[interface{}])
+	for k, v := range fh.modules {
+		modulesCopy[k] = v
+	}
+	return modulesCopy
+}

@@ -1,19 +1,12 @@
 package users
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"log"
-	"net/http"
 	"time"
 
 	"github.com/ws117z5/tls-rest/go/lib/db/pgdb"
-
-	"github.com/ws117z5/tls-rest/go/lib"
+	. "github.com/ws117z5/tls-rest/go/lib/module"
 
 	"github.com/go-pg/urlstruct"
-	"github.com/gorilla/mux"
 )
 
 /*
@@ -113,66 +106,97 @@ type Data struct {
 	Data     []User
 }
 
-// List all users
-func List(w http.ResponseWriter, r *http.Request) {
-	//var users []User
-	//var values = pager.Values(r.URL.Query())
-
-	users := make([]User, 0)
-	filter := new(Filter)
-	ctx := new(context.Context)
-	keys := r.URL.Query()
-	err := urlstruct.Unmarshal(*ctx, keys, filter)
-	if err != nil {
-		panic(err)
-	}
-
-	db, _ := pgdb.GetInstance()
-	err = db.Model(&users).
-		//TODO fix this
-		//WhereStruct(filter).
-		Limit(filter.Pager.GetLimit()).
-		Offset(filter.Pager.GetOffset()).
-
-		//Apply(pager.Pagination(values)).
-		//Apply(orm.URLFilters(r.URL.Query())).
-		Select()
-
-	if err != nil {
-		log.Panic(err)
-	}
-
-	err = json.NewEncoder(w).Encode(Data{lib.GetFields(User{}), users})
-	if err != nil {
-		log.Panic(err)
-		fmt.Fprintln(w, "List Users!")
-	}
-
+// Users module following CInvoice paradigm
+type Users struct {
+	*ModuleAbstract[interface{}]
 }
 
-// Create creates a user based on post request data
-func Create(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	if name, ok := vars["vkid"]; ok {
-		fmt.Fprintln(w, "Todo show:", name)
-	} else {
-
+// NewUsers creates a new Users module instance
+func NewUsers() *Users {
+	module := &Users{
+		ModuleAbstract: &ModuleAbstract[interface{}]{
+			ID:                "users",
+			Name:              "Users Management",
+			Rights:            make(map[int]int),
+			DefaultPermission: 2, // PERMISSION_WRITE - Users module requires write access by default
+		},
 	}
+
+	// Initialize fields in dedicated method (like PHP init() method)
+	module.init()
+
+	return module
 }
 
-// GetInfo returns information about user
-func GetInfo(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
+// init method defines all fields and module configuration (like CInvoice.php init method)
+func (u *Users) init() {
+	// Define module-specific fields (default fields auto-added by system)
+	fields := []Field{
+		NewField("user_name", TYPE_STRING, false).
+			WithLabel("Username").
+			WithDescription("User's display name").
+			WithValidation("minLength", 2).
+			WithValidation("maxLength", 100),
 
-	if authType, ok := vars["authType"]; ok {
-		if authType == "vk" {
-			//resp, err := http.Get("http://example.com/")
-			fmt.Println(authType)
-		}
-	} else {
+		NewField("first_name", TYPE_STRING, true).
+			WithLabel("First Name").
+			WithDescription("User's first name").
+			WithValidation("minLength", 2).
+			WithValidation("maxLength", 50),
 
+		NewField("last_name", TYPE_STRING, false).
+			WithLabel("Last Name").
+			WithDescription("User's last name").
+			WithValidation("maxLength", 60),
+
+		NewField("email", TYPE_STRING, true).
+			WithLabel("Email Address").
+			WithDescription("User's email address").
+			WithValidation("email", true).
+			WithValidation("unique", true),
+
+		NewField("image", TYPE_STRING, false).
+			WithLabel("Profile Image").
+			WithDescription("URL to user's profile image").
+			NonSearchable().
+			WithMode(MODE_VIEW | MODE_EDIT),
+
+		NewField("user_groups", TYPE_TABLE, false).
+			WithLabel("User Groups").
+			WithDescription("Groups this user belongs to").
+			WithTableQuery(`
+				SELECT ug.name as group_name, ugm.role, ugm.created as joined_at
+				FROM user_group_members ugm
+				JOIN user_groups ug ON ug.id = ugm.group_id
+				WHERE ugm.user_id = ?
+			`).
+			WithTableColumns([]string{"group_name", "role", "joined_at"}).
+			WithTableEditable(true).
+			WithTableSubmitFunction("updateUserGroups").
+			WithTableRowActions([]map[string]interface{}{
+				{"label": "Remove", "action": "removeFromGroup", "icon": "trash"},
+				{"label": "Change Role", "action": "changeRole", "icon": "edit"},
+			}),
+
+		NewField("permissions", TYPE_TABLE, false).
+			WithLabel("Direct Permissions").
+			WithDescription("Direct permissions assigned to this user").
+			WithTableQuery(`
+				SELECT m.name as module_name, ur.rights, ur.created as granted_at
+				FROM user_rights ur
+				JOIN modules m ON m.id = ur.module_id
+				WHERE ur.user_id = ?
+			`).
+			WithTableColumns([]string{"module_name", "rights", "granted_at"}).
+			WithTableEditable(true).
+			WithTableSubmitFunction("updateUserPermissions"),
 	}
+
+	u.Fields = fields
 }
+
+// Global module instance (initialized at startup)
+var UserModule *Users
 
 // RegisterGoogleUser Registers a user based on the reponse token from google oauth
 func RegisterGoogleUser(s *GoogleAccount) {
@@ -191,3 +215,14 @@ func RegisterGoogleUser(s *GoogleAccount) {
 		panic(err)
 	}
 }
+
+func init() {
+	// Create module instance
+	UserModule = NewUsers()
+
+	// Initialize with database table - routes are automatically registered
+	UserModule.Initialize("users")
+}
+
+// All CRUD operations are handled automatically by the module system.
+// Routes are automatically registered when Initialize() is called.

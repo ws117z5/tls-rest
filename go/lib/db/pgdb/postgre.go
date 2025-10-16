@@ -15,6 +15,18 @@ import (
 	"github.com/go-pg/pg/v10"
 )
 
+type DbLogEvent struct {
+	Timestamp    time.Time     `json:"timestamp"`
+	Operation    string        `json:"operation"`
+	Table        string        `json:"table,omitempty"`
+	Query        string        `json:"query"`
+	Args         []interface{} `json:"args,omitempty"`
+	Duration     float64       `json:"duration_ms"`
+	RowsAffected int64         `json:"rows_affected,omitempty"`
+	Error        string        `json:"error,omitempty"`
+	Success      bool          `json:"success"`
+}
+
 // GetInstance returns an instance of pgDb
 func GetInstance() (*Db, error) {
 	db := pg.Connect(&pg.Options{
@@ -342,4 +354,21 @@ func CoerceValue(value interface{}, t reflect.Type) (interface{}, error) {
 		}
 	}
 	return value, nil
+}
+
+// TableExists checks if a table exists in the database
+func (db *Db) TableExists(tableName string) (bool, error) {
+	query := `SELECT EXISTS (
+		SELECT 1 FROM information_schema.tables 
+		WHERE table_schema = 'public' 
+		AND table_name = ?
+	)`
+
+	var exists bool
+	_, err := db.conn.QueryOne(pg.Scan(&exists), query, tableName)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if table exists: %w", err)
+	}
+
+	return exists, nil
 }

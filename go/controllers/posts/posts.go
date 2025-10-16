@@ -1,101 +1,72 @@
 package posts
 
 import (
-	"net/http"
-	"time"
-
-	. "github.com/ws117z5/tls-rest/go/lib/module"
+	"github.com/ws117z5/tls-rest/go/lib/module"
 )
 
-type Post struct {
-	tableName struct{} `pg:"posts"`
-
-	ID        int64     `json:"id"`
-	UUID      string    `sql:"default:uuid_generate_v4()" json:"uuid"`
-	Title     string    `json:"title"`
-	Images    []string  `json:"images"`
-	Content   string    `json:"content"`
-	Created   time.Time `sql:"default:now()" json:"created"`
-	CreatedBy string    `json:"created_by"`
+// Posts module following CInvoice paradigm
+type Posts struct {
+	*module.ModuleAbstract[interface{}]
 }
 
-// Initialize the module with fieldset configuration
-var Module = &ModuleAbstract[interface{}]{
-	ID:   "posts",
-	Name: "Posts",
-	Fields: []Field{
-		NewField("id", TYPE_INT, false).
-			WithLabel("ID").
-			NonFilterable().
-			AsReadOnly().
-			WithMode(MODE_LIST | MODE_VIEW),
+// NewPosts creates a new Posts module instance
+func NewPosts() *Posts {
+	moduleInstance := &Posts{
+		ModuleAbstract: &module.ModuleAbstract[interface{}]{
+			ID:                "posts",
+			Name:              "Posts",
+			Rights:            make(map[int]int),
+			DefaultPermission: 1, // PERMISSION_READ - Posts module has read access by default
+		},
+	}
 
-		NewField("uuid", TYPE_STRING, false).
-			WithLabel("UUID").
-			WithSQL("uuid_generate_v4()").
-			AsReadOnly().
-			NonFilterable().
-			WithMode(MODE_LIST | MODE_VIEW),
+	// Initialize fields in dedicated method (like PHP init() method)
+	moduleInstance.init()
 
-		NewField("title", TYPE_STRING, true).
+	return moduleInstance
+}
+
+// init method defines all fields and module configuration (like CInvoice.php init method)
+func (p *Posts) init() {
+	// Define module-specific fields (default fields auto-added by system)
+	fields := []module.Field{
+		module.NewField("title", module.TYPE_STRING, true).
 			WithLabel("Title").
 			WithDescription("Post title").
 			WithValidation("minLength", 3).
 			WithValidation("maxLength", 200),
 
-		NewField("images", TYPE_JSON, false).
+		module.NewField("images", module.TYPE_JSON, false).
 			WithLabel("Images").
 			WithDescription("Post images array").
 			NonSortable().
 			NonSearchable(),
 
-		NewField("content", TYPE_TEXT, true).
+		module.NewField("content", module.TYPE_TEXT, true).
 			WithLabel("Content").
 			WithDescription("Post content").
 			WithValidation("minLength", 10).
 			NonSortable(),
+	}
 
-		NewField("created", TYPE_DATE_TIME, false).
-			WithLabel("Created").
-			WithSQL("now()").
-			AsReadOnly().
-			NonFilterable().
-			WithMode(MODE_LIST | MODE_VIEW),
-
-		NewField("created_by", TYPE_STRING, false).
-			WithLabel("Created By").
-			AsReadOnly().
-			NonFilterable().
-			WithMode(MODE_LIST | MODE_VIEW),
-	},
-	Rights: make(map[int]int),
+	p.ModuleAbstract.Fields = fields
 }
 
-// Create controller instance
-var controller = NewBaseController(Module, "posts")
+// Global module instance (initialized at startup)
+var Module *Posts
 
+// Package initialization (similar to PHP module registration)
+// Routes are automatically registered when Initialize() is called
+// No manual route registration needed - the module system handles:
+// GET    /posts     -> List()
+// POST   /posts     -> Create()
+// GET    /posts/{id} -> View()
+// PUT    /posts/{id} -> Edit()
+// DELETE /posts/{id} -> Delete()
 func init() {
-	// Register module with fieldset handler for API access
-	GlobalFieldsetHandler.RegisterModule(Module)
-}
+	// Create module instance
+	Module = NewPosts()
 
-// Route handlers using the fieldset system
-func List(w http.ResponseWriter, r *http.Request) {
-	controller.List(w, r)
-}
-
-func Create(w http.ResponseWriter, r *http.Request) {
-	controller.Create(w, r)
-}
-
-func View(w http.ResponseWriter, r *http.Request) {
-	controller.View(w, r)
-}
-
-func Edit(w http.ResponseWriter, r *http.Request) {
-	controller.Edit(w, r)
-}
-
-func Delete(w http.ResponseWriter, r *http.Request) {
-	controller.Delete(w, r)
+	// Initialize with database table - routes are automatically registered
+	Module.Initialize("posts")
 }

@@ -227,6 +227,14 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
+	// Process TYPE_TABLE fields for each result
+	for _, result := range results {
+		err = fe.ProcessTableFieldsInResult(result)
+		if err != nil {
+			return nil, fmt.Errorf("failed to process table fields: %w", err)
+		}
+	}
+
 	// Calculate total pages
 	totalPages := (total + params.Limit - 1) / params.Limit
 
@@ -242,6 +250,11 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 // Helper methods
 
 func (fe *FieldsetEngine) shouldIncludeField(field Field, mode int) bool {
+	// Exclude TYPE_TABLE fields from main SELECT - they have their own queries
+	if field.Type == TYPE_TABLE {
+		return false
+	}
+
 	// Include field based on mode (LIST, VIEW, EDIT, etc.)
 	// This can be enhanced to check field-specific mode flags
 	return !field.Virtual || (mode&MODE_EDIT != 0)
@@ -331,6 +344,147 @@ func (fe *FieldsetEngine) getFieldByName(name string) *Field {
 	for _, field := range fe.Fields {
 		if field.Name == name {
 			return &field
+		}
+	}
+	return nil
+}
+
+// FetchTableFieldData fetches data for a TABLE field from database
+func (fe *FieldsetEngine) FetchTableFieldData(field Field, parentRecordID interface{}) (interface{}, error) {
+	if field.Type != TYPE_TABLE || field.Options == nil {
+		return nil, fmt.Errorf("field %s is not a valid table field", field.Name)
+	}
+
+	dataSource, ok := field.Options["dataSource"].(string)
+	if !ok {
+		dataSource = "static"
+	}
+
+	switch dataSource {
+	case "database":
+		return fe.fetchFromDatabaseTable(field, parentRecordID)
+	case "query":
+		return fe.fetchFromCustomQuery(field, parentRecordID)
+	case "static":
+		return field.Options["data"], nil
+	default:
+		return nil, fmt.Errorf("unknown data source: %s", dataSource)
+	}
+}
+
+// fetchFromDatabaseTable fetches data from a referenced database table
+func (fe *FieldsetEngine) fetchFromDatabaseTable(field Field, parentRecordID interface{}) (interface{}, error) {
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database connection: %w", err)
+	}
+
+	sourceTable, ok := field.Options["sourceTable"].(string)
+	if !ok {
+		return nil, fmt.Errorf("sourceTable not configured for field %s", field.Name)
+	}
+
+	// Build the query
+	var query string
+	var args []interface{}
+
+	// Check if there are columns specified
+	columns := "*"
+	if cols, ok := field.Options["columns"].([]string); ok && len(cols) > 0 {
+		columns = strings.Join(cols, ", ")
+	}
+
+	// Check if there's a foreign key relationship
+	if fk, ok := field.Options["foreignKey"].(map[string]string); ok {
+		foreignKeyColumn := fk["column"]
+		query = fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", columns, sourceTable, foreignKeyColumn)
+		args = append(args, parentRecordID)
+	} else {
+		// No foreign key, return all records
+		query = fmt.Sprintf("SELECT %s FROM %s", columns, sourceTable)
+	}
+
+	// Add any additional query parameters
+	if params, ok := field.Options["queryParams"].(map[string]interface{}); ok {
+		paramIndex := len(args) + 1
+		for column, value := range params {
+			if len(args) == 0 {
+				query += " WHERE "
+			} else {
+				query += " AND "
+			}
+			query += fmt.Sprintf("%s = $%d", column, paramIndex)
+			args = append(args, value)
+			paramIndex++
+		}
+	}
+
+	// Execute the query
+	results, err := db.RQuery(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch table data: %w", err)
+	}
+
+	return results, nil
+}
+
+// fetchFromCustomQuery fetches data using a custom SQL query
+func (fe *FieldsetEngine) fetchFromCustomQuery(field Field, parentRecordID interface{}) (interface{}, error) {
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get database connection: %w", err)
+	}
+
+	query, ok := field.Options["query"].(string)
+	if !ok {
+		return nil, fmt.Errorf("query not configured for field %s", field.Name)
+	}
+
+	// Prepare arguments
+	var args []interface{}
+
+	// If the query has placeholders, add parent record ID as first parameter
+	if strings.Contains(query, "$1") || strings.Contains(query, "?") {
+		args = append(args, parentRecordID)
+	}
+
+	// Add any additional query parameters
+	if params, ok := field.Options["queryParams"].(map[string]interface{}); ok {
+		for _, value := range params {
+			args = append(args, value)
+		}
+	}
+
+	// Execute the query
+	results, err := db.RQuery(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute custom query: %w", err)
+	}
+
+	return results, nil
+}
+
+// ProcessTableFieldsInResult processes table fields in query results to fetch their data
+func (fe *FieldsetEngine) ProcessTableFieldsInResult(result map[string]interface{}) error {
+	for _, field := range fe.Fields {
+		if field.Type == TYPE_TABLE {
+			// Get the parent record ID for foreign key relationships
+			var parentID interface{}
+			if id, exists := result["id"]; exists {
+				parentID = id
+			} else if uuid, exists := result["uuid"]; exists {
+				parentID = uuid
+			}
+
+			// Fetch table field data
+			tableData, err := fe.FetchTableFieldData(field, parentID)
+			if err != nil {
+				// Log error but don't fail the entire result
+				fmt.Printf("Warning: Failed to fetch table field data for %s: %v\n", field.Name, err)
+				result[field.Name] = []interface{}{} // Empty array as fallback
+			} else {
+				result[field.Name] = tableData
+			}
 		}
 	}
 	return nil

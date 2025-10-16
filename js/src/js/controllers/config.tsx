@@ -17,22 +17,18 @@ type Module = {
     component: Component;
     props?: Record<string, any>;
     extraRoutes: Submodule[];
+    fieldset?: JSX.Element;
 }
-
-
 
 export default class Config {
     private static modules: Module[] = [];
     private static moduleMap = new Map<string, number>();
     public static len: number = 0;
-    //public static serverURL = "https://localhost/"
     public static serverURL = window.location.protocol + "//" + window.location.hostname + "/"
 
     static async init() {
 
         await import("../components/pages").then((loaded) => {
-            //const i = 1;
-            //debugger;
 
             Object.keys(loaded).map((key, index) => {
 

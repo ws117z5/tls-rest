@@ -26,8 +26,42 @@ func NewBaseController(module *ModuleAbstract[interface{}], tableName string) *B
 	}
 }
 
+// createFieldsetMap creates a fieldset map for frontend compatibility
+func (bc *BaseController) createFieldsetMap() map[string]interface{} {
+	fieldset := make(map[string]interface{})
+
+	for _, field := range bc.Module.Fields {
+		if field.Type != "TYPE_TABLE" { // Skip virtual fields
+			fieldset[field.Name] = map[string]interface{}{
+				"name":       field.Name,
+				"type":       field.Type,
+				"label":      field.Label,
+				"required":   field.Required,
+				"readonly":   field.ReadOnly,
+				"virtual":    field.Virtual,
+				"filterable": field.Filterable,
+				"sortable":   field.Sortable,
+				"searchable": field.Searchable,
+			}
+		}
+	}
+
+	return fieldset
+}
+
 // List handles GET requests for listing records with pagination and filtering
 func (bc *BaseController) List(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers for API calls
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-Type, Accept")
+
+	// Handle preflight OPTIONS request
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	bc.Engine.WithRequest(r)
 
 	result, err := bc.Engine.ExecuteQuery(MODE_LIST)
@@ -36,12 +70,39 @@ func (bc *BaseController) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Create compatibility response format for frontend
+	compatResponse := map[string]interface{}{
+		"Data":       result.Data,
+		"Fieldset":   bc.createFieldsetMap(),
+		"Total":      result.Total,
+		"Page":       result.Page,
+		"Limit":      result.Limit,
+		"TotalPages": result.TotalPages,
+	}
+
+	// Log the response for debugging
+	if data, ok := result.Data.([]map[string]interface{}); ok {
+		fmt.Printf("API Response for %s: Data count: %d, Total: %d\n", bc.Module.ID, len(data), result.Total)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(compatResponse)
 }
 
 // View handles GET requests for viewing a single record by ID
 func (bc *BaseController) View(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers for API calls
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-Type, Accept")
+
+	// Handle preflight OPTIONS request
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	vars := mux.Vars(r)
 	id := vars["id"]
 
@@ -64,10 +125,14 @@ func (bc *BaseController) View(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Return single record instead of array
+	// Return single record with compatibility format
 	if resultData, ok := result.Data.([]map[string]interface{}); ok && len(resultData) > 0 {
+		compatResponse := map[string]interface{}{
+			"Data":     resultData[0], // Single record for view
+			"Fieldset": bc.createFieldsetMap(),
+		}
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(resultData[0])
+		json.NewEncoder(w).Encode(compatResponse)
 	} else {
 		http.Error(w, "Record not found", http.StatusNotFound)
 	}
