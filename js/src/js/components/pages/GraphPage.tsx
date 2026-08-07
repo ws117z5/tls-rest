@@ -1,8 +1,8 @@
 'use strict';
 
 import React from "react";
-import PageComponent from "../../controllers/PageComponent";
-import FunctionGraph from "../container/Graph/FunctionGraph";
+import PageComponent from "@controllers/PageComponent";
+import FunctionGraph from "@containers/Graph/FunctionGraph";
 
 interface GraphFunction {
   fn: (x: number, additionalParams?: Record<string, any>) => number;
@@ -11,9 +11,9 @@ interface GraphFunction {
 }
 
 class GraphPage extends PageComponent<{}, {}> {
-  static href = "graph";
-  static isPage = true;
-  static title = "Graphs";
+  protected href = "graph";
+  protected isPage = true;
+  protected title = "Graphs";
 
   constructor(props: {}) {
     super(props);
@@ -42,7 +42,7 @@ class GraphPage extends PageComponent<{}, {}> {
         },
         additionalParams: { mu: 0, sigma: 1 },
         latex:
-          "\\frac{1}{\\sigma \\sqrt{2\\pi}}e^{-\\frac{1}{2} \\left( \\frac{x-\\mu}{\\sigma}^2 \\right)}",
+          "\\frac{1}{\\sigma \\sqrt{2\\pi}}e^{-\\frac{1}{2} \\left( \\frac{x-\\mu}{\\sigma} \\right)^2}",
       },
     ];
 

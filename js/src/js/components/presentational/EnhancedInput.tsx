@@ -1,6 +1,6 @@
 import React from "react";
 import PropTypes from "prop-types";
-import { BaseFieldProps } from "../container/Fields/Field";
+import { BaseFieldProps } from "../containers/Fields/Field";
 
 // Enhanced Input component that works with fieldset system
 interface EnhancedInputProps extends BaseFieldProps {

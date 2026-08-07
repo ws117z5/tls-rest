@@ -1,10 +1,11 @@
-import React, { Component } from 'react';
+import React from 'react';
+import PageComponent from '@controllers/PageComponent';
 import { 
     FieldsetProvider, 
     FieldsetForm, 
     FieldsetList,
     MODES 
-} from '../container/Fields';
+} from '@containers/Fields';
 import axios from 'axios';
 
 interface PostsPageState {
@@ -19,7 +20,12 @@ interface PostsPageState {
     };
 }
 
-class PostsPage extends Component<{}, PostsPageState> {
+class PostsPage extends PageComponent<{}, PostsPageState> {
+    // Shown in the main nav menu (isPage=false), publicly accessible.
+    protected isPage = false;
+    protected href = 'posts';
+    protected title = 'Posts';
+
     constructor(props: {}) {
         super(props);
         this.state = {
@@ -35,7 +41,7 @@ class PostsPage extends Component<{}, PostsPageState> {
         };
     }
 
-    componentDidMount() {
+    async componentDidMount() {
         this.loadPosts();
     }
 
@@ -43,20 +49,22 @@ class PostsPage extends Component<{}, PostsPageState> {
         try {
             this.setState({ loading: true });
             
-            const response = await axios.get('/api/posts', {
+            const response = await axios.get('/posts', {
                 params: {
                     page,
-                    limit: this.state.pagination.limit
+                    limit: this.state.pagination.limit,
+                    // Only display public posts (engine reads filters[<field>]).
+                    'filters[public]': 1
                 }
             });
             
             this.setState({
-                posts: response.data.data || [],
+                posts: response.data.Data || [],
                 loading: false,
                 pagination: {
                     ...this.state.pagination,
-                    page: response.data.page || 1,
-                    total: response.data.total || 0
+                    page: response.data.Page || 1,
+                    total: response.data.Total || 0
                 }
             });
         } catch (error) {
@@ -88,7 +96,7 @@ class PostsPage extends Component<{}, PostsPageState> {
 
     handleDeletePost = async (post: any) => {
         try {
-            await axios.delete(`/api/posts/${post.id}`);
+            await axios.delete(`/posts/${post.id}`);
             this.loadPosts(this.state.pagination.page);
         } catch (error) {
             console.error('Failed to delete post:', error);
@@ -99,9 +107,9 @@ class PostsPage extends Component<{}, PostsPageState> {
     handleSubmitPost = async (data: any) => {
         try {
             if (this.state.currentView === 'create') {
-                await axios.post('/api/posts', data);
+                await axios.post('/posts', data);
             } else if (this.state.currentView === 'edit' && this.state.selectedPost) {
-                await axios.put(`/api/posts/${this.state.selectedPost.id}`, data);
+                await axios.put(`/posts/${this.state.selectedPost.id}`, data);
             }
             
             this.setState({ currentView: 'list' });

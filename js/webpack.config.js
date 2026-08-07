@@ -1,73 +1,78 @@
 const path = require('path');
 const webpack = require('webpack');
+const TsconfigPathsPlugin = require('tsconfig-paths-webpack-plugin');
 
-module.exports = [{
-    //test: /.tsx?$/,
-    name: 'dev',
-    entry: "./src/app.tsx", //path.resolve(__dirname, "src"),
-    mode: 'development',
-    watch: true,
-    resolve: {
-        // changed from extensions: [".js", ".jsx"]
-        extensions: [".ts", ".tsx", ".js", ".jsx"]
-    },
-    module: {
-      rules: [
-        // changed from { test: /\.jsx?$/, use: { loader: 'babel-loader' }, exclude: /node_modules/ },
-        { test: /\.(t|j)sx?$/, use: { loader: 'ts-loader' }, exclude: /node_modules/ },
-  
-        // addition - add source-map supportw
-        { enforce: "pre", test: /\.js$/, exclude: /node_modules/, loader: "source-map-loader" },
-        {
-          test: /\.svg$/,
-          use: ['@svgr/webpack', 'url-loader'],
+const commonRules = [
+  {
+    test: /\.(t|j)sx?$/,
+    exclude: /node_modules/,
+    use: {
+      loader: 'swc-loader',
+      options: {
+        jsc: {
+          parser: {
+            syntax: 'typescript',
+            tsx: true,
+          },
+          transform: {
+            react: {
+              runtime: 'automatic',
+            },
+          },
         },
-        {
-          test: /\.(css|scss)$/i,
-          use: ["style-loader", "css-loader", "sass-loader"],
-        }
+      },
+    },
+  },
+  {
+    enforce: 'pre',
+    test: /\.js$/,
+    exclude: /node_modules/,
+    loader: 'source-map-loader',
+  },
+  {
+    test: /\.svg$/,
+    use: ['@svgr/webpack', 'url-loader'],
+  },
+  {
+    test: /\.(css|scss)$/i,
+    use: ['style-loader', 'css-loader', 'sass-loader'],
+  },
+];
 
-      ]
+// Add plugins array to shared resolve config
+const commonResolve = {
+  extensions: ['.ts', '.tsx', '.js', '.jsx'],
+  plugins: [
+    new TsconfigPathsPlugin({
+      configFile: path.resolve(__dirname, './tsconfig.json')
+    })
+  ]
+};
+
+module.exports = [
+  {
+    name: 'dev',
+    mode: 'development',
+    entry: './src/app.tsx',
+    watch: true,
+    resolve: commonResolve, // 👈 Shared here
+    module: {
+      rules: commonRules,
     },
     optimization: {
-      emitOnErrors: false
+      emitOnErrors: false,
     },
-
-    devtool: "source-map",
-}, 
-
-
-{
-    //test: /.jsx?$/,
+    devtool: 'source-map',
+  },
+  {
     name: 'prod',
-    entry: "./src/app.tsx", //path.resolve(__dirname, "src"),
     mode: 'production',
-    resolve: {
-      // changed from extensions: [".js", ".jsx"]
-      extensions: [".ts", ".tsx", ".js", ".jsx"]
-    },
+    entry: './src/app.tsx',
+    resolve: commonResolve, // 👈 Shared here
     module: {
-        rules: [
-              { test: /\.(t|j)sx?$/, use: { loader: 'ts-loader' }, exclude: /node_modules/ },
-    
-              // addition - add source-map supportw
-              { enforce: "pre", test: /\.js$/, exclude: /node_modules/, loader: "source-map-loader" },
-              //test: /\.(t|j)sx?$/, use: { loader: 'ts-loader' }, exclude: /node_modules/ ,
-              //loader: "ts-loader",
-              //loader: "babel-loader",
-              // use: {
-              //     loader: "babel-loader"
-              // }
-              {
-                test: /\.(css|scss)$/i,
-                use: ["style-loader", "css-loader", "sass-loader"],
-              }
-        ]
+      rules: commonRules,
     },
-    externals: {
-      //"react": "React",
-      //"react-dom": "ReactDOM",
-    },
-
-    devtool: "source-map",
-}];
+    externals: {},
+    devtool: 'source-map',
+  },
+];

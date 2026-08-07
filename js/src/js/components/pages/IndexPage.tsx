@@ -1,22 +1,24 @@
 import React from "react";
-import PageComponent from "../../controllers/PageComponent";
-import {TextEdit} from "../container/Fields"
+import PageComponent from "@controllers/PageComponent";
+import {TextEdit} from "@containers/Fields"
 
 interface IndexPageProps {}
 interface IndexPageState {}
 
 class IndexPage extends PageComponent<IndexPageProps, IndexPageState> {
-  static title = "Home";
+  // Instance metadata is what Config reads (getTitle/getHref/isPageComponent).
+  // Declaring these as instance fields (not `static`) makes "Home" appear in the
+  // main menu linking to "/".
+  protected title = "Home";
+  protected href = "";
+  protected isPage = false;
 
   constructor(props: IndexPageProps) {
     super(props);
   }
 
-  componentWillMount() {
-    // Add any logic needed before the component mounts
-  }
-
-  componentDidMount() {
+  async componentDidMount() {
+    await super.componentDidMount();
     const canvas = document.querySelector<HTMLCanvasElement>("#webgl");
 
     // Initialize the GL context

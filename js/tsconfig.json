@@ -1,16 +1,26 @@
 {
   "compilerOptions": {
-      "outDir": "./dist/",        // path to output directory
-      "sourceMap": true,          // allow sourcemap support
-      "strictNullChecks": true,   // enable strict null checks as a best practice
-      "module": "esnext", // add this line
-      "jsx": "react",             // use typescript to transpile jsx to js
-      "target": "es6",            // specify ECMAScript target version
-      "allowJs": true,             // allow a partial TypeScript and JavaScript codebase
-      "moduleResolution": "node",
-      "allowSyntheticDefaultImports": true,
-      "esModuleInterop": true,
-      "resolveJsonModule": true
+    "outDir": "./dist/",        // path to output directory
+    "sourceMap": true,          // allow sourcemap support
+     "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler", // <-- UPDATE THIS LINE
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+
+    "allowJs": true,
+    "checkJs": false,
+    "noImplicitAny": false,
+    
+    "paths": {
+      "@controllers/*": ["./src/js/controllers/*"],
+      "@containers/*": ["./src/js/components/containers/*"],
+      "@pages/*": ["./src/js/components/pages/*"],
+    }
 
   },
   "include": [

@@ -1,5 +1,5 @@
 import React from "react";
-import PageComponent from "../../controllers/PageComponent";
+import PageComponent from "@controllers/PageComponent";
 
 interface ArrayIteratorState {
   items: string[];
@@ -10,9 +10,9 @@ interface ArrayIteratorState {
 }
 
 export default class ArrayIterator extends PageComponent<{}, ArrayIteratorState> {
-  isPage = true;
-  static href = "arrayiter";
-  static title = "Array Iterator";
+  protected isPage = true;
+  protected href = "arrayiter";
+  protected title = "Array Iterator";
 
   constructor(props: {}) {
     super(props);
