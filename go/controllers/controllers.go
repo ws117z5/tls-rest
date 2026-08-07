@@ -69,10 +69,13 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
 	// Determine authentication state from the session set by the middleware, so
-	// the SPA can gate auth-only UI (e.g. the Users menu item).
+	// the SPA can gate auth-only UI (e.g. the Users menu item) and admin-only
+	// columns (id/uuid/created/updated/created_by in list/view).
 	authenticated := false
+	isAdmin := false
 	if session, ok := r.Context().Value(auth.SESSION_KEY).(*cache.Session); ok && session != nil && session.UserID > 0 {
 		authenticated = true
+		isAdmin = session.IsAdmin
 	}
 
 	// Send 103 Early Hints so the browser can begin fetching critical assets
@@ -91,6 +94,7 @@ func Index(w http.ResponseWriter, r *http.Request) {
 		Body: map[string]interface{}{
 			"GoogleID":      config.GoogleID,
 			"Authenticated": authenticated,
+			"IsAdmin":       isAdmin,
 		},
 	}
 

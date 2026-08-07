@@ -1,6 +1,7 @@
 import React from "react";
-import UsersList from "@containers/UserList";
 import PageComponent from "@controllers/PageComponent";
+import { FieldsetProvider, FieldsetList, MODES } from "@containers/Fields";
+
 class UsersPage extends PageComponent {
   protected isPage = true;
   protected requiresAuth = true;
@@ -8,24 +9,22 @@ class UsersPage extends PageComponent {
   protected href = "users";
 
   render() {
-    const fieldsSelected: { [key: string]: boolean } = {};
-
-    Object.keys(this.state.Fieldset).forEach((el) => {
-      fieldsSelected[el] = true;
-    });
-    
+    // Row data is loaded by PageComponent.fetchDefaultApiData (GET /users) into
+    // this.state.Data; FieldsetProvider supplies the column definitions from
+    // /api/modules/users/fieldset, and FieldsetList renders them together.
     return (
       <div className="base">
         This is users
-        <UsersList
-          data={this.state.Data}
-          fieldset={this.state.Fieldset}
-          fieldsSelected={fieldsSelected}
-        />
+        <FieldsetProvider module="users" mode={MODES.LIST}>
+          <FieldsetList
+            data={this.state.Data}
+            sortable={true}
+            showActions={true}
+          />
+        </FieldsetProvider>
       </div>
     );
   }
 }
-
 
 export default UsersPage;

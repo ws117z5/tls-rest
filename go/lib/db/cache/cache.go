@@ -59,6 +59,7 @@ type Session struct {
 	IP         string
 	UserID     int
 	Username   string
+	IsAdmin    bool
 	UserRights map[int]int
 	Expire     time.Time
 	LastAccess time.Time

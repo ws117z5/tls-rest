@@ -264,6 +264,8 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 				Type:       "int",
 				Label:      "ID",
 				Required:   true,
+				ReadOnly:   true,
+				Mode:       MODE_LIST | MODE_VIEW,
 				Options:    map[string]interface{}{"primary": true, "auto": true},
 				Validation: map[string]interface{}{"min": 1},
 			},
@@ -272,6 +274,8 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 				Type:     "string",
 				Label:    "UUID",
 				Required: true,
+				ReadOnly: true,
+				Mode:     MODE_LIST | MODE_VIEW,
 				Options:  map[string]interface{}{"unique": true, "auto": true},
 			},
 			{
@@ -280,6 +284,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 				Label:    "Created",
 				Required: true,
 				ReadOnly: true,
+				Mode:     MODE_LIST | MODE_VIEW,
 				Options:  map[string]interface{}{"auto": true},
 			},
 			{
@@ -288,6 +293,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 				Label:    "Updated",
 				Required: true,
 				ReadOnly: true,
+				Mode:     MODE_LIST | MODE_VIEW,
 				Options:  map[string]interface{}{"auto": true},
 			},
 			{
@@ -295,6 +301,8 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 				Type:     "int",
 				Label:    "Created By",
 				Required: false,
+				ReadOnly: true,
+				Mode:     MODE_LIST | MODE_VIEW,
 				Options:  map[string]interface{}{"auto": true},
 			},
 		}

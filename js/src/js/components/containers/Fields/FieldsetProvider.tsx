@@ -1,5 +1,12 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import axios from 'axios';
+import Auth from '@controllers/auth';
+
+// System/default fields that are managed by the backend. They are never
+// editable, and are only shown in list/view to administrators.
+const SYSTEM_FIELDS = new Set([
+  'id', 'uuid', 'created', 'updated', 'created_by', 'created_at', 'updated_at',
+]);
 
 // Field type constants matching backend
 export const FIELD_TYPES = {
@@ -145,8 +152,11 @@ export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, mo
     // Helper function to get fields for current mode
     getFieldsForMode: () => {
       if (!fieldset || !fieldset.fields) return [];
-      return fieldset.fields.filter(field => 
-        !field.mode || (field.mode & mode) !== 0
+      const admin = Auth.isAdmin();
+      return fieldset.fields.filter(field =>
+        (!field.mode || (field.mode & mode) !== 0) &&
+        // System fields (id/uuid/created/updated/created_by) are only shown to admins.
+        (!SYSTEM_FIELDS.has(field.name) || admin)
       );
     }
   };

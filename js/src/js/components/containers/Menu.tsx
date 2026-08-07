@@ -85,9 +85,10 @@ class Menu extends Component<{}, MenuState> {
 
 const menuDiv: React.CSSProperties = {
   zIndex: 100,
-  position: "absolute",
-  top: 20,
-  left: 10,
+  position: "sticky",
+  top: 0,
+  left: 0,
+  width: "100%",
 };
 
 export default Menu;

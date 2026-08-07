@@ -19,10 +19,24 @@ canvas#background {
     z-index: -3;
 }
 
+.main-menu {
+    position: sticky;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 100;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e5e5e5;
+}
+
+/* Page/module content flows in normal document flow, below the top menu, and
+   spans the full width (previously position:absolute shrank it to its widest
+   child — e.g. a single input). */
 div.base {
-    position: absolute;
-    top: 80px;
-    left: 30px;
+    position: static;
+    width: auto;
+    box-sizing: border-box;
+    padding: 24px 30px;
 }
 
 .new-line {

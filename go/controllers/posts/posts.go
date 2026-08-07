@@ -34,7 +34,8 @@ func (p *Posts) init() {
 			WithLabel("Title").
 			WithDescription("Post title").
 			WithValidation("minLength", 3).
-			WithValidation("maxLength", 200),
+			WithValidation("maxLength", 200).
+			WithOption("width", "600px"),
 
 		module.NewField("images", module.TYPE_JSON, false).
 			WithLabel("Images").
@@ -46,6 +47,8 @@ func (p *Posts) init() {
 			WithLabel("Content").
 			WithDescription("Post content").
 			WithValidation("minLength", 10).
+			WithOption("width", "600px").
+			WithOption("height", "300px").
 			NonSortable(),
 
 		module.NewField("public", module.TYPE_CHECKBOX, false).
