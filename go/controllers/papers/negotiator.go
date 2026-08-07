@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ws117z5/tls-rest/go/lib"
+	"tls-rest/go/lib"
 
 	"github.com/pion/webrtc/v3"
 )

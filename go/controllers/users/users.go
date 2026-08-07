@@ -3,8 +3,9 @@ package users
 import (
 	"time"
 
-	"github.com/ws117z5/tls-rest/go/lib/db/pgdb"
-	. "github.com/ws117z5/tls-rest/go/lib/module"
+	"tls-rest/go/lib/db/pgdb"
+
+	. "tls-rest/go/lib/module"
 
 	"github.com/go-pg/urlstruct"
 )

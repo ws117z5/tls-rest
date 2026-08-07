@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	. "github.com/ws117z5/tls-rest/go/lib/module"
+	. "tls-rest/go/lib/module"
 )
 
 type UserGroup struct {

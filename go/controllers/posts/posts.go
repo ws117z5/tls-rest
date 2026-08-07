@@ -1,7 +1,7 @@
 package posts
 
 import (
-	"github.com/ws117z5/tls-rest/go/lib/module"
+	"tls-rest/go/lib/module"
 )
 
 // Posts module following CInvoice paradigm
@@ -47,6 +47,11 @@ func (p *Posts) init() {
 			WithDescription("Post content").
 			WithValidation("minLength", 10).
 			NonSortable(),
+
+		module.NewField("public", module.TYPE_CHECKBOX, false).
+			WithLabel("Public").
+			WithDescription("Whether the post is publicly visible").
+			WithDefault(false),
 	}
 
 	p.ModuleAbstract.Fields = fields

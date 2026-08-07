@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ws117z5/tls-rest/go/lib/db/rdb"
+	"tls-rest/go/lib/db/rdb"
 )
 
 var SessionCacheInstance *Cache[Session]

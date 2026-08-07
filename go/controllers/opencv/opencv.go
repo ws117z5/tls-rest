@@ -14,7 +14,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ws117z5/tls-rest/go/controllers/opencv/signal"
+	"tls-rest/go/controllers/opencv/signal"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v3"

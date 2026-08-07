@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ws117z5/tls-rest/go/controllers"
-	. "github.com/ws117z5/tls-rest/go/lib/auth"
-	"github.com/ws117z5/tls-rest/go/lib/db/cache"
-	"github.com/ws117z5/tls-rest/go/lib/log"
+	"tls-rest/go/controllers"
+	. "tls-rest/go/lib/auth"
+	"tls-rest/go/lib/db/cache"
+	"tls-rest/go/lib/log"
 )
 
 /*
@@ -52,6 +52,11 @@ func isAPICall(r *http.Request) bool {
 
 	// Papers API endpoints
 	if strings.HasPrefix(uri, "/papers") {
+		return true
+	}
+
+	// Explicit API namespace (e.g. /api/modules/{id}/fieldset) is always an API call
+	if strings.HasPrefix(uri, "/api/") {
 		return true
 	}
 
@@ -173,11 +178,23 @@ func getModuleNameFromPath(path string) string {
 	return ""
 }
 
-// Example: Check if user has rights for the module (implement DB/cache logic)
+// HasModuleRight reports whether the user may access the given module. Some
+// modules (user administration) require an authenticated session; public
+// modules such as posts remain open to anonymous visitors.
 func HasModuleRight(userID int, moduleName, requiredRight string) bool {
-	// TODO: Query DB or cache for user's rights for this module
-	// Return true if user has the required right, false otherwise
-	return true // placeholder: always allow
+	// Modules that must never be exposed to unauthenticated visitors.
+	protected := map[string]bool{
+		"users":         true,
+		"user_groups":   true,
+		"module_rights": true,
+	}
+
+	if protected[moduleName] {
+		return userID > 0
+	}
+
+	// TODO: for finer-grained control, look up per-user rights here.
+	return true
 }
 
 // getSessionID extracts or generates a session ID from the request

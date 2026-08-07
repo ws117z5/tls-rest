@@ -7,9 +7,11 @@ import (
 	"io"
 	"strconv"
 
-	config "github.com/ws117z5/tls-rest/go/constants"
-	"github.com/ws117z5/tls-rest/go/controllers/users"
-	"github.com/ws117z5/tls-rest/go/lib"
+	config "tls-rest/go/constants"
+
+	"tls-rest/go/controllers/users"
+
+	"tls-rest/go/lib"
 
 	"net/http"
 
@@ -57,13 +59,10 @@ func Auth(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			break
 		case "GoogleLogin":
 			handleGoogleLogin(w, r)
-			break
 		case "GoogleCallback":
 			handleGoogleCallback(w, r)
-			break
 		}
 	}
 }

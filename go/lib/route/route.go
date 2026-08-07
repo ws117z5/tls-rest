@@ -5,18 +5,18 @@ import (
 
 	"github.com/gorilla/mux"
 
-	"github.com/ws117z5/tls-rest/go/controllers"
-	"github.com/ws117z5/tls-rest/go/controllers/log"
-	"github.com/ws117z5/tls-rest/go/controllers/papers"
+	"tls-rest/go/controllers"
+	"tls-rest/go/controllers/log"
+	"tls-rest/go/controllers/papers"
 
 	// Import modules to trigger their init() functions for automatic registration
-	_ "github.com/ws117z5/tls-rest/go/controllers/modulerights"
-	_ "github.com/ws117z5/tls-rest/go/controllers/posts"
-	_ "github.com/ws117z5/tls-rest/go/controllers/usergroups"
-	_ "github.com/ws117z5/tls-rest/go/controllers/users"
+	_ "tls-rest/go/controllers/modulerights"
+	_ "tls-rest/go/controllers/posts"
+	_ "tls-rest/go/controllers/usergroups"
+	_ "tls-rest/go/controllers/users"
 
-	"github.com/ws117z5/tls-rest/go/lib/module"
-	middleware "github.com/ws117z5/tls-rest/go/lib/route/middlware"
+	"tls-rest/go/lib/module"
+	middleware "tls-rest/go/lib/route/middlware"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -151,6 +151,27 @@ func registerRoutes(router *mux.Router, routes []Route) {
 	}
 }
 
+func RegisterCustomRoutes(router *mux.Router) {
+	// Serve the SPA shell for any client-side "/pages/*" deep link so that a
+	// direct navigation / refresh boots the React app (which then routes
+	// client-side). The previous per-page patterns were missing the leading
+	// "/" and therefore never matched, 404-ing on refresh.
+	router.PathPrefix("/pages/").HandlerFunc(controllers.Index)
+
+	// Fieldset API used by the React FieldsetProvider. The handler already
+	// existed (module.GlobalFieldsetHandler) but was never wired to the router,
+	// so GET /api/modules/{moduleId}/fieldset returned 404.
+	router.HandleFunc("/api/modules", module.GlobalFieldsetHandler.GetModules).Methods("GET")
+	router.HandleFunc("/api/modules/{moduleId}/fieldset", module.GlobalFieldsetHandler.GetFieldset).Methods("GET")
+	//router.HandleFunc("/opencv", opencv.Init).Methods("GET", "POST", "OPTIONS")
+
+	//router.HandleFunc("/users/GetInfo/{authType}", users.GetInfo).Methods("GET")
+	//router.HandleFunc("/users", controllers.Index).Methods("GET").
+	//router.HandleFunc("/users/Auth/{authType}", auth.Auth).Methods("GET", "POST")
+	//router.HandleFunc("/users/session", auth.ManageSession).Methods("GET")
+	//router.HandleFunc("/users/AuthResponse/{authType}", auth.AuthResponse).Methods("GET")
+}
+
 // GetRouter creates the main router with automatic module route registration
 func GetRouter() *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
@@ -163,6 +184,8 @@ func GetRouter() *mux.Router {
 
 	// Register predefined application routes
 	registerRoutes(router, routes)
+
+	RegisterCustomRoutes(router)
 
 	// Register any remaining module routes (in case modules were loaded before SetGlobalRouter)
 	module.RegisterModuleRoutes(router)

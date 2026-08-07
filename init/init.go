@@ -8,7 +8,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/ws117z5/tls-rest/go/constants"
+	"tls-rest/go/constants"
 
 	"go/ast"
 	"go/parser"

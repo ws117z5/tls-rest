@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ws117z5/tls-rest/go/lib/db/rdb"
+	"tls-rest/go/lib/db/rdb"
 
 	"github.com/go-redis/redis/v8"
 )

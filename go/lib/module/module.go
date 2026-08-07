@@ -8,9 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"tls-rest/go/lib/db/pgdb"
+
+	"tls-rest/go/lib/log"
+
 	"github.com/gorilla/mux"
-	"github.com/ws117z5/tls-rest/go/lib/db/pgdb"
-	"github.com/ws117z5/tls-rest/go/lib/log"
 )
 
 const (

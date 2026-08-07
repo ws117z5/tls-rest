@@ -3,7 +3,7 @@ package module
 import (
 	"fmt"
 
-	"github.com/ws117z5/tls-rest/go/lib/db/pgdb"
+	"tls-rest/go/lib/db/pgdb"
 )
 
 // GetAllWithPagination fetches rows as a slice of maps with pagination support

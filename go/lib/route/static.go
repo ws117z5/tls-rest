@@ -4,8 +4,9 @@ import (
 	"net/http"
 	"path/filepath"
 
+	"tls-rest/go/lib/log"
+
 	"github.com/gorilla/mux"
-	"github.com/ws117z5/tls-rest/go/lib/log"
 )
 
 // StaticConfig represents a static directory configuration

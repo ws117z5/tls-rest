@@ -9,8 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ws117z5/tls-rest/go/constants"
-	"github.com/ws117z5/tls-rest/go/lib/log"
+	"tls-rest/go/constants"
+
+	"tls-rest/go/lib/log"
 
 	"github.com/go-pg/pg/v10"
 )
@@ -70,7 +71,11 @@ func (db *Db) Close() error {
 }
 
 func (db *Db) Model(model ...interface{}) *pg.Query {
-	return db.conn.Model(db.conn, model)
+	// Forward the caller's model(s) to go-pg. The variadic must be spread with
+	// `model...`; and db.conn must NOT be passed as a model — doing so made go-pg
+	// derive the table name from *pg.DB (type "DB" -> "dbs"), producing
+	// `relation "dbs" does not exist` for every query.
+	return db.conn.Model(model...)
 }
 
 // Query executes a query and returns the result

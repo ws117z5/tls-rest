@@ -4,6 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="google-signin-client_id" content="{{.Body.GoogleID}}">
+    <script type="text/javascript">
+        window.__AUTH__ = {{ if .Body.Authenticated }}true{{ else }}false{{ end }};
+    </script>
     <title>{{ .Title}}</title>
     {{ range .Img}}
         <link rel="prefetch" href="{{ . }}" as="image" type="{{ getImgType . }}">
@@ -14,6 +17,7 @@
     {{end}}
     {{ range .CssHeader }}
         <link rel="preload" href="{{ . }}" as="style">
+        <link rel="stylesheet" href="{{ . }}">
     {{end}}
 </head>
 <body>
@@ -26,7 +30,6 @@
     {{end}}
 </body>
 <script type="text/javascript">
-    var session = {{.Body.auth}};
-
+    //var session = {{.Body.auth}};
 </script>
 </html>

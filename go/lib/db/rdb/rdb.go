@@ -3,7 +3,7 @@ package rdb
 import (
 	"context"
 
-	config "github.com/ws117z5/tls-rest/go/constants"
+	config "tls-rest/go/constants"
 
 	redis "github.com/go-redis/redis/v8"
 )

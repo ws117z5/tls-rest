@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ws117z5/tls-rest/go/lib"
-	"github.com/ws117z5/tls-rest/go/lib/auth"
-	"github.com/ws117z5/tls-rest/go/lib/db/pgdb"
+	"tls-rest/go/lib"
+	"tls-rest/go/lib/auth"
+	"tls-rest/go/lib/db/pgdb"
 
 	"github.com/go-pg/pg/v10"
 	"github.com/go-pg/urlstruct"

@@ -7,9 +7,11 @@ import (
 	"strings"
 	"text/template"
 
-	config "github.com/ws117z5/tls-rest/go/constants"
-	"github.com/ws117z5/tls-rest/go/lib/auth"
-	"github.com/ws117z5/tls-rest/go/lib/db/cache"
+	config "tls-rest/go/constants"
+
+	"tls-rest/go/lib/auth"
+
+	"tls-rest/go/lib/db/cache"
 )
 
 func Error(w http.ResponseWriter, r *http.Request, ErrID int) {
@@ -38,38 +40,45 @@ func Error(w http.ResponseWriter, r *http.Request, ErrID int) {
 	fmt.Fprintln(w, "http2 not supported!")
 }
 
+// sendEarlyHints emits a 103 Early Hints informational response advertising the
+// critical assets (scripts, styles, images) via Link: rel=preload headers, so
+// the browser can start fetching them before the full page is rendered.
+func sendEarlyHints(w http.ResponseWriter) {
+	h := w.Header()
+
+	// Copy-append so we never mutate config.JsHeader's backing array.
+	scripts := append(append([]string{}, config.JsHeader...), config.JsFooter...)
+	for _, f := range scripts {
+		h.Add("Link", "<"+f+">; rel=preload; as=script")
+	}
+	for _, f := range config.Css {
+		h.Add("Link", "<"+f+">; rel=preload; as=style")
+	}
+	// NB: images are intentionally not preloaded here. The SPA shell is served
+	// for every route, so preloading page-specific images (e.g. the index
+	// background) globally makes the browser warn that they were "preloaded but
+	// not used" on pages that don't reference them. Scripts and styles are always
+	// needed, images are not.
+
+	w.WriteHeader(http.StatusEarlyHints)
+}
+
 // Index page logic
 func Index(w http.ResponseWriter, r *http.Request) {
 
-	w.Header().Set("Set-Cookie", "HttpOnly;Secure;SameSite=None")
-	w.Header().Set("Content-type", "text/html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-	if pusher, ok := w.(http.Pusher); ok {
-		push := func(path, ctype string) {
-			if err := pusher.Push(path, &http.PushOptions{
-				Method: "GET",
-				Header: http.Header{
-					"Accept-Encoding": r.Header["Accept-Encoding"],
-					"Content-Type":    []string{ctype},
-				},
-			}); err != nil {
-				log.Printf("push %s: %v", path, err)
-			}
-		}
-
-		for _, file := range append(config.JsHeader, config.JsFooter...) {
-			push(file, "application/javascript")
-			push(file, "application/javascript")
-		}
-
-		for _, file := range config.Css {
-			push(file, "text/css")
-		}
-
-		for _, file := range config.Img {
-			push(file, "image/jpeg")
-		}
+	// Determine authentication state from the session set by the middleware, so
+	// the SPA can gate auth-only UI (e.g. the Users menu item).
+	authenticated := false
+	if session, ok := r.Context().Value(auth.SESSION_KEY).(*cache.Session); ok && session != nil && session.UserID > 0 {
+		authenticated = true
 	}
+
+	// Send 103 Early Hints so the browser can begin fetching critical assets
+	// while this handler renders the page. This is the modern replacement for
+	// the deprecated (and browser-removed) HTTP/2 Server Push.
+	sendEarlyHints(w)
 
 	tpl := template.New("index.gohtml")
 
@@ -80,7 +89,8 @@ func Index(w http.ResponseWriter, r *http.Request) {
 		Img:       config.Img,
 		Title:     "HelloWorld", //todo route.getTitle(r.URL.Path),
 		Body: map[string]interface{}{
-			"GoogleID": config.GoogleID,
+			"GoogleID":      config.GoogleID,
+			"Authenticated": authenticated,
 		},
 	}
 

@@ -5,8 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ws117z5/tls-rest/go/lib/db/pgdb"
-	"github.com/ws117z5/tls-rest/go/lib/log"
+	"tls-rest/go/lib/db/pgdb"
+
+	"tls-rest/go/lib/log"
 )
 
 // Permission Values according to the schema

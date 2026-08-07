@@ -10,7 +10,7 @@ import (
 	"github.com/pkg/errors"
 	"gortc.io/stun"
 
-	Log "github.com/ws117z5/tls-rest/go/controllers/log"
+	Log "tls-rest/go/controllers/log"
 )
 
 // Server is RFC 5389 basic server implementation.

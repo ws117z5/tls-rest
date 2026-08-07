@@ -4,18 +4,20 @@ package main
 import (
 
 	//"log"
+
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
 	"time"
 
-	//pgdb "github.com/ws117z5/tls-rest/go/lib/db/pgdb"
+	//pgdb "tls-rest/go/lib/db/pgdb"
 
-	input "github.com/ws117z5/tls-rest/go/lib/subroutine/input"
-	server "github.com/ws117z5/tls-rest/go/lib/subroutine/server"
+	constants "tls-rest/go/constants"
+	input "tls-rest/go/lib/subroutine/input"
+	server "tls-rest/go/lib/subroutine/server"
+	"tls-rest/leet"
+	_ "tls-rest/leet"
 
-	"github.com/ws117z5/tls-rest/go/lib/log"
+	"tls-rest/go/lib/log"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -42,7 +44,16 @@ func init() {
 }
 
 func main() {
+
+	leet.Run()
+
 	startTime := time.Now()
+
+	// Fail fast if any absolutely-required configuration is missing.
+	if err := constants.ValidateRequired(); err != nil {
+		fmt.Fprintln(os.Stderr, "configuration error:", err)
+		os.Exit(1)
+	}
 
 	// Log application startup
 	log.LogSystemEvent("Application starting up", log.LogLevelInfo, map[string]interface{}{
@@ -66,25 +77,18 @@ func main() {
 	//http.Handle("/metrics", promhttp.Handler())
 	//log.Fatal(http.ListenAndServe(":8080", nil))
 
-	sigs := make(chan os.Signal, 1)
-	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
-	go func() {
-		sig := <-sigs
-		log.LogSystemEvent(fmt.Sprintf("Received signal: %s", sig), log.LogLevelWarn, map[string]interface{}{
-			"signal":         sig.String(),
-			"uptime_seconds": time.Since(startTime).Seconds(),
-		})
-		//TODO Cleanup
-		//cleanupAllTheThings()
-		log.LogSystemEvent("Application shutting down", log.LogLevelInfo, nil)
-		os.Exit(0)
-	}()
-
 	log.LogSystemEvent("Starting input command reader", log.LogLevelInfo, nil)
 	go input.ReadCommand()
 
 	log.LogSystemEvent("Starting HTTP server", log.LogLevelInfo, map[string]interface{}{
 		"startup_duration_ms": time.Since(startTime).Seconds() * 1000,
 	})
+
+	// RunServer blocks until an interrupt/termination signal arrives, then
+	// drains in-flight requests and returns (graceful shutdown).
 	server.RunServer()
+
+	log.LogSystemEvent("Application shut down", log.LogLevelInfo, map[string]interface{}{
+		"uptime_seconds": time.Since(startTime).Seconds(),
+	})
 }

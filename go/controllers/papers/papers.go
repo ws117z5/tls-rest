@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"time"
 
-	"github.com/ws117z5/tls-rest/go/lib"
-	"github.com/ws117z5/tls-rest/go/lib/db/pgdb"
+	"tls-rest/go/lib"
+
+	"tls-rest/go/lib/db/pgdb"
 
 	"github.com/go-pg/pg/v10"
 	"github.com/go-pg/urlstruct"
@@ -101,7 +102,7 @@ func CreateRoom(w http.ResponseWriter, r *http.Request) {
 
 	var pRoom Proom
 
-	b, err := ioutil.ReadAll(r.Body)
+	b, err := io.ReadAll(r.Body)
 	//defer r.Body.Close()
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -118,9 +119,12 @@ func CreateRoom(w http.ResponseWriter, r *http.Request) {
 	_, err = db.Model(&pRoom).Insert()
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		// A failed insert is a server/DB problem, not a client "bad request".
+		// Log the underlying error (missing table, NOT NULL/constraint, etc.)
+		// so the actual cause is visible rather than a bare 400 in the browser.
+		log.Printf("papers CreateRoom: insert failed: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
-		//panic(err)
 	}
 
 	resp := make(map[string]string)
@@ -148,7 +152,7 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 	params := make(map[string]string)
 
 	//todo if works, remove unmarshal part and write into db straight away
-	b, err := ioutil.ReadAll(r.Body)
+	b, err := io.ReadAll(r.Body)
 	//defer r.Body.Close()
 	if err != nil {
 		http.Error(w, err.Error(), 500)
@@ -172,7 +176,7 @@ func AddRoomUser(w http.ResponseWriter, r *http.Request) {
 	roomId := vars["roomId"]
 
 	//todo if works, remove unmarshal part and write into db straight away
-	b, err := ioutil.ReadAll(r.Body)
+	b, err := io.ReadAll(r.Body)
 	//defer r.Body.Close()
 	if err != nil {
 		http.Error(w, err.Error(), 500)

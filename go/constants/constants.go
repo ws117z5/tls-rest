@@ -35,7 +35,7 @@ var (
 	JsFooter = []string{"/js/dist/main.js", "/js/dist/gl-matrix-min.js"}
 
 	//Css styles array
-	Css = []string{"/css/index.css"}
+	Css = []string{"/css/bootstrap.min.css", "/css/index.css"}
 
 	//Img Images array
 	Img = []string{
@@ -66,6 +66,26 @@ var (
 	RDb = Db{
 		Addr: "localhost:6379",
 	}
+
+	// ---- Secrets / environment-specific config ----
+	// Loaded from a .env file (see .env.example) or OS environment variables via
+	// the helpers in env.go. Nothing sensitive is hard-coded here.
+	//
+	// REQUIRED: the server refuses to start (see ValidateRequired in main) if any
+	// of these are missing.
+	JWTSignature = RequireEnvBytes("JWT_SIGNATURE") // openssl rand -base64 32
+	GoogleID     = RequireEnv("GOOGLE_ID")
+	GoogleSecret = RequireEnv("GOOGLE_SECRET")
+	PDbAddr      = RequireEnv("PG_ADDR")
+	PdbUser      = RequireEnv("PG_USER")
+	PdbPass      = RequireEnv("PG_PASSWORD")
+
+	// OPTIONAL: feature-specific, with sane non-secret fallbacks.
+	VKID           = EnvInt("VK_ID", 0)
+	VKSecKey       = Env("VK_SECRET_KEY", "")
+	VKLink         = Env("VK_LINK", "https://localhost:8080/users/Auth/Vk")
+	GoogleURLBlank = Env("GOOGLE_URL_BLANK", "urn:ietf:wg:oauth:2.0:oob")
+	GoogleURLLocal = Env("GOOGLE_URL_LOCAL", "https://localhost/users/Auth/Google")
 
 	//LocalURL TODO move
 	LocalURL = "https://localhost"

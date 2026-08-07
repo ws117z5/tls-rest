@@ -7,8 +7,9 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ws117z5/tls-rest/go/lib"
-	"github.com/ws117z5/tls-rest/go/lib/db/cache"
+	"tls-rest/go/lib"
+
+	"tls-rest/go/lib/db/cache"
 )
 
 type ContextKey string

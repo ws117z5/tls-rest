@@ -7,8 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"tls-rest/go/lib/db/pgdb"
+
 	"github.com/go-pg/urlstruct"
-	"github.com/ws117z5/tls-rest/go/lib/db/pgdb"
 )
 
 // QueryParams holds pagination and filtering parameters
