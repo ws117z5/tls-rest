@@ -17,9 +17,12 @@
     "noImplicitAny": false,
     
     "paths": {
-      "@controllers/*": ["./src/js/controllers/*"],
-      "@containers/*": ["./src/js/components/containers/*"],
-      "@pages/*": ["./src/js/components/pages/*"],
+      "@engine/*": [ "./src/engine/*" ],
+      "@modules/*": [ "./src/modules/*" ],
+      "@controllers/*": [  "./src/controllers/*" ],
+      "@containers/*": [  "./src/components/containers/*" ],
+      "@pages/*": [ "./src/components/pages/*" ],
+      "@components/*": [  "./src/components/*" ]
     }
 
   },

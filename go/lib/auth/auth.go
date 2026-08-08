@@ -9,7 +9,7 @@ import (
 
 	config "tls-rest/go/constants"
 
-	"tls-rest/go/controllers/users"
+	"tls-rest/go/modules/users"
 
 	"tls-rest/go/lib"
 

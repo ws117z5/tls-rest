@@ -6,7 +6,7 @@ import axios from 'axios';
 import { AbstractComponent } from '@controllers/AbstractComponent';
 import Menu from "@containers/Menu";
 import IndexPage from "@pages/IndexPage";
-import Config from '@controllers/config';
+import Config from '@engine/Config';
 import Auth from '@controllers/auth';
 import { ErrorBoundary } from "@pages/ErrorBoundary";
 

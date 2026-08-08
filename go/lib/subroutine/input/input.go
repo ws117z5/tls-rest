@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-//ReadCommand for realtime debugging
+// ReadCommand for realtime debugging
 func ReadCommand() {
 
 	for {

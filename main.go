@@ -15,7 +15,6 @@ import (
 	input "tls-rest/go/lib/subroutine/input"
 	server "tls-rest/go/lib/subroutine/server"
 	"tls-rest/leet"
-	_ "tls-rest/leet"
 
 	"tls-rest/go/lib/log"
 

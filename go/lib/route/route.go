@@ -7,16 +7,16 @@ import (
 
 	"tls-rest/go/controllers"
 	"tls-rest/go/controllers/log"
-	"tls-rest/go/controllers/papers"
-	"tls-rest/go/controllers/postimages"
+	"tls-rest/go/features/papers"
+	"tls-rest/go/features/postimages"
 
 	// Import modules to trigger their init() functions for automatic registration
-	_ "tls-rest/go/controllers/modulerights"
-	_ "tls-rest/go/controllers/posts"
-	_ "tls-rest/go/controllers/usergroups"
-	_ "tls-rest/go/controllers/users"
+	_ "tls-rest/go/modules/modulerights"
+	_ "tls-rest/go/modules/posts"
+	_ "tls-rest/go/modules/usergroups"
+	_ "tls-rest/go/modules/users"
 
-	"tls-rest/go/lib/module"
+	"tls-rest/go/engine"
 	middleware "tls-rest/go/lib/route/middlware"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
