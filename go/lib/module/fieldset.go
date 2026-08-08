@@ -22,6 +22,7 @@ const TYPE_STRING = "String"
 const TYPE_AUTOCOMPLETE = "Autocomplete"
 
 const TYPE_TEXT = "Text"
+const TYPE_BBCODE = "BBCode"
 const TYPE_JSON = "Json"
 const TYPE_AUTOCOMPLETE_TEXT = "AutocompleteText"
 

@@ -6,6 +6,9 @@
     <meta name="google-signin-client_id" content="{{.Body.GoogleID}}">
     <script type="text/javascript">
         window.__AUTH__ = {{ if .Body.Authenticated }}true{{ else }}false{{ end }};
+        window.__ADMIN__ = {{ if .Body.IsAdmin }}true{{ else }}false{{ end }};
+        window.__MANAGED__ = {{ .Body.ManagedModulesJSON }};
+        window.__MODULES__ = {{ .Body.AvailableModulesJSON }};
     </script>
     <title>{{ .Title}}</title>
     {{ range .Img}}

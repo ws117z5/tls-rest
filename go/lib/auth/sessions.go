@@ -85,6 +85,16 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 			stored.IP = ip
 			stored.Expire = time.Now().Add(30 * 24 * time.Hour) // 30 days
 			stored.LastAccess = time.Now()
+
+			// Resolve administrative status from the user-rights / user-group
+			// system (write access to the system module). Anonymous sessions
+			// (UserID == 0) are never admins.
+			if stored.UserID > 0 {
+				stored.IsAdmin = IsAdmin(stored.UserID)
+			} else {
+				stored.IsAdmin = false
+			}
+
 			cache.SessionCacheInstance.Set(hash, *stored)
 
 			if stored.UserRights == nil {

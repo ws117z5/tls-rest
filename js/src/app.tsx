@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Route, Routes } from "react-router";
+import { BrowserRouter, Route, Routes, Navigate } from "react-router";
 import axios from 'axios';
 
-import { AbstractComponent } from './js/controllers/AbstractComponent';
-import Menu from "./js/components/containers/Menu";
-import { IndexPage } from "./js/components/pages";
-import Config from './js/controllers/config';
-import { ErrorBoundary } from "./js/components/pages/ErrorBoundary";
+import { AbstractComponent } from '@controllers/AbstractComponent';
+import Menu from "@containers/Menu";
+import IndexPage from "@pages/IndexPage";
+import Config from '@controllers/config';
+import Auth from '@controllers/auth';
+import { ErrorBoundary } from "@pages/ErrorBoundary";
 
 const App: React.FC = () => {
   const [loaded, setLoaded] = useState<boolean>(false);
@@ -31,6 +32,11 @@ const App: React.FC = () => {
           <Route path='/' element={<IndexPage />} />
           {
             Config.getAll()?.map((module, idx) => {
+              // Don't register routes the current user can't access (auth, admin,
+              // or per-module rights) — direct URLs fall through to the catch-all.
+              if (!Auth.canAccessModule(module)) {
+                return null;
+              }
               return (
                 <React.Fragment key={module.href || idx}>
                   <Route 
@@ -50,6 +56,9 @@ const App: React.FC = () => {
               );
             })
           }
+          {/* Unknown paths (e.g. a browser hitting the /papers API endpoint,
+              which has no page) fall through to the homepage. */}
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </ErrorBoundary>
     </div>

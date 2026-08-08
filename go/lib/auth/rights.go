@@ -323,6 +323,25 @@ func HasWritePermission(userID int, module string) (bool, error) {
 	return HasPermission(userID, module, PERMISSION_WRITE)
 }
 
+// SystemModule governs administrative access. A user (or their group) that holds
+// write permission on it is treated as an administrator.
+const SystemModule = "system"
+
+// IsAdmin reports whether the user is an administrator. It is resolved through
+// exactly the same user-rights / user-group logic as any other permission: the
+// user is an admin when they have write access to the system module (granted
+// directly on the user, inherited from their group, or via the module default).
+func IsAdmin(userID int) bool {
+	if userID <= 0 {
+		return false
+	}
+	ok, err := HasWritePermission(userID, SystemModule)
+	if err != nil {
+		return false
+	}
+	return ok
+}
+
 // GetUserRoles returns the responsible role IDs for a user
 func GetUserRoles(userID int) ([]int, error) {
 	user, err := GetUserByID(userID)

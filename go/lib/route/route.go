@@ -8,6 +8,7 @@ import (
 	"tls-rest/go/controllers"
 	"tls-rest/go/controllers/log"
 	"tls-rest/go/controllers/papers"
+	"tls-rest/go/controllers/postimages"
 
 	// Import modules to trigger their init() functions for automatic registration
 	_ "tls-rest/go/controllers/modulerights"
@@ -97,6 +98,20 @@ var routes = []Route{
 				Params:  []string{"roomId"},
 			},
 			{
+				Name:    "PapersReport",
+				Pattern: "/{roomId}/report",
+				Methods: []string{"POST"},
+				Handler: papers.ReportLink,
+				Params:  []string{"roomId"},
+			},
+			{
+				Name:    "PapersPlan",
+				Pattern: "/{roomId}/plan",
+				Methods: []string{"GET"},
+				Handler: papers.GetPlan,
+				Params:  []string{"roomId"},
+			},
+			{
 				Name:    "PapersRegisterUser",
 				Pattern: "/{roomId}/{userId}",
 				Methods: []string{"POST"},
@@ -163,6 +178,12 @@ func RegisterCustomRoutes(router *mux.Router) {
 	// so GET /api/modules/{moduleId}/fieldset returned 404.
 	router.HandleFunc("/api/modules", module.GlobalFieldsetHandler.GetModules).Methods("GET")
 	router.HandleFunc("/api/modules/{moduleId}/fieldset", module.GlobalFieldsetHandler.GetFieldset).Methods("GET")
+
+	// Post images: DB-backed upload/list/serve. Namespaced under /api/ to avoid
+	// colliding with the generic module route /posts/{id}.
+	router.HandleFunc("/api/posts/images", postimages.Upload).Methods("POST")
+	router.HandleFunc("/api/posts/images", postimages.List).Methods("GET")
+	router.HandleFunc("/api/posts/images/{id}", postimages.Serve).Methods("GET")
 	//router.HandleFunc("/opencv", opencv.Init).Methods("GET", "POST", "OPTIONS")
 
 	//router.HandleFunc("/users/GetInfo/{authType}", users.GetInfo).Methods("GET")

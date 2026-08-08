@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -73,10 +74,35 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	// columns (id/uuid/created/updated/created_by in list/view).
 	authenticated := false
 	isAdmin := false
+	userID := 0
 	if session, ok := r.Context().Value(auth.SESSION_KEY).(*cache.Session); ok && session != nil && session.UserID > 0 {
 		authenticated = true
 		isAdmin = session.IsAdmin
+		userID = session.UserID
 	}
+
+	// Modules the backend governs (managed), and the subset this user may access
+	// (available). The SPA only loads modules that are available; a managed module
+	// the user has no rights to is simply absent from "available", so the frontend
+	// never loads it. Modules the backend doesn't govern (custom/frontend pages)
+	// are not in "managed" and are always loaded.
+	managed := make([]string, 0, len(auth.ModuleDefaultPermissions))
+	available := make([]string, 0, len(auth.ModuleDefaultPermissions))
+	for module, def := range auth.ModuleDefaultPermissions {
+		managed = append(managed, module)
+
+		perm := def // anonymous: fall back to the module default
+		if userID > 0 {
+			if p, permErr := auth.GetEffectivePermission(userID, module); permErr == nil {
+				perm = p
+			}
+		}
+		if perm >= auth.PERMISSION_READ {
+			available = append(available, module)
+		}
+	}
+	managedJSON, _ := json.Marshal(managed)
+	availableJSON, _ := json.Marshal(available)
 
 	// Send 103 Early Hints so the browser can begin fetching critical assets
 	// while this handler renders the page. This is the modern replacement for
@@ -92,9 +118,11 @@ func Index(w http.ResponseWriter, r *http.Request) {
 		Img:       config.Img,
 		Title:     "HelloWorld", //todo route.getTitle(r.URL.Path),
 		Body: map[string]interface{}{
-			"GoogleID":      config.GoogleID,
-			"Authenticated": authenticated,
-			"IsAdmin":       isAdmin,
+			"GoogleID":             config.GoogleID,
+			"Authenticated":        authenticated,
+			"IsAdmin":              isAdmin,
+			"ManagedModulesJSON":   string(managedJSON),
+			"AvailableModulesJSON": string(availableJSON),
 		},
 	}
 

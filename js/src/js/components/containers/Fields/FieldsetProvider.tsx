@@ -33,7 +33,8 @@ export const FIELD_TYPES = {
   SELECT2_MULTIPLE: 'Select2Multiple',
   ACTIVE_INACTIVE: 'ActiveInactive',
   YES_NO: 'YesNo',
-  MONTH: 'Month'
+  MONTH: 'Month',
+  BBCODE: 'BBCode'
 };
 
 // Mode constants

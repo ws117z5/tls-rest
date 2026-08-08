@@ -221,8 +221,24 @@ export class Room extends PageComponent<RoomProps, RoomState> {
 
     exit = () => {
         localStorage.removeItem(`${this.state.uuid}`);
-        this.props.navigate('/papers');
+        this.props.navigate('/pages/papers');
     };
+
+    componentWillUnmount() {
+        // Close the room-level connection; each Participant releases its own
+        // camera + peer connection in its own componentWillUnmount.
+        const { pc, dc } = this.state.currentUser;
+        try {
+            dc?.close();
+        } catch (e) {
+            Log.log(e);
+        }
+        try {
+            pc?.close();
+        } catch (e) {
+            Log.log(e);
+        }
+    }
 
     onUserInit = (name: string, word: string, uuid: string, pcld?: RTCSessionDescriptionInit | "") => {
         const currentUserData = {

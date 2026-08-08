@@ -31,7 +31,7 @@ func isAPICall(r *http.Request) bool {
 	requestType := r.Header.Get("X-Request-Type")
 	uri := r.RequestURI
 
-	// If explicitly marked as API
+	// Explicitly marked as API by the frontend (set on every axios request).
 	if requestType == "api" {
 		return true
 	}
@@ -45,49 +45,43 @@ func isAPICall(r *http.Request) bool {
 		return false
 	}
 
-	// Auth endpoints are API calls
+	// OAuth callbacks are browser GETs that must run the auth handler, not SSR.
 	if strings.HasPrefix(uri, "/users/Auth") {
 		return true
 	}
 
-	// Papers API endpoints
-	if strings.HasPrefix(uri, "/papers") {
-		return true
-	}
-
-	// Explicit API namespace (e.g. /api/modules/{id}/fieldset) is always an API call
+	// The /api/ namespace serves both XHR JSON (fieldset) and browser-loaded
+	// resources (post images), so those handlers must always run.
 	if strings.HasPrefix(uri, "/api/") {
 		return true
 	}
 
-	// Module API endpoints - check multiple indicators for API calls
+	// Does the request itself look like an API call (XHR / fetch / JSON accept /
+	// a mutating method) rather than a browser document navigation?
 	acceptHeader := r.Header.Get("Accept")
-	userAgent := r.Header.Get("User-Agent")
-	xRequestedWith := r.Header.Get("X-Requested-With")
-
-	// Check if this is likely an API call
 	isLikelyAPI := strings.Contains(acceptHeader, "application/json") ||
-		xRequestedWith == "XMLHttpRequest" ||
-		strings.Contains(userAgent, "fetch") ||
-		r.Method != "GET" // POST, PUT, DELETE are typically API calls
+		r.Header.Get("X-Requested-With") == "XMLHttpRequest" ||
+		(r.Method != http.MethodGet && r.Method != http.MethodHead)
 
-	if isLikelyAPI {
-		// These are actual API calls from JavaScript or API clients
-		if strings.HasPrefix(uri, "/posts") ||
-			strings.HasPrefix(uri, "/users") ||
-			strings.HasPrefix(uri, "/user_groups") ||
-			strings.HasPrefix(uri, "/module_rights") {
-			return true
-		}
+	// Papers + module data endpoints are API ONLY for genuine API requests, so a
+	// browser navigating straight to e.g. /papers or /posts is not served raw
+	// JSON (it is redirected home instead — see the middleware below).
+	if isLikelyAPI && isModuleEndpoint(uri) {
+		return true
 	}
 
-	// Home/root is NOT an API call
-	if uri == "/" {
-		return false
-	}
-
-	// Default: render page for all other requests (SSR)
+	// Everything else is a page/SSR request.
 	return false
+}
+
+// isModuleEndpoint reports whether a path is a JSON data endpoint (papers or a
+// module CRUD route) rather than an SPA page.
+func isModuleEndpoint(path string) bool {
+	return strings.HasPrefix(path, "/papers") ||
+		strings.HasPrefix(path, "/posts") ||
+		strings.HasPrefix(path, "/users") ||
+		strings.HasPrefix(path, "/user_groups") ||
+		strings.HasPrefix(path, "/module_rights")
 }
 
 // Middleware dlv fails here
@@ -156,13 +150,15 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 			return
 		}
 
-		// Log system event for page render
+		// Not an API call: render the SPA shell (SSR). Browser navigations to a
+		// module endpoint that is also a real page (e.g. /posts) render that page;
+		// navigations to endpoints with no page (e.g. /papers) are redirected to
+		// the homepage by the client-side catch-all route.
 		log.LogSystemEvent("Rendering main page (SSR)", log.LogLevelInfo, map[string]interface{}{
 			"request_id": requestID,
 			"path":       r.URL.Path,
 		})
 
-		// Not an API call: always render the main index page (SSR)
 		duration := time.Since(startTime).Seconds() * 1000
 		log.LogResponse(requestID, http.StatusOK, duration, userID)
 		controllers.Index(w, r)

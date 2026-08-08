@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS public.posts
     drive_id character varying(40) COLLATE pg_catalog."default",
     created_at timestamp without time zone DEFAULT now(),
     updated_at timestamp without time zone DEFAULT now(),
+    public      BOOLEAN       NOT NULL DEFAULT false,     
     CONSTRAINT posts_pkey PRIMARY KEY (uuid)
 )
 

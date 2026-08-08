@@ -37,8 +37,9 @@ class Menu extends Component<{}, MenuState> {
         <Navbar color="light" light expand="md">
           <Nav className="ml-auto" navbar>
             {Config.getAll()?.map((module: any, idx: number) => {
-              // Hide modules that require authentication from anonymous visitors.
-              if (module.requiresAuth && !Auth.isAuthenticated()) {
+              // Hide modules the current user has no rights to (auth/admin flags
+              // plus per-module rights from the backend rights/groups system).
+              if (!Auth.canAccessModule(module)) {
                 return null;
               }
               if (
@@ -56,14 +57,14 @@ class Menu extends Component<{}, MenuState> {
               }
               return null;
             })}
-            { Pages && Pages.filter((m: any) => !m.requiresAuth || Auth.isAuthenticated()).length > 0 && (
+            { Pages && Pages.filter((m: any) => Auth.canAccessModule(m)).length > 0 && (
               <UncontrolledDropdown setActiveFromChild>
                 <DropdownToggle tag="a" className="nav-link" caret>
                   Pages
                 </DropdownToggle>
                 <DropdownMenu>
                   {Pages
-                    .filter((m: any) => !m.requiresAuth || Auth.isAuthenticated())
+                    .filter((m: any) => Auth.canAccessModule(m))
                     .map((module: any, key: number) => (
                     <DropdownItem
                       key={key}

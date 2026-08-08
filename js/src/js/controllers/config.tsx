@@ -2,6 +2,7 @@ import { Component } from "react";
 
 import modulesConfig from '../../modules.json'
 import PageComponent from "./PageComponent";
+import Auth from "./auth";
 
 type Submodule = {
     href: string;
@@ -16,6 +17,7 @@ type Module = {
     uuid: string;
     isPage?: boolean;
     requiresAuth?: boolean;
+    requiresAdmin?: boolean;
     component: Component;
     props?: Record<string, any>;
     extraRoutes: Submodule[];
@@ -62,10 +64,19 @@ export default class Config {
                         title: meta.getTitle(),
                         isPage: meta.isPageComponent(),
                         requiresAuth: typeof meta.requiresAuthentication === "function" ? meta.requiresAuthentication() : false,
+                        requiresAdmin: typeof meta.requiresAdministration === "function" ? meta.requiresAdministration() : false,
                         component: Cls,
                         props: Cls.props || {},
                         extraRoutes: Cls.extraRoutes ? Cls.extraRoutes : [],
                     };
+
+                    // Don't load modules the current user has no access to: a
+                    // backend-governed module absent from the available list, or a
+                    // module gated by requiresAuth/requiresAdmin. Absent modules
+                    // are never registered — no menu item, no route, no component.
+                    if (!Auth.canAccessModule(_module)) {
+                        return;
+                    }
 
                     let idx: number = Config.modules.push(_module)
                     Config.moduleMap.set(key, idx-1);
