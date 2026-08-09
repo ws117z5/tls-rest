@@ -81,7 +81,8 @@ func isModuleEndpoint(path string) bool {
 		strings.HasPrefix(path, "/posts") ||
 		strings.HasPrefix(path, "/users") ||
 		strings.HasPrefix(path, "/user_groups") ||
-		strings.HasPrefix(path, "/module_rights")
+		strings.HasPrefix(path, "/user_group_rights") ||
+		strings.HasPrefix(path, "/user_rights")
 }
 
 // Middleware dlv fails here
@@ -112,23 +113,20 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 		})
 
 		if isAPICall(r) {
-			// --- Module rights check ---
-			moduleName := getModuleNameFromPath(r.URL.Path)
-			requiredRight := "view" // or "edit", etc. -- set as needed
+			// --- Module rights check (per-mode, group-resolved) ---
+			allowed, moduleName, action := authorizeAPIRequest(ci, r)
 
-			if !HasModuleRight(ci.UserID, moduleName, requiredRight) {
+			if !allowed {
 				if r.URL.Path == "/login" || r.URL.Path == "/" {
-					// Log response
 					duration := time.Since(startTime).Seconds() * 1000
 					log.LogResponse(requestID, http.StatusOK, duration, userID)
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
-				// Log authorization failure
 				log.LogAuthEvent("authorization_failed", "User lacks required module rights", userID, sessionID, false, map[string]interface{}{
-					"module":         moduleName,
-					"required_right": requiredRight,
-					"request_id":     requestID,
+					"module":     moduleName,
+					"action":     action,
+					"request_id": requestID,
 				})
 
 				duration := time.Since(startTime).Seconds() * 1000
@@ -138,8 +136,7 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 			}
 			// --- End module rights check ---
 
-			// Log successful authorization
-			log.LogModuleEvent(moduleName, requiredRight, "Module access granted", userID, sessionID, map[string]interface{}{
+			log.LogModuleEvent(moduleName, action, "Module access granted", userID, sessionID, map[string]interface{}{
 				"request_id": requestID,
 			})
 
@@ -174,15 +171,104 @@ func getModuleNameFromPath(path string) string {
 	return ""
 }
 
+// authorizeAPIRequest decides whether an API request may proceed, using the
+// per-mode rights resolved onto the session. It returns the decision plus the
+// module and action for logging.
+//
+//   - "/" and "/login" are always allowed (they render the shell / login).
+//   - /api/modules/{id}/fieldset requires VIEW on {id}.
+//   - /api/modules (the module list) is self-filtering, so it is allowed.
+//   - any /api/*images* endpoint requires an authenticated user.
+//   - a request to a rights-managed module (one with a registered default)
+//     is gated by the mode implied by its HTTP method (see apiActionMode).
+//   - everything else (papers, metrics, log, …) keeps the permissive legacy
+//     behaviour via HasModuleRight.
+func authorizeAPIRequest(ci *cache.Session, r *http.Request) (allowed bool, module string, action string) {
+	path := r.URL.Path
+
+	if path == "/" || path == "/login" {
+		return true, "", "page"
+	}
+
+	if strings.HasPrefix(path, "/api/") {
+		// Fieldset schema for a specific module: needs read (VIEW) on it.
+		if strings.HasPrefix(path, "/api/modules/") && strings.HasSuffix(path, "/fieldset") {
+			mid := strings.TrimSuffix(strings.TrimPrefix(path, "/api/modules/"), "/fieldset")
+			mid = strings.Trim(mid, "/")
+			return HasMode(ci.ModuleModes, mid, MODE_VIEW, ci.IsAdmin), mid, "fieldset"
+		}
+		// The module list endpoint filters itself per user.
+		if path == "/api/modules" {
+			return true, "modules", "list"
+		}
+		// Image process/serve endpoints are for authenticated users only.
+		if strings.Contains(path, "/images") {
+			return ci.UserID > 0, "images", "image"
+		}
+		return true, getModuleNameFromPath(path), "api"
+	}
+
+	module = getModuleNameFromPath(path)
+
+	// Rights-managed module: gate by the mode implied by the method.
+	if _, managed := ModuleDefaultPermissions[module]; managed {
+		mode := apiActionMode(r.Method, path, module)
+		return HasMode(ci.ModuleModes, module, mode, ci.IsAdmin), module, apiActionName(mode)
+	}
+
+	// Non-managed route (feature endpoints): keep the legacy permissive check.
+	return HasModuleRight(ci.UserID, module, "view"), module, "legacy"
+}
+
+// apiActionMode maps an HTTP method (and whether the path targets a single
+// record) to the access mode it requires.
+func apiActionMode(method, path, module string) int {
+	// A trailing /{id} after the module segment means a single-record op.
+	rest := strings.Trim(strings.TrimPrefix(strings.Trim(path, "/"), module), "/")
+	hasID := rest != ""
+
+	switch method {
+	case http.MethodPost:
+		return MODE_CREATE
+	case http.MethodPut, http.MethodPatch:
+		return MODE_EDIT
+	case http.MethodDelete:
+		return MODE_DELETE
+	default: // GET / HEAD
+		if hasID {
+			return MODE_VIEW
+		}
+		return MODE_LIST
+	}
+}
+
+func apiActionName(mode int) string {
+	switch mode {
+	case MODE_LIST:
+		return "list"
+	case MODE_VIEW:
+		return "view"
+	case MODE_CREATE:
+		return "create"
+	case MODE_EDIT:
+		return "edit"
+	case MODE_DELETE:
+		return "delete"
+	default:
+		return "access"
+	}
+}
+
 // HasModuleRight reports whether the user may access the given module. Some
 // modules (user administration) require an authenticated session; public
 // modules such as posts remain open to anonymous visitors.
 func HasModuleRight(userID int, moduleName, requiredRight string) bool {
 	// Modules that must never be exposed to unauthenticated visitors.
 	protected := map[string]bool{
-		"users":         true,
-		"user_groups":   true,
-		"module_rights": true,
+		"users":             true,
+		"user_groups":       true,
+		"user_group_rights": true,
+		"user_rights":       true,
 	}
 
 	if protected[moduleName] {

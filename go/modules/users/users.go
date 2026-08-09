@@ -10,15 +10,6 @@ import (
 	"github.com/go-pg/urlstruct"
 )
 
-/*
-https://localhost/users/Auth/GoogleCallback?
-state=f%2BBGgkH5XpAbJi%2FjDVjbLQ%3D%3D&code=4%2F0AVG7fiRfTIr9U2t
-lOm3kX2Dg2KKkIrCQww8ArTESu6jLOat3hE2E_EE9ttUkDJgTRFmAQ&scope=em
-ail+profile+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.email+
-openid+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fuserinfo.profile&a
-uthuser=0&prompt=none
-*/
-
 // GUser is a retrieved and authentiacted user.
 type GUser struct {
 	Sub           string `json:"sub"`
@@ -116,10 +107,12 @@ type Users struct {
 func NewUsers() *Users {
 	module := &Users{
 		ModuleAbstract: &ModuleAbstract[interface{}]{
-			ID:                "users",
-			Name:              "Users Management",
-			Rights:            make(map[int]int),
-			DefaultPermission: 2, // PERMISSION_WRITE - Users module requires write access by default
+			ID:     "users",
+			Name:   "Users Management",
+			Rights: make(map[int]int),
+			// Administration module: no access unless explicitly granted (or admin).
+			DefaultPermission:    0, // PERMISSION_DENY
+			DefaultPermissionSet: true,
 		},
 	}
 
@@ -162,35 +155,17 @@ func (u *Users) init() {
 			NonSearchable().
 			WithMode(MODE_VIEW | MODE_EDIT),
 
-		NewField("user_groups", TYPE_TABLE, false).
-			WithLabel("User Groups").
-			WithDescription("Groups this user belongs to").
-			WithTableQuery(`
-				SELECT ug.name as group_name, ugm.role, ugm.created as joined_at
-				FROM user_group_members ugm
-				JOIN user_groups ug ON ug.id = ugm.group_id
-				WHERE ugm.user_id = ?
-			`).
-			WithTableColumns([]string{"group_name", "role", "joined_at"}).
-			WithTableEditable(true).
-			WithTableSubmitFunction("updateUserGroups").
-			WithTableRowActions([]map[string]interface{}{
-				{"label": "Remove", "action": "removeFromGroup", "icon": "trash"},
-				{"label": "Change Role", "action": "changeRole", "icon": "edit"},
-			}),
-
-		NewField("permissions", TYPE_TABLE, false).
-			WithLabel("Direct Permissions").
-			WithDescription("Direct permissions assigned to this user").
-			WithTableQuery(`
-				SELECT m.name as module_name, ur.rights, ur.created as granted_at
-				FROM user_rights ur
-				JOIN modules m ON m.id = ur.module_id
-				WHERE ur.user_id = ?
-			`).
-			WithTableColumns([]string{"module_name", "rights", "granted_at"}).
-			WithTableEditable(true).
-			WithTableSubmitFunction("updateUserPermissions"),
+		// Single group membership, stored as an integer FK on the user
+		// (users.user_group -> user_groups.id). The group id is the user's
+		// access level; the group's is_admin flag confers admin. Rendered as a
+		// select; stored as an integer.
+		NewField("user_group", TYPE_INT, false).
+			WithLabel("User Group").
+			WithDescription("Group this user belongs to").
+			WithOption("widget", "select").
+			WithOption("dataSource", "user_groups").
+			WithOption("valueField", "id").
+			WithOption("displayField", "name"),
 	}
 
 	u.Fields = fields

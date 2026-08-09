@@ -14,7 +14,20 @@ import (
 
 type ContextKey string
 
-const SESSION_KEY ContextKey = "session"
+// SESSION_KEY is the context key under which the request's *cache.Session is
+// stored. It aliases cache.SessionKey so packages that cannot import auth (the
+// module engine) can read the same session via cache.SessionFromContext.
+var SESSION_KEY = cache.SessionKey
+
+// fillSessionRights resolves and attaches the user's per-module mode rights,
+// access level and admin status to the session, in a single place so every code
+// path (new session, restored session, anonymous) is populated consistently.
+// Anonymous sessions (UserID <= 0) get module defaults and are never admin.
+func fillSessionRights(s *cache.Session) {
+	s.ModuleModes = ResolveModuleModeRights(s.UserID)
+	s.AccessLevel = ResolveUserAccessLevel(s.UserID)
+	s.IsAdmin = ResolveIsAdmin(s.UserID)
+}
 
 // Checks session and fills cache with session data
 // should fill session user and it's rights
@@ -63,6 +76,7 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 
 		http.SetCookie(w, cookie)
 
+		fillSessionRights(&ci)
 		cache.SessionCacheInstance.Set(cookie.Value, ci)
 
 		return &ci
@@ -73,6 +87,7 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 
 		if err != nil {
 			// If the session does not exist, create a new one
+			fillSessionRights(&ci)
 			cache.SessionCacheInstance.Set(hash, ci)
 			return &ci
 		} else {
@@ -86,23 +101,11 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 			stored.Expire = time.Now().Add(30 * 24 * time.Hour) // 30 days
 			stored.LastAccess = time.Now()
 
-			// Resolve administrative status from the user-rights / user-group
-			// system (write access to the system module). Anonymous sessions
-			// (UserID == 0) are never admins.
-			if stored.UserID > 0 {
-				stored.IsAdmin = IsAdmin(stored.UserID)
-			} else {
-				stored.IsAdmin = false
-			}
+			// Resolve the user's rights, access level and admin status through the
+			// per-mode group model (resolve.go), in one place for every session.
+			fillSessionRights(stored)
 
 			cache.SessionCacheInstance.Set(hash, *stored)
-
-			if stored.UserRights == nil {
-				stored.UserRights = make(map[int]int)
-				//todo fill rights from db
-			}
-
-			//todo do we have to check users?
 
 			return stored
 		}

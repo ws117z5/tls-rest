@@ -3,9 +3,11 @@ import axios from 'axios';
 import Auth from '@controllers/auth';
 
 // System/default fields that are managed by the backend. They are never
-// editable, and are only shown in list/view to administrators.
+// editable (except access, which is admin-editable), and are only shown in
+// list/view/edit to administrators. The backend is authoritative — it filters
+// these from schema and data — this set keeps the client in agreement.
 const SYSTEM_FIELDS = new Set([
-  'id', 'uuid', 'created', 'updated', 'created_by', 'created_at', 'updated_at',
+  'id', 'uuid', 'created', 'updated', 'created_by', 'created_at', 'updated_at', 'access',
 ]);
 
 // Field type constants matching backend
@@ -45,9 +47,11 @@ export const MODES = {
   LOG: 0b001000,
   MULTIPLEUPDATE: 0b010000,
   SUBMIT: 0b100000,
+  CREATE: 0b1000000,
+  DELETE: 0b10000000,
   READONLY: 0b000011,
   EDITSUBMIT: 0b100100,
-  ALL: 0b111111
+  ALL: 0b11111111
 };
 
 // Types

@@ -42,76 +42,18 @@ var Module = &ModuleAbstract[interface{}]{
 			WithDescription("Whether the group is active").
 			WithDefaultValue(true),
 
-		NewField("members", TYPE_JSON, false).
-			WithLabel("Members").
-			WithDescription("List of group members").
-			WithSQL(`
-				SELECT u.user_name, ugm.role, ugm.created as joined_at
-				FROM user_group_members ugm
-				JOIN users u ON u.id = ugm.user_id
-				WHERE ugm.group_id = ${id}
-			`).
-			AsReadOnly().
-			NonSortable().
-			NonSearchable(),
-
-		NewField("permissions", TYPE_TABLE, false).
-			WithLabel("Group Permissions").
-			WithDescription("Permissions assigned to this group").
-			WithTableQuery(`
-				SELECT m.name as module_name, ugr.rights, ugr.created_at as granted_at
-				FROM user_group_rights ugr
-				JOIN modules m ON m.id = ugr.module_id
-				WHERE ugr.group_id = ?
-			`).
-			WithTableColumns([]string{"module_name", "rights", "granted_at"}).
-			WithTableEditable(true).
-			WithTableSubmitFunction("updateGroupPermissions").
-			WithTableRowActions([]map[string]interface{}{
-				{"label": "Edit Rights", "action": "editRights", "icon": "key"},
-				{"label": "Remove", "action": "removePermission", "icon": "trash"},
-			}),
-
-		NewField("member_count", TYPE_TABLE, false).
-			WithLabel("Member Statistics").
-			WithDescription("Statistics about group membership").
-			WithTableQuery(`
-				SELECT 
-					ugm.role,
-					COUNT(*) as count,
-					MAX(ugm.created) as last_joined
-				FROM user_group_members ugm
-				WHERE ugm.group_id = ?
-				GROUP BY ugm.role
-			`).
-			WithTableColumns([]string{"role", "count", "last_joined"}),
-
-		NewField("available_permissions", TYPE_TABLE, false).
-			WithLabel("Available Permissions").
-			WithDescription("All available modules and their permissions").
-			WithTableData([]map[string]interface{}{
-				{"module": "users", "description": "User management", "available_rights": "view, create, edit, delete"},
-				{"module": "user_groups", "description": "Group management", "available_rights": "view, create, edit, delete"},
-				{"module": "posts", "description": "Post management", "available_rights": "view, create, edit, delete"},
-				{"module": "system", "description": "System administration", "available_rights": "view, config, backup, restore"},
-			}).
-			WithTableColumns([]string{"module", "description", "available_rights"}),
-
-		NewField("created", TYPE_DATE_TIME, false).
-			WithLabel("Created").
-			WithSQL("now()").
-			AsReadOnly().
-			NonFilterable().
-			WithMode(MODE_LIST | MODE_VIEW),
-
-		NewField("updated", TYPE_DATE_TIME, false).
-			WithLabel("Last Updated").
-			WithSQL("now()").
-			AsReadOnly().
-			NonFilterable().
-			WithMode(MODE_LIST | MODE_VIEW),
+		// Admin groups bypass all mode and record-access checks. The group's id
+		// is the access level (0/none = unauthorized, higher = more privileged),
+		// so no separate level column is needed.
+		NewField("is_admin", TYPE_CHECKBOX, false).
+			WithLabel("Administrator").
+			WithDescription("Members of this group have unrestricted access").
+			WithDefaultValue(false),
 	},
-	Rights: make(map[int]int),
+	// Administration module: no access unless explicitly granted (or admin).
+	DefaultPermission:    PERMISSION_DENY,
+	DefaultPermissionSet: true,
+	Rights:               make(map[int]int),
 }
 
 func init() {

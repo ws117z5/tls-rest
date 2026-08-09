@@ -94,9 +94,13 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 	var args []interface{}
 	argIndex := 1
 
-	// Build SELECT fields based on mode
+	v := viewerFromRequest(fe.Request)
+
+	// Build SELECT fields based on mode, withholding access-restricted columns
+	// from users who may not read them (system fields are always kept — the
+	// client needs id/uuid to route and act).
 	for _, field := range fe.Fields {
-		if fe.shouldIncludeField(field, mode) {
+		if fe.shouldIncludeField(field, mode) && v.fieldReadableInData(field) {
 			if field.SQL != "" {
 				selectFields = append(selectFields, field.SQL+" AS "+field.Name)
 			} else {
@@ -125,6 +129,14 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 		whereConditions = append(whereConditions, filterConditions...)
 	}
 
+	// Row-level access filtering: non-admins only see records whose access level
+	// is within their own (admins see everything).
+	if !v.isAdmin && fe.hasField("access") {
+		whereConditions = append(whereConditions, fmt.Sprintf("access <= $%d", argIndex))
+		args = append(args, v.level)
+		argIndex++
+	}
+
 	// Add WHERE clause if we have conditions
 	if len(whereConditions) > 0 {
 		query += " WHERE " + strings.Join(whereConditions, " AND ")
@@ -149,6 +161,8 @@ func (fe *FieldsetEngine) BuildCountQuery(params *QueryParams) (string, []interf
 
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", fe.TableName)
 
+	v := viewerFromRequest(fe.Request)
+
 	// Build WHERE conditions (same as select query)
 	if params.Search != "" && fe.hasSearchableFields() {
 		searchConditions := fe.buildSearchConditions(params.Search, &argIndex, &args)
@@ -160,6 +174,13 @@ func (fe *FieldsetEngine) BuildCountQuery(params *QueryParams) (string, []interf
 	if params.Filters != nil {
 		filterConditions := fe.buildFilterConditions(params.Filters, &argIndex, &args)
 		whereConditions = append(whereConditions, filterConditions...)
+	}
+
+	// Keep the count consistent with the filtered result set.
+	if !v.isAdmin && fe.hasField("access") {
+		whereConditions = append(whereConditions, fmt.Sprintf("access <= $%d", argIndex))
+		args = append(args, v.level)
+		argIndex++
 	}
 
 	if len(whereConditions) > 0 {
@@ -348,6 +369,16 @@ func (fe *FieldsetEngine) getFieldByName(name string) *Field {
 		}
 	}
 	return nil
+}
+
+// hasField reports whether the module declares a field with the given name.
+func (fe *FieldsetEngine) hasField(name string) bool {
+	for _, field := range fe.Fields {
+		if field.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // FetchTableFieldData fetches data for a TABLE field from database

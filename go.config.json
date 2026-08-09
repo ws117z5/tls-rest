@@ -1,3 +1,9 @@
 {
-    
+  "modules": [
+    { "name": "posts",             "description": "Blog posts",              "endpoint": "/posts" },
+    { "name": "users",             "description": "User accounts",           "endpoint": "/users" },
+    { "name": "user_groups",       "description": "User groups",             "endpoint": "/user_groups" },
+    { "name": "user_group_rights", "description": "Group access rights",     "endpoint": "/user_group_rights" },
+    { "name": "user_rights",       "description": "Per-user access rights",  "endpoint": "/user_rights" }
+  ]
 }

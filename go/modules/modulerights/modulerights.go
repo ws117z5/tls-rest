@@ -1,179 +1,138 @@
 package modulerights
 
 import (
-	"net/http"
 	"time"
 
+	config "tls-rest/go/constants"
 	. "tls-rest/go/engine"
+	"tls-rest/go/lib/auth"
 )
 
-// ModuleRight represents a permission assignment
-type ModuleRight struct {
-	tableName struct{} `pg:"module_rights"`
+// This package registers the two rights-administration modules that back the
+// per-mode access model (see auth/resolve.go):
+//
+//   user_group_rights - which modes a whole group may perform on a module
+//   user_rights       - extra modes granted to an individual user
+//
+// Both store an auth.MODE_* bitmask (list=1 view=2 create=4 edit=8 delete=16)
+// in an integer `modes` column. The resolver OR-s a user's group rights and
+// their own user rights (plus the module default) to get effective access.
 
-	ID          int64     `json:"id"`
-	ModuleID    string    `json:"module_id"`
-	SubjectID   string    `json:"subject_id"`   // User ID or Group ID
-	SubjectType string    `json:"subject_type"` // "user" or "group"
-	Rights      int       `json:"rights"`       // Bitfield for permissions
-	GrantedBy   string    `json:"granted_by"`   // Who granted these rights
-	Created     time.Time `sql:"default:now()" json:"created"`
-	Updated     time.Time `sql:"default:now()" json:"updated"`
+// UserGroupRight is one group grant.
+type UserGroupRight struct {
+	tableName struct{} `pg:"user_group_rights"`
+
+	ID      int64     `json:"id"`
+	GroupID int64     `json:"group_id"`
+	Module  string    `json:"module"`
+	Modes   int       `json:"modes"`
+	Created time.Time `sql:"default:now()" json:"created"`
+	Updated time.Time `sql:"default:now()" json:"updated"`
 }
 
-// Rights constants are imported from the module package
+// UserRight is one per-user grant.
+type UserRight struct {
+	tableName struct{} `pg:"user_rights"`
 
-// Initialize the module rights module with fieldset configuration
-var Module = &ModuleAbstract[interface{}]{
-	ID:   "module_rights",
-	Name: "Module Rights Management",
+	ID      int64     `json:"id"`
+	UserID  int64     `json:"user_id"`
+	Module  string    `json:"module"`
+	Modes   int       `json:"modes"`
+	Created time.Time `sql:"default:now()" json:"created"`
+	Updated time.Time `sql:"default:now()" json:"updated"`
+}
+
+// moduleSelectOptions lists the declared modules (from go.config.json) as
+// select options {value:name, label:description||name} for the "module" field.
+func moduleSelectOptions() []map[string]interface{} {
+	opts := make([]map[string]interface{}, 0, len(config.Config.Modules))
+	for _, m := range config.Config.Modules {
+		label := m.Description
+		if label == "" {
+			label = m.Name
+		}
+		opts = append(opts, map[string]interface{}{"value": m.Name, "label": label})
+	}
+	return opts
+}
+
+// modeBitOptions describes the individual mode bits so the frontend can render
+// the modes bitmask as a set of checkboxes.
+func modeBitOptions() []map[string]interface{} {
+	return []map[string]interface{}{
+		{"label": "List", "value": auth.MODE_LIST},
+		{"label": "View", "value": auth.MODE_VIEW},
+		{"label": "Create", "value": auth.MODE_CREATE},
+		{"label": "Edit", "value": auth.MODE_EDIT},
+		{"label": "Delete", "value": auth.MODE_DELETE},
+	}
+}
+
+// modesField builds the shared allowed-modes bitmask field.
+func modesField() Field {
+	return NewField("modes", TYPE_INT, true).
+		WithLabel("Allowed Modes").
+		WithDescription("Modes this subject may perform on the module").
+		WithDefaultValue(0).
+		WithValidation("min", 0).
+		WithOption("widget", "bitmask").
+		WithOption("bits", modeBitOptions())
+}
+
+// moduleField builds the shared module-select field.
+func moduleField() Field {
+	return NewField("module", TYPE_STRING, true).
+		WithLabel("Module").
+		WithDescription("Module these rights apply to").
+		WithOption("widget", "select").
+		WithOption("options", moduleSelectOptions())
+}
+
+// GroupRightsModule: per-group module rights. Stored group_id as an integer FK
+// (INTEGER column) so it joins cleanly to users.user_group; rendered as a select.
+var GroupRightsModule = &ModuleAbstract[interface{}]{
+	ID:   "user_group_rights",
+	Name: "Group Rights",
 	Fields: []Field{
-		NewField("module_id", TYPE_SELECT, true).
-			WithLabel("Module").
-			WithDescription("Target module for permissions").
-			WithOption("dataSource", "modules").
+		NewField("group_id", TYPE_INT, true).
+			WithLabel("User Group").
+			WithDescription("Group these rights apply to").
+			WithOption("widget", "select").
+			WithOption("dataSource", "user_groups").
 			WithOption("valueField", "id").
 			WithOption("displayField", "name"),
-
-		NewField("subject_id", TYPE_STRING, true).
-			WithLabel("Subject ID").
-			WithDescription("User ID or Group ID").
-			WithValidation("required", true),
-
-		NewField("subject_type", TYPE_SELECT, true).
-			WithLabel("Subject Type").
-			WithDescription("Whether this applies to a user or group").
-			WithOption("user", "User").
-			WithOption("group", "Group"),
-
-		NewField("subject_info", TYPE_TABLE, false).
-			WithLabel("Subject Details").
-			WithDescription("Information about the user or group").
-			WithTableQuery(`
-				CASE 
-					WHEN $2 = 'user' THEN (
-						SELECT json_build_object(
-							'type', 'user',
-							'name', first_name || ' ' || last_name,
-							'email', email,
-							'active', 'Yes'
-						)::text
-						FROM users WHERE id::text = $1
-					)
-					WHEN $2 = 'group' THEN (
-						SELECT json_build_object(
-							'type', 'group',
-							'name', name,
-							'description', description,
-							'active', CASE WHEN active THEN 'Yes' ELSE 'No' END
-						)::text
-						FROM user_groups WHERE id::text = $1
-					)
-				END as info
-			`).
-			WithTableColumns([]string{"info"}),
-
-		NewField("rights", TYPE_INT, true).
-			WithLabel("Rights Value").
-			WithDescription("Bitfield value for permissions").
-			WithValidation("min", 0).
-			WithValidation("max", RIGHT_ALL),
-
-		NewField("rights_breakdown", TYPE_TABLE, false).
-			WithLabel("Permissions Breakdown").
-			WithDescription("Human-readable breakdown of permissions").
-			WithTableData([]map[string]interface{}{
-				{"permission": "View", "bit_value": RIGHT_VIEW, "description": "Can view records"},
-				{"permission": "Create", "bit_value": RIGHT_CREATE, "description": "Can create new records"},
-				{"permission": "Edit", "bit_value": RIGHT_EDIT, "description": "Can modify existing records"},
-				{"permission": "Delete", "bit_value": RIGHT_DELETE, "description": "Can delete records"},
-				{"permission": "Admin", "bit_value": RIGHT_ADMIN, "description": "Full administrative access"},
-			}).
-			WithTableColumns([]string{"permission", "bit_value", "description"}),
-
-		NewField("granted_by", TYPE_STRING, false).
-			WithLabel("Granted By").
-			WithDescription("User who granted these permissions").
-			AsReadOnly().
-			WithMode(MODE_VIEW | MODE_LIST),
-
-		NewField("effective_permissions", TYPE_TABLE, false).
-			WithLabel("Effective Permissions").
-			WithDescription("Combined permissions from direct assignment and groups").
-			WithTableQuery(`
-				WITH user_direct_rights AS (
-					SELECT mr.module_id, mr.rights as direct_rights
-					FROM module_rights mr
-					WHERE mr.subject_id = $1 AND mr.subject_type = 'user'
-				),
-				user_group_rights AS (
-					SELECT mr.module_id, BIT_OR(mr.rights) as group_rights
-					FROM module_rights mr
-					JOIN user_group_members ugm ON ugm.group_id::text = mr.subject_id
-					WHERE ugm.user_id::text = $1 AND mr.subject_type = 'group'
-					GROUP BY mr.module_id
-				)
-				SELECT 
-					COALESCE(udr.module_id, ugr.module_id) as module_name,
-					COALESCE(udr.direct_rights, 0) as direct_rights,
-					COALESCE(ugr.group_rights, 0) as inherited_rights,
-					(COALESCE(udr.direct_rights, 0) | COALESCE(ugr.group_rights, 0)) as total_rights
-				FROM user_direct_rights udr
-				FULL OUTER JOIN user_group_rights ugr ON udr.module_id = ugr.module_id
-			`).
-			WithTableColumns([]string{"module_name", "direct_rights", "inherited_rights", "total_rights"}),
-
-		NewField("audit_log", TYPE_TABLE, false).
-			WithLabel("Rights Changes").
-			WithDescription("History of permission changes").
-			WithTableQuery(`
-				SELECT 
-					'Rights Modified' as action,
-					'Rights changed from ' || old_rights || ' to ' || new_rights as details,
-					modified_by as changed_by,
-					created_at as timestamp
-				FROM module_rights_audit
-				WHERE subject_id = $1 AND subject_type = $2
-				ORDER BY created_at DESC
-				LIMIT 20
-			`).
-			WithTableColumns([]string{"action", "details", "changed_by", "timestamp"}),
+		moduleField(),
+		modesField(),
 	},
-	Rights: make(map[int]int),
+	// Administration module: no access unless explicitly granted (or admin).
+	DefaultPermission:    PERMISSION_DENY,
+	DefaultPermissionSet: true,
+	Rights:               make(map[int]int),
+}
+
+// UserRightsModule: extra per-user module rights, additive on top of the user's
+// group rights.
+var UserRightsModule = &ModuleAbstract[interface{}]{
+	ID:   "user_rights",
+	Name: "User Rights",
+	Fields: []Field{
+		NewField("user_id", TYPE_INT, true).
+			WithLabel("User").
+			WithDescription("User these rights apply to").
+			WithOption("widget", "select").
+			WithOption("dataSource", "users").
+			WithOption("valueField", "id").
+			WithOption("displayField", "user_name"),
+		moduleField(),
+		modesField(),
+	},
+	// Administration module: no access unless explicitly granted (or admin).
+	DefaultPermission:    PERMISSION_DENY,
+	DefaultPermissionSet: true,
+	Rights:               make(map[int]int),
 }
 
 func init() {
-	// Initialize the module - this creates the controller and registers with fieldset handler
-	Module.Initialize("module_rights")
-}
-
-// CRUD operations are now handled automatically by the module system
-// Routes are automatically registered via RegisterModuleRoutes() function
-
-// Helper functions are available from the module package via dot-import
-
-// Custom API handlers for rights management
-func GrantRights(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement grant rights functionality
-	// This would handle granting specific rights to a user/group
-}
-
-func RevokeRights(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement revoke rights functionality
-	// This would handle removing specific rights from a user/group
-}
-
-func GetUserEffectiveRights(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement get effective rights for a user
-	// This would calculate combined rights from direct assignment and groups
-}
-
-func GetGroupRights(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement get all rights for a group
-	// This would return all rights assigned to a specific group
-}
-
-func BulkUpdateRights(w http.ResponseWriter, r *http.Request) {
-	// TODO: Implement bulk update rights functionality
-	// This would handle updating multiple rights assignments at once
+	GroupRightsModule.Initialize("user_group_rights")
+	UserRightsModule.Initialize("user_rights")
 }

@@ -71,6 +71,9 @@ export function renderBBCode(input: string): string {
     out = out.replace(/\[quote\]([\s\S]*?)\[\/quote\]/gi, "<blockquote>$1</blockquote>");
     out = out.replace(/\[code\]([\s\S]*?)\[\/code\]/gi, "<pre><code>$1</code></pre>");
 
+    //latex: [latex] ... [/latex] -> <InlineMath math={...}> </InlineMath>
+    out = out.replace(/\[latex\]([\s\S]*?)\[\/latex\]/gi, " <InlineMath math={$1}> </InlineMath>");
+
     // Lists: [list] ... [*] item ... [/list]
     out = out.replace(/\[list\]([\s\S]*?)\[\/list\]/gi, (_m, body: string) => {
         const items = body
@@ -105,6 +108,7 @@ export const BB_TOOLS: BBToolItem[] = [
     { label: "Quote", title: "Quote", open: "[quote]", close: "[/quote]" },
     { label: "Code", title: "Code", open: "[code]", close: "[/code]" },
     { label: "List", title: "List", open: "[list][*]", close: "[/list]" },
+    { label: "Latex", title: "Latex", open: "[latex]", close: "[/latex]" },
 ];
 
 export interface WrapResult {

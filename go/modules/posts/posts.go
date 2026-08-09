@@ -1,7 +1,7 @@
 package posts
 
 import (
-	"tls-rest/go/engine"
+	module "tls-rest/go/engine"
 )
 
 // Posts module following CInvoice paradigm
@@ -13,10 +13,12 @@ type Posts struct {
 func NewPosts() *Posts {
 	moduleInstance := &Posts{
 		ModuleAbstract: &module.ModuleAbstract[interface{}]{
-			ID:                "posts",
-			Name:              "Posts",
-			Rights:            make(map[int]int),
-			DefaultPermission: 1, // PERMISSION_READ - Posts module has read access by default
+			ID:     "posts",
+			Name:   "Posts",
+			Rights: make(map[int]int),
+			// Public module: everyone may read (list/view); writes require rights.
+			DefaultPermission:    1, // PERMISSION_READ
+			DefaultPermissionSet: true,
 		},
 	}
 

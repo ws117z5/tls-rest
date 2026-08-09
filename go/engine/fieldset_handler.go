@@ -66,11 +66,12 @@ func (fh *FieldsetHandler) GetFieldset(w http.ResponseWriter, r *http.Request) {
 		// For now, just use the default
 	}
 
-	// Filter fields based on mode
+	// Filter fields based on mode and the requesting user's access (system
+	// fields are admin-only; access-gated fields are hidden from lower levels).
+	v := viewerFromRequest(r)
 	var visibleFields []Field
 	for _, field := range module.Fields {
-		// Include field if mode matches or no mode restriction
-		if field.Mode == 0 || (field.Mode&mode) != 0 {
+		if (field.Mode == 0 || (field.Mode&mode) != 0) && v.fieldVisibleInSchema(field) {
 			visibleFields = append(visibleFields, field)
 		}
 	}

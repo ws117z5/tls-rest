@@ -16,7 +16,7 @@ import (
 	_ "tls-rest/go/modules/usergroups"
 	_ "tls-rest/go/modules/users"
 
-	"tls-rest/go/engine"
+	module "tls-rest/go/engine"
 	middleware "tls-rest/go/lib/route/middlware"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -176,7 +176,10 @@ func RegisterCustomRoutes(router *mux.Router) {
 	// Fieldset API used by the React FieldsetProvider. The handler already
 	// existed (module.GlobalFieldsetHandler) but was never wired to the router,
 	// so GET /api/modules/{moduleId}/fieldset returned 404.
-	router.HandleFunc("/api/modules", module.GlobalFieldsetHandler.GetModules).Methods("GET")
+	// Module list for the SPA: config-declared modules filtered to the current
+	// user's access, each with the modes they may perform. Rights-aware, so it
+	// lives in controllers (which can import auth) rather than the engine.
+	router.HandleFunc("/api/modules", controllers.ModulesAPI).Methods("GET")
 	router.HandleFunc("/api/modules/{moduleId}/fieldset", module.GlobalFieldsetHandler.GetFieldset).Methods("GET")
 
 	// Post images: DB-backed upload/list/serve. Namespaced under /api/ to avoid

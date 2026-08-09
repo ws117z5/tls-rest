@@ -4,12 +4,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
+	"path/filepath"
 )
 
-// ConfigType extending functions of a basic map container
-type ConfigType map[string]interface{}
+// ConfigType is the parsed go.config.json — the app's declared modules. The
+// field schema stays in Go (module.NewField); this only declares that a module
+// exists, what it is, and the router endpoint it is exposed on.
+type ConfigType struct {
+	Modules []ModuleParams `json:"modules"`
+}
 
 // AdditionalRights self explanitory
 type AdditionalRights struct {
@@ -20,9 +24,11 @@ type AdditionalRights struct {
 
 // ModuleParams config params of a module
 type ModuleParams struct {
-	Name             string
-	RightsMask       string
-	AdditionalRights AdditionalRights
+	Name             string           `json:"name"`
+	Description      string           `json:"description"`
+	Endpoint         string           `json:"endpoint"`
+	RightsMask       string           `json:"rightsMask,omitempty"`
+	AdditionalRights AdditionalRights `json:"additionalRights,omitempty"`
 }
 
 var (
@@ -92,35 +98,35 @@ var (
 
 	//Config a config file
 	Config = new(ConfigType)
-	/*
-		type AType int
-		const AuthType (
-			Google 		AType = 0
-			Facebook 	AType = 1
-			VK 			AType = 2
-		)
-	*/
 )
 
-// GetModule returns a module configuration
+// GetModule returns a module configuration by name.
 func (obj *ConfigType) GetModule(name string) (ModuleParams, error) {
-	modules := (*obj)["modules"].(map[string]interface{})
-
-	for _, m := range modules {
-		module := m.(ModuleParams)
-
-		if module.Name == name {
-			return module, nil
+	for _, m := range obj.Modules {
+		if m.Name == name {
+			return m, nil
 		}
 	}
-
-	return ModuleParams{}, errors.New("module was not found")
-
+	return ModuleParams{}, errors.New("module was not found: " + name)
 }
 
-// GetParam returns configuration parameter
-func (obj *ConfigType) GetParam(param string) string {
-	return (*obj)[param].(string)
+// Validate checks that every configured module has a registered Go definition
+// (its field schema) and a usable endpoint. It returns all problems found.
+func (obj *ConfigType) Validate(registered map[string]bool) []error {
+	var errs []error
+	for _, m := range obj.Modules {
+		if m.Name == "" {
+			errs = append(errs, errors.New("go.config.json: module entry with empty name"))
+			continue
+		}
+		if m.Endpoint == "" {
+			errs = append(errs, fmt.Errorf("go.config.json: module %q has no endpoint", m.Name))
+		}
+		if !registered[m.Name] {
+			errs = append(errs, fmt.Errorf("go.config.json: module %q has no Go definition (module.NewModule)", m.Name))
+		}
+	}
+	return errs
 }
 
 func makeStruct(str string) map[string]interface{} {
@@ -139,53 +145,24 @@ func main() {
 }
 
 func init() {
-	jsonFile, err := os.Open("go.config.json")
-	// if we os.Open returns an error then handle it
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	// we unmarshal our byteArray which contains our
-	// jsonFile's content into 'users' which we defined above
-	byteValue, _ := io.ReadAll(jsonFile)
-
-	json.Unmarshal([]byte(byteValue), &Config)
-
-	//fmt.Println("Successfully Opened users.json")
-	// defer the closing of our jsonFile so that we can parse it later on
-	defer jsonFile.Close()
-
+	loadConfig()
 }
 
-/*	Rights
-	module rights
-		1 login
+// loadConfig reads go.config.json from the project root (found by walking up to
+// go.mod, the same mechanism as the .env loader) so it works regardless of the
+// process working directory.
+func loadConfig() {
+	path := "go.config.json"
+	if root := projectRoot(); root != "" {
+		path = filepath.Join(root, "go.config.json")
+	}
 
-		1 bio
-
-		1 donate
-
-			posts
-
-		1 list
-		1 view
-		0 edit
-		0 create
-		0 delete
-
-			comments
-		1 list
-		1 view
-		0 edit
-		0 create
-		0 delete
-
-			users
-		0 list
-		0 view
-		0 edit
-		0 create
-		0 delete
-
-		000000001100011111
-*/
+	b, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Printf("constants: could not read %s: %v\n", path, err)
+		return
+	}
+	if err := json.Unmarshal(b, Config); err != nil {
+		fmt.Printf("constants: could not parse %s: %v\n", path, err)
+	}
+}

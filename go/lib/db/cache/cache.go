@@ -55,14 +55,46 @@ func init() {
 }
 
 type Session struct {
-	UserAgent  string
-	IP         string
-	UserID     int
-	Username   string
-	IsAdmin    bool
+	UserAgent string
+	IP        string
+	UserID    int
+	Username  string
+	IsAdmin   bool
+
+	// ModuleModes is the resolved per-module allowed-mode bitmask for this user
+	// (module name -> auth.MODE_* bits), OR-ed across their groups. AccessLevel is
+	// the highest access level among their groups; records at a higher level are
+	// hidden. Both are filled by ManageSession and consumed by the middleware
+	// (mode gating) and the fieldset engine (request-time row/field filtering).
+	ModuleModes map[string]int
+	AccessLevel int
+
+	// UserRights is the legacy scalar rights map, kept for backward compatibility
+	// while the old code paths are retired.
 	UserRights map[int]int
+
 	Expire     time.Time
 	LastAccess time.Time
+}
+
+// ContextKey is the type used for request-context keys defined by this package.
+type ContextKey string
+
+// SessionKey is the context key under which the middleware stores the request's
+// *Session. It lives here (rather than in auth) so packages that cannot import
+// auth without creating an import cycle — notably the module engine — can still
+// read the session via SessionFromContext. auth.SESSION_KEY aliases this.
+const SessionKey ContextKey = "session"
+
+// SessionFromContext returns the *Session stored on the context, or nil.
+func SessionFromContext(ctx context.Context) *Session {
+	if ctx == nil {
+		return nil
+	}
+	if s, ok := ctx.Value(SessionKey).(*Session); ok {
+		return s
+	}
+	return nil
 }
 
 type Cache[T any] struct {

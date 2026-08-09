@@ -26,23 +26,29 @@ func NewBaseController(module *ModuleAbstract[interface{}], tableName string) *B
 	}
 }
 
-// createFieldsetMap creates a fieldset map for frontend compatibility
-func (bc *BaseController) createFieldsetMap() map[string]interface{} {
+// createFieldsetMap creates a fieldset map for frontend compatibility, filtered
+// to the fields the requesting user may see (system fields are admin-only;
+// access-gated fields are hidden from lower levels).
+func (bc *BaseController) createFieldsetMap(r *http.Request) map[string]interface{} {
+	v := viewerFromRequest(r)
 	fieldset := make(map[string]interface{})
 
 	for _, field := range bc.Module.Fields {
-		if field.Type != "TYPE_TABLE" { // Skip virtual fields
-			fieldset[field.Name] = map[string]interface{}{
-				"name":       field.Name,
-				"type":       field.Type,
-				"label":      field.Label,
-				"required":   field.Required,
-				"readonly":   field.ReadOnly,
-				"virtual":    field.Virtual,
-				"filterable": field.Filterable,
-				"sortable":   field.Sortable,
-				"searchable": field.Searchable,
-			}
+		if field.Type == TYPE_TABLE || !v.fieldVisibleInSchema(field) {
+			continue
+		}
+		fieldset[field.Name] = map[string]interface{}{
+			"name":       field.Name,
+			"type":       field.Type,
+			"label":      field.Label,
+			"required":   field.Required,
+			"readonly":   field.ReadOnly,
+			"virtual":    field.Virtual,
+			"filterable": field.Filterable,
+			"sortable":   field.Sortable,
+			"searchable": field.Searchable,
+			"mode":       field.Mode,
+			"access":     field.Access,
 		}
 	}
 
@@ -73,7 +79,7 @@ func (bc *BaseController) List(w http.ResponseWriter, r *http.Request) {
 	// Create compatibility response format for frontend
 	compatResponse := map[string]interface{}{
 		"Data":       result.Data,
-		"Fieldset":   bc.createFieldsetMap(),
+		"Fieldset":   bc.createFieldsetMap(r),
 		"Total":      result.Total,
 		"Page":       result.Page,
 		"Limit":      result.Limit,
@@ -129,7 +135,7 @@ func (bc *BaseController) View(w http.ResponseWriter, r *http.Request) {
 	if resultData, ok := result.Data.([]map[string]interface{}); ok && len(resultData) > 0 {
 		compatResponse := map[string]interface{}{
 			"Data":     resultData[0], // Single record for view
-			"Fieldset": bc.createFieldsetMap(),
+			"Fieldset": bc.createFieldsetMap(r),
 		}
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(compatResponse)
@@ -154,7 +160,7 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Filter data to only include valid fields
-	filteredData := bc.filterValidFields(data, MODE_EDIT)
+	filteredData := bc.filterValidFields(r, data, MODE_EDIT)
 
 	// Insert record
 	id, err := bc.insertRecord(filteredData)
@@ -192,7 +198,7 @@ func (bc *BaseController) Edit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Filter data to only include valid fields (excluding read-only fields)
-	filteredData := bc.filterValidFields(data, MODE_EDIT)
+	filteredData := bc.filterValidFields(r, data, MODE_EDIT)
 
 	// Update record
 	err := bc.updateRecord(id, filteredData)
@@ -253,12 +259,19 @@ func (bc *BaseController) validateRequiredFields(data map[string]interface{}, mo
 	return nil
 }
 
-func (bc *BaseController) filterValidFields(data map[string]interface{}, mode int) map[string]interface{} {
+func (bc *BaseController) filterValidFields(r *http.Request, data map[string]interface{}, mode int) map[string]interface{} {
 	filtered := make(map[string]interface{})
+	v := viewerFromRequest(r)
 
 	for _, field := range bc.Module.Fields {
-		// Skip virtual fields, read-only fields, and fields not in current mode
+		// Skip virtual fields, read-only fields, and fields not in current mode.
 		if field.Virtual || field.ReadOnly || (field.Mode&mode == 0) {
+			continue
+		}
+		// A user may only write fields they are allowed to see: this stops a
+		// non-admin from setting the admin-only access level (privilege
+		// escalation) or any access-gated field.
+		if !v.fieldVisibleInSchema(field) {
 			continue
 		}
 

@@ -49,6 +49,11 @@ type ModuleAbstract[T any] struct {
 	Rights            map[int]int // Legacy rights system (deprecated)
 	Data              []T
 	DefaultPermission int // Default permission level for new rights system
+	// DefaultPermissionSet distinguishes an explicit default of 0 (PERMISSION_DENY,
+	// e.g. admin-only modules) from an unset default. Without it, Initialize would
+	// silently promote every 0 to PERMISSION_READ, making restricted modules world-
+	// readable. Modules that want DENY set DefaultPermission: 0 and this flag: true.
+	DefaultPermissionSet bool
 
 	// Optional custom handlers - if nil, will use default behavior
 	CustomHandler ModuleHandler
@@ -256,54 +261,76 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		}
 	}()
 
-	// Inject default fields if not present
+	// Inject default fields if not present.
+	//
+	// System fields (id/uuid/created/updated/created_by) are read-only and only
+	// meaningful to admins: shown in list/view and shown read-only in edit, but
+	// never in create (nothing to show for a record that doesn't exist yet) and
+	// never editable. Admin-only visibility is enforced at request time by the
+	// engine; the modes here only control which forms they can appear in.
+	//
+	// The access field is the per-record access level (0 = everyone). Unlike the
+	// other system fields it is editable by admins (it is the control), so it also
+	// appears in create.
 	addDefaultFields := func(fields []Field) []Field {
+		const sysMode = MODE_LIST | MODE_VIEW | MODE_EDIT
 		defaultFields := []Field{
 			{
 				Name:       "id",
-				Type:       "int",
+				Type:       TYPE_INT,
 				Label:      "ID",
 				Required:   true,
 				ReadOnly:   true,
-				Mode:       MODE_LIST | MODE_VIEW,
+				Mode:       sysMode,
 				Options:    map[string]interface{}{"primary": true, "auto": true},
 				Validation: map[string]interface{}{"min": 1},
 			},
 			{
 				Name:     "uuid",
-				Type:     "string",
+				Type:     TYPE_STRING,
 				Label:    "UUID",
 				Required: true,
 				ReadOnly: true,
-				Mode:     MODE_LIST | MODE_VIEW,
+				Mode:     sysMode,
 				Options:  map[string]interface{}{"unique": true, "auto": true},
 			},
 			{
 				Name:     "created",
-				Type:     "datetime",
+				Type:     TYPE_DATE_TIME,
 				Label:    "Created",
 				Required: true,
 				ReadOnly: true,
-				Mode:     MODE_LIST | MODE_VIEW,
+				Mode:     sysMode,
 				Options:  map[string]interface{}{"auto": true},
 			},
 			{
 				Name:     "updated",
-				Type:     "datetime",
+				Type:     TYPE_DATE_TIME,
 				Label:    "Updated",
 				Required: true,
 				ReadOnly: true,
-				Mode:     MODE_LIST | MODE_VIEW,
+				Mode:     sysMode,
 				Options:  map[string]interface{}{"auto": true},
 			},
 			{
 				Name:     "created_by",
-				Type:     "int",
+				Type:     TYPE_INT,
 				Label:    "Created By",
 				Required: false,
 				ReadOnly: true,
-				Mode:     MODE_LIST | MODE_VIEW,
+				Mode:     sysMode,
 				Options:  map[string]interface{}{"auto": true},
+			},
+			{
+				Name:         "access",
+				Type:         TYPE_INT,
+				Label:        "Access Level",
+				Required:     false,
+				ReadOnly:     false,
+				Mode:         MODE_LIST | MODE_VIEW | MODE_EDIT | MODE_CREATE,
+				DefaultValue: 0,
+				Options:      map[string]interface{}{},
+				Validation:   map[string]interface{}{"min": 0},
 			},
 		}
 		fieldMap := map[string]bool{}
@@ -352,9 +379,11 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	ModuleLogger.Printf("Registering module globally: %s", m.ID)
 	RegisteredModules[m.ID] = m
 
-	// Register default permission for rights system
-	if m.DefaultPermission == 0 {
-		m.DefaultPermission = PERMISSION_READ // Default to read access if not set
+	// Register default permission for rights system. Only promote an unset
+	// default to READ; a module that explicitly declared 0 (DENY) — an admin-only
+	// module — keeps it.
+	if m.DefaultPermission == 0 && !m.DefaultPermissionSet {
+		m.DefaultPermission = PERMISSION_READ
 	}
 	RegisterModuleDefaultPermission(m.ID, m.DefaultPermission)
 

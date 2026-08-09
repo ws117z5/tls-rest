@@ -86,18 +86,14 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	// the user has no rights to is simply absent from "available", so the frontend
 	// never loads it. Modules the backend doesn't govern (custom/frontend pages)
 	// are not in "managed" and are always loaded.
+	rights := auth.ResolveModuleModeRights(userID)
 	managed := make([]string, 0, len(auth.ModuleDefaultPermissions))
 	available := make([]string, 0, len(auth.ModuleDefaultPermissions))
-	for module, def := range auth.ModuleDefaultPermissions {
+	for module := range auth.ModuleDefaultPermissions {
 		managed = append(managed, module)
-
-		perm := def // anonymous: fall back to the module default
-		if userID > 0 {
-			if p, permErr := auth.GetEffectivePermission(userID, module); permErr == nil {
-				perm = p
-			}
-		}
-		if perm >= auth.PERMISSION_READ {
+		// Available (loadable / shown in the menu) when the user has any mode on
+		// the module. Admins get every mode; anonymous users get module defaults.
+		if auth.AllowedModes(rights, module, isAdmin) != 0 {
 			available = append(available, module)
 		}
 	}
@@ -159,4 +155,60 @@ func Index(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, http.StatusText(500), 500)
 
 	}
+}
+
+// ModulesAPI handles GET /api/modules. It returns the modules declared in
+// go.config.json that (a) have a Go definition registered and (b) the current
+// user has at least one mode on, each with its name/description/endpoint and the
+// list of modes the user may perform. The frontend uses this to build the menu
+// and gate access per mode; it then checks which modules also have a page
+// defined client-side.
+//
+// Modes are returned as names (e.g. ["list","view","edit"]) rather than a raw
+// bitmask so the client never depends on this package's bit layout.
+func ModulesAPI(w http.ResponseWriter, r *http.Request) {
+	userID := 0
+	isAdmin := false
+	var rights auth.ModuleModeRights
+
+	if s, ok := r.Context().Value(auth.SESSION_KEY).(*cache.Session); ok && s != nil {
+		userID = s.UserID
+		isAdmin = s.IsAdmin
+		rights = s.ModuleModes
+	}
+	// Defensive fallback if the session was created before rights were resolved.
+	if rights == nil {
+		rights = auth.ResolveModuleModeRights(userID)
+	}
+
+	type moduleInfo struct {
+		Name        string   `json:"name"`
+		Description string   `json:"description"`
+		Endpoint    string   `json:"endpoint"`
+		Modes       []string `json:"modes"`
+	}
+
+	out := make([]moduleInfo, 0, len(config.Config.Modules))
+	for _, m := range config.Config.Modules {
+		// Only expose modules that actually have a Go definition registered.
+		if _, defined := auth.ModuleDefaultPermissions[m.Name]; !defined {
+			continue
+		}
+		mask := auth.AllowedModes(rights, m.Name, isAdmin)
+		if mask == 0 {
+			continue // user has no access to this module
+		}
+		out = append(out, moduleInfo{
+			Name:        m.Name,
+			Description: m.Description,
+			Endpoint:    m.Endpoint,
+			Modes:       auth.ModeNames(mask),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"isAdmin": isAdmin,
+		"modules": out,
+	})
 }

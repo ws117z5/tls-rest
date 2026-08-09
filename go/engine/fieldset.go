@@ -8,9 +8,11 @@ const MODE_EDIT = 0b000100
 const MODE_LOG = 0b001000
 const MODE_MULTIPLEUPDATE = 0b010000
 const MODE_SUBMIT = 0b100000
+const MODE_CREATE = 0b1000000
+const MODE_DELETE = 0b10000000
 const MODE_READONLY = 0b000011
 const MODE_EDITSUBMIT = 0b100100 // MODE_EDIT + MODE_SUBMIT
-const MODE_ALL = 0b111111
+const MODE_ALL = 0b11111111
 
 const TYPE_HTML = "Html"
 
@@ -63,6 +65,7 @@ type Field struct {
 	Mode         int                    `json:"mode"`          // Bit flags for which modes this field appears in
 	Label        string                 `json:"label"`         // Display label
 	Description  string                 `json:"description"`   // Field description
+	Access       int                    `json:"access"`        // Minimum access level required to see this field (0 = everyone)
 }
 
 func NewField(name, fieldType string, required bool) Field {
@@ -110,6 +113,14 @@ func (f Field) WithDefault(value interface{}) Field {
 
 func (f Field) WithMode(mode int) Field {
 	f.Mode = mode
+	return f
+}
+
+// WithAccess sets the minimum access level a user must have to see this field.
+// 0 (the default) means everyone; higher values hide the field from lower-level
+// users. Enforced at request time by the fieldset engine.
+func (f Field) WithAccess(level int) Field {
+	f.Access = level
 	return f
 }
 
