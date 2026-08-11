@@ -87,9 +87,9 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	// never loads it. Modules the backend doesn't govern (custom/frontend pages)
 	// are not in "managed" and are always loaded.
 	rights := auth.ResolveModuleModeRights(userID)
-	managed := make([]string, 0, len(auth.ModuleDefaultPermissions))
-	available := make([]string, 0, len(auth.ModuleDefaultPermissions))
-	for module := range auth.ModuleDefaultPermissions {
+	managed := make([]string, 0, len(auth.ModuleDefaults()))
+	available := make([]string, 0, len(auth.ModuleDefaults()))
+	for module := range auth.ModuleDefaults() {
 		managed = append(managed, module)
 		// Available (loadable / shown in the menu) when the user has any mode on
 		// the module. Admins get every mode; anonymous users get module defaults.
@@ -191,7 +191,7 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 	out := make([]moduleInfo, 0, len(config.Config.Modules))
 	for _, m := range config.Config.Modules {
 		// Only expose modules that actually have a Go definition registered.
-		if _, defined := auth.ModuleDefaultPermissions[m.Name]; !defined {
+		if _, defined := auth.ModuleDefaults()[m.Name]; !defined {
 			continue
 		}
 		mask := auth.AllowedModes(rights, m.Name, isAdmin)

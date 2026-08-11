@@ -190,6 +190,16 @@ func authorizeAPIRequest(ci *cache.Session, r *http.Request) (allowed bool, modu
 		return true, "", "page"
 	}
 
+	// Public authentication flows: OAuth redirect/callback and the password
+	// login/logout/register endpoints. These must be reachable while anonymous
+	// and must NOT be gated as the "users" module.
+	if strings.HasPrefix(path, "/users/Auth") {
+		return true, "auth", "oauth"
+	}
+	if path == "/api/login" || path == "/api/logout" || path == "/api/register" {
+		return true, "auth", "login"
+	}
+
 	if strings.HasPrefix(path, "/api/") {
 		// Fieldset schema for a specific module: needs read (VIEW) on it.
 		if strings.HasPrefix(path, "/api/modules/") && strings.HasSuffix(path, "/fieldset") {
@@ -201,9 +211,14 @@ func authorizeAPIRequest(ci *cache.Session, r *http.Request) (allowed bool, modu
 		if path == "/api/modules" {
 			return true, "modules", "list"
 		}
-		// Image process/serve endpoints are for authenticated users only.
+		// Image endpoints: uploading/processing requires an authenticated user;
+		// serving image bytes is public so a public record's images render for
+		// anyone.
 		if strings.Contains(path, "/images") {
-			return ci.UserID > 0, "images", "image"
+			if r.Method == http.MethodPost || strings.HasSuffix(path, "/process") {
+				return ci.UserID > 0, "images", "image"
+			}
+			return true, "images", "image"
 		}
 		return true, getModuleNameFromPath(path), "api"
 	}
@@ -211,7 +226,7 @@ func authorizeAPIRequest(ci *cache.Session, r *http.Request) (allowed bool, modu
 	module = getModuleNameFromPath(path)
 
 	// Rights-managed module: gate by the mode implied by the method.
-	if _, managed := ModuleDefaultPermissions[module]; managed {
+	if _, managed := ModuleDefaults()[module]; managed {
 		mode := apiActionMode(r.Method, path, module)
 		return HasMode(ci.ModuleModes, module, mode, ci.IsAdmin), module, apiActionName(mode)
 	}

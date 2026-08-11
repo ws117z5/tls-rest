@@ -12,6 +12,7 @@ import (
 	//pgdb "tls-rest/go/lib/db/pgdb"
 
 	constants "tls-rest/go/constants"
+	engine "tls-rest/go/engine"
 	input "tls-rest/go/lib/subroutine/input"
 	server "tls-rest/go/lib/subroutine/server"
 	"tls-rest/leet"
@@ -52,6 +53,17 @@ func main() {
 	if err := constants.ValidateRequired(); err != nil {
 		fmt.Fprintln(os.Stderr, "configuration error:", err)
 		os.Exit(1)
+	}
+
+	// Validate go.config.json against the modules the engine actually registered:
+	// every declared module must have a Go definition and an endpoint. Logged
+	// (not fatal) so a misconfiguration is visible without taking the app down.
+	registered := make(map[string]bool, len(engine.RegisteredModules))
+	for name := range engine.RegisteredModules {
+		registered[name] = true
+	}
+	for _, cerr := range constants.Config.Validate(registered) {
+		log.LogSystemEvent("config validation: "+cerr.Error(), log.LogLevelError, nil)
 	}
 
 	// Log application startup

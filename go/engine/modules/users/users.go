@@ -174,22 +174,58 @@ func (u *Users) init() {
 // Global module instance (initialized at startup)
 var UserModule *Users
 
-// RegisterGoogleUser Registers a user based on the reponse token from google oauth
-func RegisterGoogleUser(s *GoogleAccount) {
-	db, _ := pgdb.GetInstance()
-
-	//if err != nil {
-	_, err := db.Model(&User{
-		Username:  (*s).FirstName + " " + string((*s).LastName[0]) + ".",
-		Firstname: s.FirstName,
-		Lastname:  s.LastName,
-		Email:     s.Email,
-		Image:     s.Image,
-	}).Insert()
-
+// FindOrCreateGoogleUser looks up a user by email (case-insensitive) and creates
+// one if absent, returning the user's id and display name. Used by the OAuth
+// callback to establish a session. Idempotent across repeated logins.
+func FindOrCreateGoogleUser(s *GoogleAccount) (int64, string, error) {
+	db, err := pgdb.GetInstance()
 	if err != nil {
-		panic(err)
+		return 0, "", err
 	}
+
+	if rows, e := db.RQuery(
+		`SELECT id, user_name FROM users WHERE lower(email) = lower($1) LIMIT 1`, s.Email,
+	); e == nil && len(rows) > 0 {
+		return asInt64(rows[0]["id"]), asString(rows[0]["user_name"]), nil
+	}
+
+	lastInitial := ""
+	if len(s.LastName) > 0 {
+		lastInitial = " " + s.LastName[0:1] + "."
+	}
+	username := s.FirstName + lastInitial
+
+	ins, err := db.RQuery(
+		`INSERT INTO users (user_name, first_name, last_name, email, image)
+		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+		username, s.FirstName, s.LastName, s.Email, s.Image,
+	)
+	if err != nil || len(ins) == 0 {
+		return 0, "", err
+	}
+	return asInt64(ins[0]["id"]), username, nil
+}
+
+func asInt64(v interface{}) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	case int32:
+		return int64(n)
+	case float64:
+		return int64(n)
+	default:
+		return 0
+	}
+}
+
+func asString(v interface{}) string {
+	if str, ok := v.(string); ok {
+		return str
+	}
+	return ""
 }
 
 func init() {

@@ -1,9 +1,7 @@
 package auth
 
 import (
-	"fmt"
-
-	"tls-rest/go/lib/log"
+	engine "tls-rest/go/engine"
 )
 
 // Permission values used for a module's *default* permission (the baseline
@@ -17,19 +15,13 @@ const (
 	PERMISSION_WRITE   = 2  // Full access
 )
 
-// ModuleDefaultPermissions is the registry of module default permissions,
-// populated by the engine as each module initialises.
-var ModuleDefaultPermissions = make(map[string]int)
-
-// RegisterModuleDefaultPermission records a module's default permission.
-func RegisterModuleDefaultPermission(module string, defaultPermission int) {
-	ModuleDefaultPermissions[module] = defaultPermission
-	log.LogSystemEvent(
-		fmt.Sprintf("Default permission %d registered for module %s", defaultPermission, module),
-		log.LogLevelInfo, map[string]interface{}{
-			"module":             module,
-			"default_permission": defaultPermission,
-		})
+// ModuleDefaults returns the registry of module default permissions. There is a
+// single source of truth: the engine populates it as each module initialises
+// (module.RegisterModuleDefaultPermission). Earlier there was a second, empty
+// copy in this package, which silently disabled the whole rights path — this
+// accessor removes that duplication by reading the engine's map directly.
+func ModuleDefaults() map[string]int {
+	return engine.ModuleDefaultPermissions
 }
 
 // IsAdmin reports whether the user belongs to an administrator group. It is a

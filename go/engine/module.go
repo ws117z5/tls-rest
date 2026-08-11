@@ -409,10 +409,16 @@ func (m *ModuleAbstract[T]) List(w http.ResponseWriter, r *http.Request) {
 	sessionID := getSessionIDFromRequest(r)
 	userID := getUserIDFromRequest(r)
 
-	log.LogModuleEvent(m.ID, "list", fmt.Sprintf("Module %s list operation started", m.ID), userID, sessionID, map[string]interface{}{
-		"fields_count":       len(m.Fields),
-		"has_custom_handler": m.CustomHandler != nil,
-	})
+	log.LogModuleEvent(
+		m.ID,
+		"list",
+		fmt.Sprintf("Module %s list operation started", m.ID),
+		userID,
+		sessionID,
+		map[string]interface{}{
+			"fields_count":       len(m.Fields),
+			"has_custom_handler": m.CustomHandler != nil,
+		})
 
 	defer func() {
 		duration := time.Since(startTime).Seconds() * 1000
@@ -637,104 +643,6 @@ func DeleteField(moduleID, fieldName string) error {
 	return errors.New("field not found")
 }
 
-// SetFilterableFields sets which fields are filterable in list view.
-// func SetFilterableFields(moduleID string, fields []string) error {
-// 	modulesMu.Lock()
-// 	defer modulesMu.Unlock()
-// 	m, ok := modules[moduleID]
-// 	if !ok {
-// 		return errors.New("module not found")
-// 	}
-// 	m.Filterable = fields
-// 	return nil
-// }
-
-// GetModule fetches a module by ID from the database.
-// func GetModules(id string, db *pgdb.Db) (*ModuleAbstract[any], error) {
-
-// 	data, err := db.GetAll("modules", []string{"id", "name"}, map[string]string{"id": id})
-
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	if len(data) == 0 {
-// 		return nil, errors.New("module not found")
-// 	}
-
-// 	var m ModuleAbstract[any]
-// 	if rows.Next() {
-// 		if err := rows.Scan(&m.ID, &m.Name); err != nil {
-// 			return nil, err
-// 		}
-// 	} else {
-// 		return nil, errors.New("module not found")
-// 	}
-
-// 	// Fetch fields for the module
-// 	fieldsQuery := "SELECT name, type, required FROM module_fields WHERE module_id = ?"
-// 	fieldRows, err := db.Query(fieldsQuery, id)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer fieldRows.Close()
-
-// 	for fieldRows.Next() {
-// 		var f Field
-// 		if err := fieldRows.Scan(&f.Name, &f.Type, &f.Required); err != nil {
-// 			return nil, err
-// 		}
-// 		m.Fields = append(m.Fields, f)
-// 	}
-
-// 	// Fetch filterable fields
-// 	filterQuery := "SELECT field_name FROM module_filterable WHERE module_id = ?"
-// 	filterRows, err := db.Query(filterQuery, id)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	defer filterRows.Close()
-
-// 	for filterRows.Next() {
-// 		var fname string
-// 		if err := filterRows.Scan(&fname); err != nil {
-// 			return nil, err
-// 		}
-// 		m.Filterable = append(m.Filterable, fname)
-// 	}
-
-// 	// Fetch rights for users
-// 	m.Rights = make(map[string]int)
-// 	rightsQuery := "SELECT user_id, rights FROM user_rights WHERE module_id = ?"
-// 	rightsRows, err := db.Query(rightsQuery, id)
-// 	if err == nil {
-// 		defer rightsRows.Close()
-// 		for rightsRows.Next() {
-// 			var userID string
-// 			var rights int
-// 			if err := rightsRows.Scan(&userID, &rights); err == nil {
-// 				m.Rights[userID] = rights
-// 			}
-// 		}
-// 	}
-
-// 	// Fetch rights for groups
-// 	groupRightsQuery := "SELECT group_id, rights FROM user_group_rights WHERE module_id = ?"
-// 	groupRightsRows, err := db.Query(groupRightsQuery, id)
-// 	if err == nil {
-// 		defer groupRightsRows.Close()
-// 		for groupRightsRows.Next() {
-// 			var groupID string
-// 			var rights int
-// 			if err := groupRightsRows.Scan(&groupID, &rights); err == nil {
-// 				m.Rights[groupID] = rights
-// 			}
-// 		}
-// 	}
-
-// 	return &m, nil
-// }
-
 // SetModuleRights sets rights for a user or group on a module in the database.
 func SetModuleRights(moduleID, userOrGroupID string, right int, isGroup bool, db *pgdb.Db) error {
 	var query string
@@ -769,6 +677,10 @@ func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 	case TYPE_CHECKBOX, TYPE_YES_NO:
 		sqlType = "BOOLEAN"
 	case TYPE_JSON:
+		sqlType = "JSONB"
+	case TYPE_IMAGE:
+		// An image field stores an array of image references
+		// ({id, uuid, filename}); the bytes live in the images table.
 		sqlType = "JSONB"
 	case TYPE_TABLE:
 		// For table fields, check the data source type

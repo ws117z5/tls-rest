@@ -9,7 +9,7 @@ import (
 
 	config "tls-rest/go/constants"
 
-	"tls-rest/go/modules/users"
+	"tls-rest/go/engine/modules/users"
 
 	"tls-rest/go/lib"
 
@@ -84,12 +84,20 @@ func handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
 	err = json.Unmarshal(content, &GoogleAccount)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	fmt.Printf("%+v\n", GoogleAccount)
-	//if everything went well we check user and register if not existing
-	users.RegisterGoogleUser(GoogleAccount)
 
-	fmt.Fprintf(w, "Content: %s\n", content)
+	// Find or create the user, then establish an authenticated session and send
+	// them into the app.
+	userID, username, err := users.FindOrCreateGoogleUser(GoogleAccount)
+	if err != nil {
+		fmt.Println("google login failed:", err.Error())
+		http.Redirect(w, r, "/login?error=oauth", http.StatusTemporaryRedirect)
+		return
+	}
+
+	Login(w, r, int(userID), username)
+	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
 }
 
 func getUserInfo(state string, code string) ([]byte, error) {

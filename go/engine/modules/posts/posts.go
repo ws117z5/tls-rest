@@ -39,9 +39,10 @@ func (p *Posts) init() {
 			WithValidation("maxLength", 200).
 			WithOption("width", "600px"),
 
-		module.NewField("images", module.TYPE_JSON, false).
+		module.NewField("images", module.TYPE_IMAGE, false).
 			WithLabel("Images").
-			WithDescription("Post images array").
+			WithDescription("Post images").
+			WithOption("multiple", true).
 			NonSortable().
 			NonSearchable(),
 

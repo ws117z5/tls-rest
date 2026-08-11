@@ -195,6 +195,7 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
       onChange: (value) => this.handleFieldChange(field.name, value),
       mode: mode || MODES.EDIT,
       disabled: disabled || field.readonly,
+      module: this.props.fieldsetContext?.module,
       className: touched[field.name] && errors[field.name] ? 'is-invalid' : ''
     };
 
@@ -245,7 +246,7 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
     }
 
     const fields = fieldsetContext.getFieldsForMode();
-    const isEditMode = mode === MODES.EDIT || mode === MODES.EDITSUBMIT;
+    const isEditMode = mode === MODES.EDIT || mode === MODES.EDITSUBMIT || mode === MODES.CREATE;
 
     return (
       <form onSubmit={this.handleSubmit} className={`fieldset-form ${className}`}>

@@ -119,3 +119,55 @@ func GetSessionID(ctx context.Context) string {
 	}
 	return ""
 }
+
+// Login establishes an authenticated session for userID on the current request's
+// session cookie (creating the cookie if absent) and refreshes the resolved
+// rights/admin status. Used by both password login and OAuth callbacks — the one
+// place that actually sets UserID on a session.
+func Login(w http.ResponseWriter, r *http.Request, userID int, username string) {
+	expire := time.Now().Add(30 * 24 * time.Hour)
+
+	cookie, err := r.Cookie("X-Session-ID")
+	hash := ""
+	if err != nil {
+		hash, _ = lib.GetRandomHash(16)
+		http.SetCookie(w, &http.Cookie{
+			Name:    "X-Session-ID",
+			Value:   hash,
+			Expires: expire,
+			Path:    "/",
+		})
+	} else {
+		hash = cookie.Value
+	}
+
+	var s *cache.Session
+	if stored, e := cache.SessionCacheInstance.Get(hash); e == nil && stored != nil {
+		s = stored
+	} else {
+		s = &cache.Session{UserAgent: r.UserAgent(), IP: r.RemoteAddr}
+	}
+
+	s.UserID = userID
+	s.Username = username
+	s.Expire = expire
+	s.LastAccess = time.Now()
+	fillSessionRights(s)
+
+	cache.SessionCacheInstance.Set(hash, *s)
+}
+
+// Logout clears the authenticated user from the current session, dropping it
+// back to anonymous (module defaults, not admin).
+func Logout(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("X-Session-ID")
+	if err != nil {
+		return
+	}
+	if stored, e := cache.SessionCacheInstance.Get(cookie.Value); e == nil && stored != nil {
+		stored.UserID = 0
+		stored.Username = ""
+		fillSessionRights(stored)
+		cache.SessionCacheInstance.Set(cookie.Value, *stored)
+	}
+}

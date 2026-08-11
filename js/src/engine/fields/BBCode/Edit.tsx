@@ -1,17 +1,10 @@
 import React, { Component, ChangeEvent } from "react";
-import {
-    BB_TOOLS,
-    wrapSelection,
-    insertImageTag,
-    renderBBCode,
-} from "@controllers/bbcode";
+import { BB_TOOLS, wrapSelection, renderBBCode } from "@controllers/bbcode";
 
-import {
-    uploadPostImage,
-    loadPostImages,
-    imageUrl,
-    PostImageMeta,
-} from "@modules/posts/postImages";
+// A pure BBCode text editor: toolbar tags + preview. Image handling is NOT done
+// here — images belong to a dedicated Image field on the module (see the Image
+// field type). This keeps the editor focused on text and avoids the old
+// post-specific image coupling.
 
 interface BBCodeEditProps {
     id?: string;
@@ -19,15 +12,12 @@ interface BBCodeEditProps {
     value?: string;
     width?: string | number;
     height?: string | number;
-    postId?: number | string;
     onChange?: (value: string) => void;
     disabled?: boolean;
 }
 
 interface BBCodeEditState {
     value: string;
-    images: PostImageMeta[];
-    uploading: boolean;
     showPreview: boolean;
 }
 
@@ -38,19 +28,8 @@ class BBCodeEdit extends Component<BBCodeEditProps, BBCodeEditState> {
         super(props);
         this.state = {
             value: props.value || "",
-            images: [],
-            uploading: false,
             showPreview: false,
         };
-    }
-
-    componentDidMount() {
-        // Load existing images into the cache once, then display thumbnails.
-        loadPostImages(this.props.postId)
-            .then((images) => this.setState({ images }))
-            .catch(() => {
-                /* no images yet */
-            });
     }
 
     componentDidUpdate(prev: BBCodeEditProps) {
@@ -86,40 +65,9 @@ class BBCodeEdit extends Component<BBCodeEditProps, BBCodeEditState> {
         });
     };
 
-    insertImage = (id: number | string) => {
-        const el = this.textarea.current;
-        const caret = el ? el.selectionStart : this.state.value.length;
-        const { text, selectionStart } = insertImageTag(this.state.value, caret, id);
-        this.emit(text);
-        requestAnimationFrame(() => {
-            if (el) {
-                el.focus();
-                el.setSelectionRange(selectionStart, selectionStart);
-            }
-        });
-    };
-
-    handleUpload = async (e: ChangeEvent<HTMLInputElement>) => {
-        const files = e.target.files;
-        if (!files || files.length === 0) return;
-        this.setState({ uploading: true });
-        try {
-            const uploaded: PostImageMeta[] = [];
-            for (let i = 0; i < files.length; i++) {
-                uploaded.push(await uploadPostImage(files[i], this.props.postId));
-            }
-            this.setState((s) => ({ images: [...s.images, ...uploaded], uploading: false }));
-        } catch (err) {
-            console.error("Image upload failed:", err);
-            this.setState({ uploading: false });
-        } finally {
-            e.target.value = "";
-        }
-    };
-
     render() {
         const { width = "600px", height = "300px", disabled } = this.props;
-        const { value, images, uploading, showPreview } = this.state;
+        const { value, showPreview } = this.state;
 
         return (
             <div className="bbcode-edit">
@@ -159,54 +107,9 @@ class BBCodeEdit extends Component<BBCodeEditProps, BBCodeEditState> {
                         value={value}
                         disabled={disabled}
                         onChange={this.handleChange}
-                        placeholder="Write your post using BBCode: [b]bold[/b], [img]id[/img], ..."
+                        placeholder="Write using BBCode: [b]bold[/b], [i]italic[/i], ..."
                     />
                 )}
-
-                <div className="bbcode-images mt-2">
-                    <label className="btn btn-sm btn-outline-primary mb-1">
-                        {uploading ? "Uploading..." : "Upload image"}
-                        <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            hidden
-                            disabled={disabled || uploading}
-                            onChange={this.handleUpload}
-                        />
-                    </label>
-
-                    {images.length > 0 && (
-                        <div className="d-flex flex-wrap" style={{ gap: "8px" }}>
-                            {images.map((img) => (
-                                <div key={img.id} className="text-center" style={{ width: 90 }}>
-                                    <img
-                                        src={imageUrl(img.id)}
-                                        alt={img.filename || String(img.id)}
-                                        style={{
-                                            width: 80,
-                                            height: 80,
-                                            objectFit: "cover",
-                                            border: "1px solid #ddd",
-                                            cursor: "pointer",
-                                        }}
-                                        title={`Insert [img]${img.id}[/img]`}
-                                        onClick={() => this.insertImage(img.id)}
-                                    />
-                                    <div>
-                                        <code
-                                            style={{ cursor: "pointer", fontSize: 11 }}
-                                            title="Insert into body"
-                                            onClick={() => this.insertImage(img.id)}
-                                        >
-                                            [img]{img.id}[/img]
-                                        </code>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-                </div>
             </div>
         );
     }

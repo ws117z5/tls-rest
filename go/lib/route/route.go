@@ -2,19 +2,24 @@ package route
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/mux"
 
 	"tls-rest/go/controllers"
 	"tls-rest/go/controllers/log"
-	"tls-rest/go/features/papers"
-	"tls-rest/go/features/postimages"
+	"tls-rest/go/lib/auth"
 
-	// Import modules to trigger their init() functions for automatic registration
-	_ "tls-rest/go/modules/modulerights"
-	_ "tls-rest/go/modules/posts"
-	_ "tls-rest/go/modules/usergroups"
-	_ "tls-rest/go/modules/users"
+	// Import modules/pages/features to trigger their init() self-registration.
+	_ "tls-rest/go/engine/features/images"
+	_ "tls-rest/go/engine/modules/modulerights"
+	_ "tls-rest/go/engine/modules/posts"
+	_ "tls-rest/go/engine/modules/usergroups"
+	_ "tls-rest/go/engine/modules/users"
+	_ "tls-rest/go/engine/pages/login"
+	_ "tls-rest/go/engine/pages/profile"
+	_ "tls-rest/go/features/opencv"
+	_ "tls-rest/go/features/papers"
 
 	module "tls-rest/go/engine"
 	middleware "tls-rest/go/lib/route/middlware"
@@ -70,56 +75,7 @@ var routes = []Route{
 		Handler: controllers.Index,
 		Satatic: false,
 	},
-	{
-		Name:    "Papers",
-		Pattern: "/papers",
-		Methods: []string{"GET"},
-		Handler: papers.List,
-		Satatic: false,
-		Subroutes: []Route{
-			{
-				Name:    "PapersCreate",
-				Pattern: "/create",
-				Methods: []string{"POST"},
-				Handler: papers.CreateRoom,
-			},
-			{
-				Name:    "PapersAddUser",
-				Pattern: "/{roomId}",
-				Methods: []string{"POST"},
-				Handler: papers.AddRoomUser,
-				Params:  []string{"roomId"},
-			},
-			{
-				Name:    "PapersViewUsers",
-				Pattern: "/{roomId}",
-				Methods: []string{"GET"},
-				Handler: papers.ViewRoomUsers,
-				Params:  []string{"roomId"},
-			},
-			{
-				Name:    "PapersReport",
-				Pattern: "/{roomId}/report",
-				Methods: []string{"POST"},
-				Handler: papers.ReportLink,
-				Params:  []string{"roomId"},
-			},
-			{
-				Name:    "PapersPlan",
-				Pattern: "/{roomId}/plan",
-				Methods: []string{"GET"},
-				Handler: papers.GetPlan,
-				Params:  []string{"roomId"},
-			},
-			{
-				Name:    "PapersRegisterUser",
-				Pattern: "/{roomId}/{userId}",
-				Methods: []string{"POST"},
-				Handler: papers.RegisterUser,
-				Params:  []string{"roomId", "userId"},
-			},
-		},
-	},
+	// papers now self-registers its routes (features/papers/routes.go).
 	// Users routes are now automatically registered via module system
 	// Posts routes are now automatically registered via module system
 	// Static routes are now handled by RegisterStaticRoutes() function
@@ -169,31 +125,18 @@ func registerRoutes(router *mux.Router, routes []Route) {
 func RegisterCustomRoutes(router *mux.Router) {
 	// Serve the SPA shell for any client-side "/pages/*" deep link so that a
 	// direct navigation / refresh boots the React app (which then routes
-	// client-side). The previous per-page patterns were missing the leading
-	// "/" and therefore never matched, 404-ing on refresh.
+	// client-side).
 	router.PathPrefix("/pages/").HandlerFunc(controllers.Index)
 
-	// Fieldset API used by the React FieldsetProvider. The handler already
-	// existed (module.GlobalFieldsetHandler) but was never wired to the router,
-	// so GET /api/modules/{moduleId}/fieldset returned 404.
-	// Module list for the SPA: config-declared modules filtered to the current
-	// user's access, each with the modes they may perform. Rights-aware, so it
-	// lives in controllers (which can import auth) rather than the engine.
+	// Framework endpoints that belong to no single module/page/feature:
+	//   - the module list for the SPA (rights-aware; lives in controllers)
+	//   - the fieldset schema API used by FieldsetProvider
+	//   - the OAuth redirect/callback flow
+	// Everything else (profile, login, images, papers, module CRUD) now
+	// self-registers via module.AddRouteRegistrar / the module system.
 	router.HandleFunc("/api/modules", controllers.ModulesAPI).Methods("GET")
 	router.HandleFunc("/api/modules/{moduleId}/fieldset", module.GlobalFieldsetHandler.GetFieldset).Methods("GET")
-
-	// Post images: DB-backed upload/list/serve. Namespaced under /api/ to avoid
-	// colliding with the generic module route /posts/{id}.
-	router.HandleFunc("/api/posts/images", postimages.Upload).Methods("POST")
-	router.HandleFunc("/api/posts/images", postimages.List).Methods("GET")
-	router.HandleFunc("/api/posts/images/{id}", postimages.Serve).Methods("GET")
-	//router.HandleFunc("/opencv", opencv.Init).Methods("GET", "POST", "OPTIONS")
-
-	//router.HandleFunc("/users/GetInfo/{authType}", users.GetInfo).Methods("GET")
-	//router.HandleFunc("/users", controllers.Index).Methods("GET").
-	//router.HandleFunc("/users/Auth/{authType}", auth.Auth).Methods("GET", "POST")
-	//router.HandleFunc("/users/session", auth.ManageSession).Methods("GET")
-	//router.HandleFunc("/users/AuthResponse/{authType}", auth.AuthResponse).Methods("GET")
+	router.HandleFunc("/users/Auth/{authType}", auth.Auth).Methods("GET", "POST")
 }
 
 // GetRouter creates the main router with automatic module route registration
@@ -211,8 +154,25 @@ func GetRouter() *mux.Router {
 
 	RegisterCustomRoutes(router)
 
+	// Flush routes registered by pages/features via AddRouteRegistrar (profile,
+	// login, images, papers, ...). They own their routes; route.go just triggers
+	// their init() via imports and flushes here.
+	module.FlushRouteRegistrars(router)
+
 	// Register any remaining module routes (in case modules were loaded before SetGlobalRouter)
 	module.RegisterModuleRoutes(router)
+
+	// SPA fallback: any GET that didn't match an API / module / static route
+	// serves the React shell, so client-side routes (e.g. /pages/opencv) boot on
+	// direct navigation or refresh instead of 404ing. Registered last so specific
+	// routes win; /api/* still 404s rather than returning HTML.
+	router.PathPrefix("/").Methods("GET").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			http.NotFound(w, r)
+			return
+		}
+		controllers.Index(w, r)
+	})
 
 	// Attach middleware only to non-static routes
 	amw := middleware.AuthenticationMiddleware{}

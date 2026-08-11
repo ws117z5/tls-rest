@@ -69,10 +69,6 @@ type Session struct {
 	ModuleModes map[string]int
 	AccessLevel int
 
-	// UserRights is the legacy scalar rights map, kept for backward compatibility
-	// while the old code paths are retired.
-	UserRights map[int]int
-
 	Expire     time.Time
 	LastAccess time.Time
 }

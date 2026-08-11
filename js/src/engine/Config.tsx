@@ -1,106 +1,130 @@
-import { Component } from "react";
-
-import modulesConfig from '../../modules.json'
-import PageComponent from "./PageComponent";
 import Auth from "@controllers/auth";
 
-type Submodule = {
-    href: string;
-    component: Component;
-    props?: Record<string, any>;
+// Two kinds of navigable things:
+//
+//  * Backend modules — declared in go.config.json, governed by the rights
+//    system, and reported (already access-filtered, with per-mode rights) by
+//    GET /api/modules. Each is rendered by the generic ModulePage (or a
+//    registered custom view) with per-mode routes.
+//
+//  * Custom pages — frontend-only React pages (graphs, tools, login, …) that
+//    are not backend modules. Discovered by scanning components/pages and
+//    gated by their own requiresAuth/requiresAdmin flags.
+
+export interface BackendModuleEntry {
+    name: string;
+    title: string;
+    href: string;       // path segment, no leading slash (e.g. "posts")
+    description: string;
+    modes: string[];    // modes this user may perform
 }
 
-type Module = {
+export interface CustomPage {
     href: string;
     name: string;
     title: string;
     uuid: string;
-    isPage?: boolean;
-    requiresAuth?: boolean;
-    requiresAdmin?: boolean;
-    component: Component;
-    props?: Record<string, any>;
-    extraRoutes: Submodule[];
-    fieldset?: any;
+    isPage: boolean;
+    requiresAuth: boolean;
+    requiresAdmin: boolean;
+    component: any;
+    props: Record<string, any>;
+    extraRoutes: Array<{ href: string; component: any }>;
+    condition?: (state: any) => boolean;
 }
 
-
-
 export default class Config {
-    private static modules: Module[] = [];
-    private static moduleMap = new Map<string, number>();
+    private static backendModules: BackendModuleEntry[] = [];
+    private static customPages: CustomPage[] = [];
     private static initPromise: Promise<void> | null = null;
-    public static len: number = 0;
-    public static serverURL = window.location.origin + "/"
+    public static serverURL = window.location.origin + "/";
 
     static init(): Promise<void> {
-        // Idempotent: return the in-flight (or already-completed) initialization.
-        // Without this guard, React 18 StrictMode — and any remount — calls init()
-        // more than once, and because each call pushes onto the static module list,
-        // every module (and therefore every nav-bar item) gets duplicated.
+        // Idempotent: React 18 StrictMode (and remounts) call init() more than
+        // once; without this guard each call would duplicate the module lists.
         if (Config.initPromise) {
             return Config.initPromise;
         }
 
-        Config.initPromise = import("../components/pages").then((loaded) => {
+        Config.initPromise = (async () => {
+            // 1) Backend modules + this user's rights, from the server.
+            await Auth.loadModules();
+            Config.backendModules = Auth.getModules().map((m) => ({
+                name: m.name,
+                title: m.description || m.name,
+                href: (m.endpoint || "/" + m.name).replace(/^\//, ""),
+                description: m.description,
+                modes: m.modes || [],
+            }));
+            const backendHrefs = new Set(Config.backendModules.map((m) => m.href));
 
-            // Reset first so a run never accumulates duplicates.
-            Config.modules = [];
-            Config.moduleMap.clear();
-            Config.len = 0;
+            // 2) Frontend-only custom pages, from the static page scan. Skip any
+            //    whose href a backend module already owns, and any the user may
+            //    not access.
+            const loaded = await import("../components/pages");
+            Config.customPages = [];
 
             Object.keys(loaded).forEach((key) => {
-
                 const Cls = (loaded as any)[key];
+                if (!Cls || !("guid" in Cls)) return;
 
-                if (Cls && 'guid' in Cls) {
+                const meta = new Cls({});
+                const href: string = meta.getHref();
 
-                    const meta = new Cls({});
+                // Home ("" href) is handled by the explicit "/" route.
+                if (!href) return;
+                // A backend module owns this route; don't double-register.
+                if (backendHrefs.has(href)) return;
 
-                    let _module: Module = {
-                        href: meta.getHref(),
-                        name: key,
-                        uuid: meta.getUUID(),
-                        title: meta.getTitle(),
-                        isPage: meta.isPageComponent(),
-                        requiresAuth: typeof meta.requiresAuthentication === "function" ? meta.requiresAuthentication() : false,
-                        requiresAdmin: typeof meta.requiresAdministration === "function" ? meta.requiresAdministration() : false,
-                        component: Cls,
-                        props: Cls.props || {},
-                        extraRoutes: Cls.extraRoutes ? Cls.extraRoutes : [],
-                    };
+                const page: CustomPage = {
+                    href,
+                    name: key,
+                    uuid: meta.getUUID(),
+                    title: meta.getTitle(),
+                    isPage: meta.isPageComponent(),
+                    requiresAuth:
+                        typeof meta.requiresAuthentication === "function"
+                            ? meta.requiresAuthentication()
+                            : false,
+                    requiresAdmin:
+                        typeof meta.requiresAdministration === "function"
+                            ? meta.requiresAdministration()
+                            : false,
+                    component: Cls,
+                    props: Cls.props || {},
+                    extraRoutes: Cls.extraRoutes || [],
+                    condition: typeof Cls.condition === "function" ? Cls.condition : undefined,
+                };
 
-                    // Don't load modules the current user has no access to: a
-                    // backend-governed module absent from the available list, or a
-                    // module gated by requiresAuth/requiresAdmin. Absent modules
-                    // are never registered — no menu item, no route, no component.
-                    if (!Auth.canAccessModule(_module)) {
-                        return;
-                    }
-
-                    let idx: number = Config.modules.push(_module)
-                    Config.moduleMap.set(key, idx-1);
-                    Config.len++;
-
-                }
+                if (!Auth.canAccessModule(page)) return;
+                Config.customPages.push(page);
             });
-        });
+        })();
 
         return Config.initPromise;
     }
 
-
-    public static get(name: string): Module | null {
-        let idx = Config.moduleMap.get(name);
-        return idx !== undefined ? Config.modules[idx] : null;
+    /** Backend modules (rights-managed) the current user may access. */
+    public static getModules(): BackendModuleEntry[] {
+        return Config.backendModules;
     }
 
-    public static getAll(): Module[] | null {
-        return Config.modules;
+    public static getModule(name: string): BackendModuleEntry | undefined {
+        return Config.backendModules.find((m) => m.name === name);
     }
 
-    public static getPages(): Module[] | null {
-        return Config.modules.filter(module => { return module.isPage == true; });
+    /** Frontend-only custom pages the current user may access. */
+    public static getCustomPages(): CustomPage[] {
+        return Config.customPages;
     }
 
+    /** Custom pages shown in the "Pages" dropdown. */
+    public static getPages(): CustomPage[] {
+        return Config.customPages.filter((p) => p.isPage);
+    }
+
+    /** Custom pages shown as top-level nav items. */
+    public static getNavPages(): CustomPage[] {
+        return Config.customPages.filter((p) => !p.isPage);
+    }
 }

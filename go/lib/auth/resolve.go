@@ -59,7 +59,7 @@ func defaultModesFor(perm int) int {
 // modules stay closed.
 func ResolveModuleModeRights(userID int) ModuleModeRights {
 	rights := ModuleModeRights{}
-	for module, def := range ModuleDefaultPermissions {
+	for module, def := range ModuleDefaults() {
 		rights[module] = defaultModesFor(def)
 	}
 

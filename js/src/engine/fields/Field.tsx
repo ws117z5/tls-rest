@@ -30,6 +30,7 @@ export interface BaseFieldProps {
   mode: number;
   disabled?: boolean;
   className?: string;
+  module?: string; // owning module name (for fields that call module-scoped endpoints, e.g. Image)
 }
 
 // Field type mapping
@@ -99,6 +100,11 @@ const FIELD_COMPONENTS = {
     [MODES.VIEW]: CheckboxList,
     [MODES.LIST]: CheckboxList,
   },
+  [FIELD_TYPES.IMAGE]: {
+    [MODES.EDIT]: ImageEdit,
+    [MODES.VIEW]: ImageView,
+    [MODES.LIST]: ImageList,
+  },
 };
 
 // Default fallback component
@@ -106,7 +112,7 @@ const DefaultField: React.FC<BaseFieldProps> = ({ field, value, mode }) => (
   <div className="field-default">
     <label>{field.label}</label>
     <div className="field-content">
-      {mode === MODES.EDIT ? (
+      {mode === MODES.EDIT || mode === MODES.CREATE ? (
         <input 
           type="text" 
           value={value || ''} 
@@ -132,9 +138,12 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
     return <DefaultField {...props} />;
   }
   
-  // Find component for specific mode, fallback to VIEW mode, then to default
-  let Component: React.ComponentType<any> = fieldComponents[mode] || 
-                   fieldComponents[MODES.VIEW] || 
+  // Find component for specific mode, fallback to VIEW mode, then to default.
+  // CREATE reuses the EDIT renderer (create is an editable form); without this,
+  // CREATE would fall through to the read-only VIEW component.
+  const lookupMode = mode === MODES.CREATE ? MODES.EDIT : mode;
+  let Component: React.ComponentType<any> = fieldComponents[lookupMode] ||
+                   fieldComponents[MODES.VIEW] ||
                    fieldComponents[MODES.EDIT] ||
                    DefaultField;
 
