@@ -22,11 +22,11 @@ class Request {
                 });
     }
 
-    static apiCall = (url, params) => {
+    static apiCall = async (url, params) => {
         return axios.post(Config.serverURL +  url, params);
     }
 
-    static apiRequest = (url, params = {}) => {
+    static apiRequest = async (url, params = {}) => {
         return axios.get(Config.serverURL +  url, { params })
     }
 }

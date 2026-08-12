@@ -141,7 +141,16 @@ export class Room extends PageComponent<RoomProps, RoomState> {
     };
 
     async componentDidMount() {
-        const { pc } = this.state.currentUser;
+        // A peer connection created in the constructor can be closed before this
+        // async mount finishes (e.g. React StrictMode's mount/unmount/remount in
+        // dev, which closes it in componentWillUnmount). Use a fresh connection
+        // if the existing one is gone, so createDataChannel never runs on a
+        // 'closed' connection.
+        let pc = this.state.currentUser.pc;
+        if (!pc || pc.signalingState === "closed") {
+            pc = new RTCPeerConnection(Participant.configuration);
+            this.setState((prev) => ({ currentUser: { ...prev.currentUser, pc } }));
+        }
 
         pc.oniceconnectionstatechange = (e: Event) => {
             Log.log(pc.iceConnectionState);
@@ -168,7 +177,11 @@ export class Room extends PageComponent<RoomProps, RoomState> {
                 .catch(Log.log);
         };
 
-        // Initialize DataChannel on the Peer Connection
+        // Initialize DataChannel on the Peer Connection (skip if it closed while
+        // this async mount was in flight).
+        if (pc.signalingState === "closed") {
+            return;
+        }
         const sendChannel = pc.createDataChannel(this.state.uuid);
         sendChannel.onclose = () => Log.log('sendChannel has closed');
         sendChannel.onopen = () => Log.log('sendChannel has opened');

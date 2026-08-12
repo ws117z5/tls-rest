@@ -18,11 +18,12 @@
     
     "paths": {
       "@engine/*": [ "./src/engine/*" ],
-      "@modules/*": [ "./src/modules/*" ],
-      "@controllers/*": [  "./src/controllers/*" ],
-      "@containers/*": [  "./src/components/containers/*" ],
-      "@pages/*": [ "./src/components/pages/*" ],
-      "@components/*": [  "./src/components/*" ]
+      "@modules/*": [ "./src/engine/modules/*", "./src/modules/*" ],
+      "@controllers/*": [  "./src/controllers/*", "./src/engine/controllers/*" ],
+      "@containers/*": [  "./src/components/containers/*", "./src/engine/components/containers/*" ],
+      "@pages/*": [ "./src/components/pages/*", "./src/engine/components/pages/*" ],
+      "@components/*": [  "./src/components/*", "./src/engine/components/*" ],
+      "@fields/*": [  "./src/components/fields/*", "./src/engine/components/fields/*" ],
     }
 
   },

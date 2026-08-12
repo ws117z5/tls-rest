@@ -1,0 +1,67 @@
+/* The top menu reads as the monitor's chassis: dark bezel, phosphor-green
+   labels, a faint green underglow. Fonts come from the global index-cv.css. */
+
+.main-menu {
+  background: #0b0a08;
+  border-bottom: 1px solid rgba(111, 242, 160, 0.22);
+  box-shadow: 0 1px 0 rgba(111, 242, 160, 0.12), 0 8px 22px rgba(0, 0, 0, 0.55);
+}
+
+.main-menu .navbar {
+  background: transparent !important;
+  padding: 0.35rem 1rem;
+}
+
+.main-menu > a {
+  padding-right: 5px;
+}
+
+.main-menu .nav-link {
+  color: #6ff2a0 !important;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  padding: 0.4rem 0.7rem !important;
+  transition: color 0.15s ease, text-shadow 0.15s ease;
+}
+
+.main-menu .nav-link:hover,
+.main-menu .nav-link:focus {
+  color: #b9ffd4 !important;
+  text-shadow: 0 0 9px rgba(111, 242, 160, 0.55);
+}
+
+.main-menu .nav-link.active {
+  color: #eafff2 !important;
+  text-shadow: 0 0 10px rgba(111, 242, 160, 0.5);
+}
+
+/* "Pages" dropdown */
+.main-menu .dropdown-toggle::after {
+  border-top-color: #6ff2a0;
+}
+
+.main-menu .dropdown-menu {
+  background: #0d130f;
+  border: 1px solid rgba(111, 242, 160, 0.22);
+  border-radius: 3px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.6);
+  padding: 0.3rem;
+}
+
+.main-menu .dropdown-item {
+  color: #6ff2a0;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 0.8rem;
+  letter-spacing: 0.08em;
+  border-radius: 2px;
+  padding: 0.35rem 0.7rem;
+}
+
+.main-menu .dropdown-item:hover,
+.main-menu .dropdown-item:focus {
+  background: rgba(111, 242, 160, 0.12);
+  color: #eafff2;
+}

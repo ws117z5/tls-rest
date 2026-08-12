@@ -58,47 +58,56 @@ export default class Config {
             }));
             const backendHrefs = new Set(Config.backendModules.map((m) => m.href));
 
-            // 2) Frontend-only custom pages, from the static page scan. Skip any
-            //    whose href a backend module already owns, and any the user may
-            //    not access.
-            const loaded = await import("../components/pages");
+            // 2) Frontend-only custom pages, from the static page scans. Both
+            //    the app pages and the engine (framework) pages are scanned; each
+            //    barrel only exports files within its own folder. Skip any whose
+            //    href a backend module owns, and any the user may not access.
+            const [appPages, enginePages] = await Promise.all([
+                import("../components/pages"),
+                import("@engine/pages"),
+            ]);
             Config.customPages = [];
 
-            Object.keys(loaded).forEach((key) => {
-                const Cls = (loaded as any)[key];
-                if (!Cls || !("guid" in Cls)) return;
+            const scan = (loaded: Record<string, any>) => {
+                Object.keys(loaded).forEach((key) => {
+                    const Cls = (loaded as any)[key];
+                    if (!Cls || !("guid" in Cls)) return;
 
-                const meta = new Cls({});
-                const href: string = meta.getHref();
+                    const meta = new Cls({});
+                    const href: string = meta.getHref();
 
-                // Home ("" href) is handled by the explicit "/" route.
-                if (!href) return;
-                // A backend module owns this route; don't double-register.
-                if (backendHrefs.has(href)) return;
+                    // A backend module owns this route; don't double-register.
+                    if (backendHrefs.has(href)) return;
+                    // Already registered (defensive against duplicate keys).
+                    if (Config.customPages.some((p) => p.href === href)) return;
 
-                const page: CustomPage = {
-                    href,
-                    name: key,
-                    uuid: meta.getUUID(),
-                    title: meta.getTitle(),
-                    isPage: meta.isPageComponent(),
-                    requiresAuth:
-                        typeof meta.requiresAuthentication === "function"
-                            ? meta.requiresAuthentication()
-                            : false,
-                    requiresAdmin:
-                        typeof meta.requiresAdministration === "function"
-                            ? meta.requiresAdministration()
-                            : false,
-                    component: Cls,
-                    props: Cls.props || {},
-                    extraRoutes: Cls.extraRoutes || [],
-                    condition: typeof Cls.condition === "function" ? Cls.condition : undefined,
-                };
+                    const page: CustomPage = {
+                        href,
+                        name: key,
+                        uuid: meta.getUUID(),
+                        title: meta.getTitle(),
+                        isPage: meta.isPageComponent(),
+                        requiresAuth:
+                            typeof meta.requiresAuthentication === "function"
+                                ? meta.requiresAuthentication()
+                                : false,
+                        requiresAdmin:
+                            typeof meta.requiresAdministration === "function"
+                                ? meta.requiresAdministration()
+                                : false,
+                        component: Cls,
+                        props: Cls.props || {},
+                        extraRoutes: Cls.extraRoutes || [],
+                        condition: typeof Cls.condition === "function" ? Cls.condition : undefined,
+                    };
 
-                if (!Auth.canAccessModule(page)) return;
-                Config.customPages.push(page);
-            });
+                    if (!Auth.canAccessModule(page)) return;
+                    Config.customPages.push(page);
+                });
+            };
+
+            scan(appPages as Record<string, any>);
+            scan(enginePages as Record<string, any>);
         })();
 
         return Config.initPromise;

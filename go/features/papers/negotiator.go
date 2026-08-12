@@ -7,7 +7,7 @@ import (
 
 	"tls-rest/go/lib"
 
-	"github.com/pion/webrtc/v3"
+	"github.com/pion/webrtc/v4"
 )
 
 type message struct {

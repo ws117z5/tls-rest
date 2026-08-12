@@ -36,7 +36,8 @@ export const FIELD_TYPES = {
   ACTIVE_INACTIVE: 'ActiveInactive',
   YES_NO: 'YesNo',
   MONTH: 'Month',
-  BBCODE: 'BBCode'
+  BBCODE: 'BBCode',
+  IMAGE: 'Image'
 };
 
 // Mode constants
@@ -105,18 +106,27 @@ interface FieldsetProviderProps {
   children: React.ReactNode;
   module: string;
   mode?: number;
+  // Optional inline fieldset. When provided (e.g. by a FieldsetPage that already
+  // fetched {Data, Fieldset} from a single endpoint), it is used directly and no
+  // /api/modules/{module}/fieldset request is made.
+  fieldset?: FieldsetData | null;
 }
 
-export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, module, mode = MODES.ALL }) => {
-  const [fieldset, setFieldset] = useState<FieldsetData | null>(null);
-  const [loading, setLoading] = useState(true);
+export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, module, mode = MODES.ALL, fieldset: inlineFieldset = null }) => {
+  const [fieldset, setFieldset] = useState<FieldsetData | null>(inlineFieldset);
+  const [loading, setLoading] = useState(!inlineFieldset);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (inlineFieldset) {
+      setFieldset(inlineFieldset);
+      setLoading(false);
+      return;
+    }
     if (module) {
       fetchFieldset();
     }
-  }, [module, mode]);
+  }, [module, mode, inlineFieldset]);
 
   const fetchFieldset = async () => {
     try {

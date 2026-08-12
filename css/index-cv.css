@@ -1,0 +1,270 @@
+/* Index / CV page — the résumé lives inside a monitor that upgrades across three
+   machines as you scroll: green CRT -> amber CRT -> modern flat panel. Each
+   monitor's own lit screen shows through (dark text on top); colors, inset and
+   the page background are blended from three opacity weights (--op1/2/3) set in
+   JS, so everything tracks the visible monitor and the page seamlessly matches
+   the image's edge colour at any size. A hard glitch flash fires at each switch. */
+
+@import url("https://fonts.googleapis.com/css2?family=VT323&family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&display=swap");
+
+.cv-root {
+  --op1: 1;   /* green CRT weight */
+  --op2: 0;   /* amber CRT weight */
+  --op3: 0;   /* modern panel weight */
+  --glitch: 0;
+  --crt: 1;   /* screen curvature (both CRTs) */
+
+  --fg: #0b140e;
+
+  --screen-top: 13.9%;
+  --screen-left: 12.6%;
+  --screen-right: 12.6%;
+  --screen-bottom: 23.3%;
+
+  position: relative;
+  background: #000;
+  color: var(--fg);
+}
+
+.cv-stage {
+  height: 360vh;
+  position: relative;
+}
+
+.cv-frame {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3vh 16px;
+  box-sizing: border-box;
+}
+
+.cv-monitor {
+  position: relative;
+  width: min(95vw, calc(86vh * 1302 / 1208), 1180px);
+  aspect-ratio: 1302 / 1208;
+}
+
+.cv-frame-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  user-select: none;
+  pointer-events: none;
+}
+.cv-frame-img.s1 { opacity: var(--op1); }
+.cv-frame-img.s2 { opacity: var(--op2); }
+.cv-frame-img.s3 { opacity: var(--op3); }
+
+/* The glass is transparent: the monitor image's own lit screen is the
+   background. Inset + curvature are interpolated between the three monitors. */
+.cv-screen {
+  position: absolute;
+  top: var(--screen-top);
+  left: var(--screen-left);
+  right: var(--screen-right);
+  bottom: var(--screen-bottom);
+  overflow: hidden;
+  background: transparent;
+  border-radius: calc(var(--crt) * 20px + 3px);
+  scrollbar-width: none;
+}
+.cv-screen::-webkit-scrollbar { display: none; }
+
+.cv-content {
+  position: relative;
+  z-index: 2;
+  padding: clamp(16px, 3.2vw, 34px);
+  font-family: "VT323", "Courier New", monospace;
+  font-size: clamp(15px, 2.05vw, 20px);
+  line-height: 1.5;
+  letter-spacing: 0.02em;
+  color: var(--fg);
+  /* Only the glitch RGB split remains in the shadow (dark text, no glow). */
+  text-shadow:
+    calc(var(--glitch) * -6px) 0 0 rgba(255, 40, 90, calc(var(--glitch) * 0.85)),
+    calc(var(--glitch) * 6px) 0 0 rgba(40, 170, 255, calc(var(--glitch) * 0.85));
+  animation: cv-slice 0.16s steps(2, jump-none) infinite;
+}
+.cv-root.modern .cv-content {
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: clamp(13px, 1.55vw, 16px);
+  line-height: 1.6;
+  letter-spacing: 0;
+}
+
+/* Blocky horizontal tear — big amplitude, but only during the brief flash. */
+@keyframes cv-slice {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(calc(var(--glitch) * -11px), 0, 0); }
+  40% { transform: translate3d(calc(var(--glitch) * 8px), calc(var(--glitch) * -2px), 0); }
+  60% { transform: translate3d(calc(var(--glitch) * -6px), calc(var(--glitch) * 2px), 0); }
+  80% { transform: translate3d(calc(var(--glitch) * 12px), 0, 0); }
+}
+
+/* Boot line */
+.cv-boot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9em;
+  opacity: 0.8;
+  margin-bottom: 1.4em;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+.cv-cursor {
+  display: inline-block;
+  width: 0.6em;
+  height: 1.05em;
+  background: var(--fg);
+  animation: cv-blink 1.05s steps(1) infinite;
+  vertical-align: -2px;
+}
+.cv-root.modern .cv-cursor { display: none; }
+@keyframes cv-blink { 50% { opacity: 0; } }
+
+/* Name / masthead */
+.cv-name {
+  font-family: "VT323", monospace;
+  font-weight: 400;
+  font-size: clamp(2.1em, 6vw, 3.1em);
+  line-height: 1;
+  margin: 0 0 0.15em;
+  letter-spacing: 0.04em;
+}
+.cv-root.modern .cv-name {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.cv-role {
+  font-size: 1em;
+  opacity: 0.9;
+  margin: 0 0 1em;
+}
+.cv-role b { font-weight: inherit; }
+.cv-root.modern .cv-role b { font-weight: 600; }
+
+.cv-contact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em 1.4em;
+  font-size: 0.86em;
+  opacity: 0.9;
+  margin-bottom: 1.4em;
+  padding-bottom: 1.4em;
+  border-bottom: 1px solid currentColor;
+}
+.cv-contact a { color: inherit; text-decoration: none; border-bottom: 1px dotted currentColor; }
+.cv-badge { border: 1px solid currentColor; padding: 0 0.5em; border-radius: 2px; opacity: 0.85; }
+
+/* Sections */
+.cv-section { margin: 1.7em 0; }
+.cv-section > h2 {
+  font-family: inherit;
+  font-size: 0.82em;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin: 0 0 0.9em;
+}
+.cv-section > h2::before { content: "> "; }
+.cv-root.modern .cv-section > h2 {
+  font-family: "Space Grotesk", sans-serif;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  opacity: 0.55;
+}
+.cv-root.modern .cv-section > h2::before { content: ""; }
+
+/* Experience as a dated timeline */
+.cv-job { margin-bottom: 1.3em; padding-left: 1em; border-left: 1px solid currentColor; }
+.cv-job-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.2em 1em; align-items: baseline; }
+.cv-job-org { font-weight: inherit; }
+.cv-root.modern .cv-job-org { font-weight: 600; }
+.cv-job-role { opacity: 0.85; font-size: 0.92em; }
+.cv-job-when { opacity: 0.7; font-size: 0.85em; white-space: nowrap; }
+.cv-job ul { margin: 0.5em 0 0; padding-left: 1.1em; }
+.cv-job li { margin: 0.25em 0; }
+
+/* Competency grid */
+.cv-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.9em 1.4em; }
+.cv-grid dt { font-size: 0.82em; text-transform: uppercase; letter-spacing: 0.1em; opacity: 0.65; margin-bottom: 0.15em; }
+.cv-grid dd { margin: 0; font-size: 0.94em; opacity: 0.95; }
+
+/* --- Glitch: a hard, brief flash with digital artifacts (flares with --glitch) --- */
+.cv-static {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  mix-blend-mode: overlay;
+  opacity: calc(var(--glitch) * 0.7);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.55' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.75'/></svg>");
+  background-size: 180px 180px;
+  animation: cv-static 0.09s steps(2) infinite;
+}
+@keyframes cv-static {
+  0% { background-position: 0 0; }
+  100% { background-position: 60px -40px; }
+}
+
+/* Bright flash + colored digital blocks (cyan / magenta / white tear lines),
+   like a hextech glitch. Blends in for ~2 frames then gone. */
+.cv-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: var(--glitch);
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0) 0 16px,
+      rgba(0, 255, 214, 0.5) 16px 24px,
+      rgba(0, 0, 0, 0) 24px 40px,
+      rgba(255, 0, 128, 0.5) 40px 47px,
+      rgba(0, 0, 0, 0) 47px 70px,
+      rgba(255, 255, 255, 0.75) 70px 74px,
+      rgba(0, 0, 0, 0) 74px 104px
+    ),
+    linear-gradient(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.12));
+  background-size: 100% 104px, 100% 100%;
+  animation: cv-flashmove 0.06s steps(3) infinite;
+}
+@keyframes cv-flashmove {
+  0% { transform: translateY(0) translateX(0); }
+  50% { transform: translateY(-14px) translateX(calc(var(--glitch) * -6px)); }
+  100% { transform: translateY(-34px) translateX(calc(var(--glitch) * 5px)); }
+}
+
+.cv-hint {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-family: "Space Grotesk", sans-serif;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #163a26;
+  opacity: calc(var(--op1) - 0.2);
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cv-cursor { animation: none; }
+  .cv-content { animation: none; }
+  .cv-static,
+  .cv-flash { display: none; }
+}

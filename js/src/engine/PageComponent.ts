@@ -29,6 +29,11 @@ S = PageComponentState
   protected requiresAuth: boolean = false;
   protected title: string = "";
   protected href: string = "";
+  // Frontend-only pages have an href for routing/menu but no backend endpoint.
+  // The base data fetch is therefore opt-in: a page that actually has a
+  // GET /{href} -> {Data, Fieldset} endpoint sets loadsData = true. Off by
+  // default so endpoint-less pages don't 404 on mount.
+  protected loadsData: boolean = false;
   static condition: () => boolean = () => true;
 
   constructor(props: P) {
@@ -44,7 +49,7 @@ S = PageComponentState
   }
 
   async componentDidMount() {
-    if (this.href) {
+    if (this.href && this.loadsData) {
       await this.fetchDefaultApiData();
     }
   }

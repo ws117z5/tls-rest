@@ -86,6 +86,13 @@ export default class Participant extends Component<ParticipantProps, Participant
 
         navigator.mediaDevices.getUserMedia({ video: true, audio: false })
             .then(stream => {
+                // The connection may have closed while getUserMedia was in flight
+                // (e.g. StrictMode remount). Release the camera and bail cleanly.
+                if (pc.signalingState === "closed") {
+                    stream.getTracks().forEach(t => t.stop());
+                    return null;
+                }
+
                 this.localStream = stream;
                 stream.getTracks().forEach(track => {
                     pc.addTrack(track, stream);
@@ -96,7 +103,9 @@ export default class Participant extends Component<ParticipantProps, Participant
 
                 return pc.createOffer();
             })
-            .then(d => pc.setLocalDescription(d))
+            .then(d => {
+                if (d) return pc.setLocalDescription(d);
+            })
             .catch(Log.log);
 
         this.props.onUserInit(name, word, uuid, "");
