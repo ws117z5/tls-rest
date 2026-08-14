@@ -39,14 +39,16 @@ export {default as JsonEdit} from "./Json/Edit"
 export {default as JsonView} from "./Json/View"
 export {default as JsonList} from "./Json/List"
 
-export {default as BBCodeEdit} from "./BBCode/Edit"
-export {default as BBCodeView} from "./BBCode/View"
+export {default as MarkdownEdit} from "./Markdown/Edit"
+export {default as MarkdownView} from "./Markdown/View"
+export {default as MarkdownList} from "./Markdown/List"
 
 // Main components
 export {default as Field} from "./Field"
 export {default as FieldsetProvider} from "./FieldsetProvider"
 export {default as FieldsetForm} from "./FieldsetForm"
 export {default as FieldsetList} from "./FieldsetList"
+export {default as FieldsetFilters} from "./FieldsetFilters"
 
 // Export constants and hooks
 export { FIELD_TYPES, MODES, useFieldset } from "./FieldsetProvider"

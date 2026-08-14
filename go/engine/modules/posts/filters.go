@@ -1,0 +1,48 @@
+package posts
+
+import (
+	module "tls-rest/go/engine"
+)
+
+// filters declares the filters accepted by GET /posts (list mode).
+//
+// Each filter is an ordinary fieldset Field: its Name is the query parameter the
+// client sends, its Type drives value casting, and the operator helper
+// (Equals/Contains/GreaterOrEqual/...) decides how it becomes a SQL WHERE clause.
+// See go/engine/filter.go for the available helpers.
+//
+// Examples:
+//
+//	GET /posts?title=hello            -> WHERE title ILIKE '%hello%'
+//	GET /posts?public=true            -> WHERE public = true
+//	GET /posts?created_from=2024-01-01 -> WHERE created >= '2024-01-01'
+//	GET /posts?created_to=2024-12-31   -> WHERE created <= '2024-12-31'
+//
+// Filters combine with AND, and with the built-in search/sort/pagination params.
+func (p *Posts) filters() *module.Filedset {
+	return module.NewFieldset(
+		// Case-insensitive substring match on the title column.
+		module.NewFilter("title", module.TYPE_STRING).
+			WithLabel("Title").
+			Contains(),
+
+		// Exact boolean match on the public flag.
+		module.NewFilter("public", module.TYPE_CHECKBOX).
+			WithLabel("Public").
+			Equals(),
+
+		// Date range against the created column. The filter parameter names
+		// (created_from / created_to) differ from the column (created), which is
+		// set with WithSQL; the ::timestamptz cast lets a plain date string bind
+		// against the timestamp column.
+		module.NewFilter("created_from", module.TYPE_DATE).
+			WithLabel("Created from").
+			WithSQL("created").
+			WithSQLWhere("created >= %s::timestamptz"),
+
+		module.NewFilter("created_to", module.TYPE_DATE).
+			WithLabel("Created to").
+			WithSQL("created").
+			WithSQLWhere("created <= %s::timestamptz"),
+	)
+}

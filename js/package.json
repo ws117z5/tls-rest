@@ -48,6 +48,8 @@
     "@react-three/fiber": "^9.7.0",
     "bootstrap": "^5.3.8",
     "motion": "^12.42.2",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "three": "^0.185.1",
     "ts-loader": "^9.6.2",
     "typescript": "^7.0.2",

@@ -36,7 +36,7 @@ export const FIELD_TYPES = {
   ACTIVE_INACTIVE: 'ActiveInactive',
   YES_NO: 'YesNo',
   MONTH: 'Month',
-  BBCODE: 'BBCode',
+  MARKDOWN: 'Markdown',
   IMAGE: 'Image'
 };
 

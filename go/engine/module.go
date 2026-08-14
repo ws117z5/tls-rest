@@ -43,9 +43,14 @@ type ModuleHandler interface {
 
 // Module represents a business module in your system.
 type ModuleAbstract[T any] struct {
-	ID                string
-	Name              string
-	Fields            []Field
+	ID     string
+	Name   string
+	Fields []Field
+	// Filters declares the list-mode filters this module accepts, as an ordinary
+	// fieldset (conventionally defined in <module>/filters.go). When set, the
+	// fieldset engine turns matching query parameters into SQL WHERE clauses for
+	// List. Nil means the module declares no filters.
+	Filters           *Filedset
 	Rights            map[int]int // Legacy rights system (deprecated)
 	Data              []T
 	DefaultPermission int // Default permission level for new rights system
@@ -70,6 +75,11 @@ func (m *ModuleAbstract[T]) GetName() string {
 
 func (m *ModuleAbstract[T]) GetFields() []Field {
 	return m.Fields
+}
+
+// GetFilters returns the module's declared list-mode filters (may be nil).
+func (m *ModuleAbstract[T]) GetFilters() *Filedset {
+	return m.Filters
 }
 
 func (m *ModuleAbstract[T]) AddField(field Field) {
@@ -362,10 +372,11 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	ModuleLogger.Printf("Creating controller wrapper for module: %s", m.ID)
 
 	moduleWrapper := &ModuleAbstract[interface{}]{
-		ID:     m.ID,
-		Name:   m.Name,
-		Fields: m.Fields,
-		Rights: m.Rights,
+		ID:      m.ID,
+		Name:    m.Name,
+		Fields:  m.Fields,
+		Filters: m.Filters,
+		Rights:  m.Rights,
 	}
 
 	ModuleLogger.Printf("Creating base controller for module: %s", m.ID)

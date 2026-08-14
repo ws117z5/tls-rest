@@ -129,6 +129,11 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 		whereConditions = append(whereConditions, filterConditions...)
 	}
 
+	// Declared list filters (module <name>/filters.go): turn matching query
+	// parameters into WHERE clauses for list mode.
+	declaredFilters := fe.buildDeclaredFilterConditions(&argIndex, &args)
+	whereConditions = append(whereConditions, declaredFilters...)
+
 	// Row-level access filtering: non-admins only see records whose access level
 	// is within their own (admins see everything).
 	if !v.isAdmin && fe.hasField("access") {
@@ -175,6 +180,11 @@ func (fe *FieldsetEngine) BuildCountQuery(params *QueryParams) (string, []interf
 		filterConditions := fe.buildFilterConditions(params.Filters, &argIndex, &args)
 		whereConditions = append(whereConditions, filterConditions...)
 	}
+
+	// Same declared list filters as the select query, so the total count matches
+	// the filtered result set.
+	declaredFilters := fe.buildDeclaredFilterConditions(&argIndex, &args)
+	whereConditions = append(whereConditions, declaredFilters...)
 
 	// Keep the count consistent with the filtered result set.
 	if !v.isAdmin && fe.hasField("access") {

@@ -9,6 +9,7 @@ import {
   SelectEdit, SelectView, SelectList,
   CheckboxList,
   ImageEdit, ImageView, ImageList,
+  MarkdownEdit, MarkdownView, MarkdownList,
   ButtonView
 } from './index';
 
@@ -99,6 +100,11 @@ const FIELD_COMPONENTS = {
     [MODES.EDIT]: CheckboxList,
     [MODES.VIEW]: CheckboxList,
     [MODES.LIST]: CheckboxList,
+  },
+  [FIELD_TYPES.MARKDOWN]: {
+    [MODES.EDIT]: MarkdownEdit,
+    [MODES.VIEW]: MarkdownView,
+    [MODES.LIST]: MarkdownList,
   },
   [FIELD_TYPES.IMAGE]: {
     [MODES.EDIT]: ImageEdit,

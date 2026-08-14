@@ -55,6 +55,32 @@ func (bc *BaseController) createFieldsetMap(r *http.Request) map[string]interfac
 	return fieldset
 }
 
+// createFiltersMap describes the module's declared list filters so the frontend
+// can render filter controls. Filters the viewer may not see (per field access)
+// are omitted, mirroring the fieldset visibility rules.
+func (bc *BaseController) createFiltersMap(r *http.Request) []map[string]interface{} {
+	filters := []map[string]interface{}{}
+	if bc.Module == nil || bc.Module.Filters == nil {
+		return filters
+	}
+
+	v := viewerFromRequest(r)
+	for _, field := range bc.Module.Filters.Fields {
+		if !v.fieldVisibleInSchema(field) {
+			continue
+		}
+		filters = append(filters, map[string]interface{}{
+			"name":    field.Name,
+			"type":    field.Type,
+			"label":   field.Label,
+			"match":   field.filterMatch(),
+			"options": field.Options,
+		})
+	}
+
+	return filters
+}
+
 // List handles GET requests for listing records with pagination and filtering
 func (bc *BaseController) List(w http.ResponseWriter, r *http.Request) {
 	// Set CORS headers for API calls
@@ -80,6 +106,7 @@ func (bc *BaseController) List(w http.ResponseWriter, r *http.Request) {
 	compatResponse := map[string]interface{}{
 		"Data":       result.Data,
 		"Fieldset":   bc.createFieldsetMap(r),
+		"Filters":    bc.createFiltersMap(r),
 		"Total":      result.Total,
 		"Page":       result.Page,
 		"Limit":      result.Limit,

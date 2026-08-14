@@ -1,13 +1,19 @@
 import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 
-import { FieldsetProvider, FieldsetForm, FieldsetList, MODES } from "./fields";
-import registry, { ModuleViews } from "@modules/registry";
+import { FieldsetProvider, FieldsetForm, FieldsetList, FieldsetFilters, MODES } from "./fields";
+import {
+    getModuleViews,
+    ModuleViews,
+    ModuleFilterMeta,
+} from "@modules/registry";
 
 // The generic page for any backend module. Given a module name, its API
 // endpoint, and a mode, it loads the right data and renders the fieldset —
 // list via FieldsetList, view/edit/create via FieldsetForm. No per-module code
-// is required; a module may still override any mode through the view registry.
+// is required; a module may still override any mode by dropping a file in its
+// directory (list.tsx / view.tsx / edit.tsx / create.tsx / filters.tsx), which
+// is discovered automatically by the module registry.
 //
 // Modes are gated by `modes` (the user's permitted modes from /api/modules):
 // action buttons for create/edit/delete only appear when allowed, and the
@@ -51,6 +57,14 @@ const ModulePage: React.FC<ModulePageProps> = ({
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
+    // List filters. `draftFilters` is what the user is editing; `appliedFilters`
+    // is what is actually sent to the server (only changes on Apply/Reset, so we
+    // don't refetch on every keystroke). `filtersMeta` is the set of declared
+    // filters the backend returns with the list response.
+    const [filtersMeta, setFiltersMeta] = useState<ModuleFilterMeta[]>([]);
+    const [draftFilters, setDraftFilters] = useState<Record<string, any>>({});
+    const [appliedFilters, setAppliedFilters] = useState<Record<string, any>>({});
+
     const go = useCallback(
         (to: string) => {
             if (navigate) navigate(to);
@@ -66,8 +80,16 @@ const ModulePage: React.FC<ModulePageProps> = ({
         setError(null);
         try {
             if (mode === "list") {
-                const res = await axios.get(base);
+                // Only send non-empty filter values, as plain query params
+                // (the backend accepts ?name=value for declared filters).
+                const activeParams: Record<string, any> = {};
+                Object.keys(appliedFilters).forEach((k) => {
+                    const v = appliedFilters[k];
+                    if (v !== "" && v !== undefined && v !== null) activeParams[k] = v;
+                });
+                const res = await axios.get(base, { params: activeParams });
                 setData(res.data?.Data || []);
+                setFiltersMeta(res.data?.Filters || []);
             } else if ((mode === "view" || mode === "edit") && id) {
                 const res = await axios.get(`${base}/${id}`);
                 const d = res.data?.Data;
@@ -81,7 +103,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [base, mode, id]);
+    }, [base, mode, id, appliedFilters]);
 
     useEffect(() => {
         load();
@@ -112,9 +134,23 @@ const ModulePage: React.FC<ModulePageProps> = ({
         [base, mode, id, go]
     );
 
-    // Custom view override, if one is registered for this module + mode.
-    const views: ModuleViews = registry[module] || {};
-    const Custom = views[mode as keyof ModuleViews];
+    // Filter handlers, handed to the filter bar (custom or default).
+    const onFilterChange = useCallback((name: string, value: any) => {
+        setDraftFilters((prev) => ({ ...prev, [name]: value }));
+    }, []);
+    const applyFilters = useCallback(() => setAppliedFilters(draftFilters), [draftFilters]);
+    const resetFilters = useCallback(() => {
+        setDraftFilters({});
+        setAppliedFilters({});
+    }, []);
+
+    // Auto-discovered per-module overrides (list/view/edit/create/filters).
+    const views: ModuleViews = getModuleViews(module);
+
+    // A full-page override for the current mode takes over entirely.
+    const Custom = views[mode as keyof ModuleViews] as
+        | React.ComponentType<any>
+        | undefined;
     if (Custom) {
         return (
             <Custom
@@ -146,6 +182,9 @@ const ModulePage: React.FC<ModulePageProps> = ({
     }
 
     if (mode === "list") {
+        // Custom filter bar if the module provides one, else the standard bar
+        // built from the backend's declared filters.
+        const FiltersComp = views.filters || FieldsetFilters;
         return (
             <div className="container-fluid">
                 <div className="d-flex justify-content-between align-items-center mb-3">
@@ -156,6 +195,14 @@ const ModulePage: React.FC<ModulePageProps> = ({
                         </button>
                     )}
                 </div>
+                <FiltersComp
+                    module={module}
+                    meta={filtersMeta}
+                    values={draftFilters}
+                    onChange={onFilterChange}
+                    onApply={applyFilters}
+                    onReset={resetFilters}
+                />
                 <FieldsetProvider module={module} mode={MODES.LIST}>
                     <FieldsetList
                         data={data}

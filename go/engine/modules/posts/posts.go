@@ -22,16 +22,19 @@ func NewPosts() *Posts {
 		},
 	}
 
-	// Initialize fields in dedicated method (like PHP init() method)
-	moduleInstance.init()
+	// Build the field and filter sets. fieldset() defines the columns/form
+	// fields; filters() (in filters.go) defines the list-mode filters. Default
+	// system fields are added automatically by Initialize().
+	moduleInstance.ModuleAbstract.Fields = moduleInstance.fieldset()
+	moduleInstance.ModuleAbstract.Filters = moduleInstance.filters()
 
 	return moduleInstance
 }
 
-// init method defines all fields and module configuration (like CInvoice.php init method)
-func (p *Posts) init() {
-	// Define module-specific fields (default fields auto-added by system)
-	fields := []module.Field{
+// fieldset defines the module's fields. It is the field-set counterpart to
+// filters() in filters.go: both build a set that the fieldset engine consumes.
+func (p *Posts) fieldset() []module.Field {
+	return []module.Field{
 		module.NewField("title", module.TYPE_STRING, true).
 			WithLabel("Title").
 			WithDescription("Post title").
@@ -59,8 +62,6 @@ func (p *Posts) init() {
 			WithDescription("Whether the post is publicly visible").
 			WithDefault(false),
 	}
-
-	p.ModuleAbstract.Fields = fields
 }
 
 // Global module instance (initialized at startup)

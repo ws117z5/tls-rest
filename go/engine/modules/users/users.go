@@ -116,16 +116,17 @@ func NewUsers() *Users {
 		},
 	}
 
-	// Initialize fields in dedicated method (like PHP init() method)
-	module.init()
+	// Build the field set. Default system fields are added automatically by
+	// Initialize().
+	module.Fields = module.fieldset()
 
 	return module
 }
 
-// init method defines all fields and module configuration (like CInvoice.php init method)
-func (u *Users) init() {
-	// Define module-specific fields (default fields auto-added by system)
-	fields := []Field{
+// fieldset defines the module's fields (default system fields are added
+// automatically by Initialize()).
+func (u *Users) fieldset() []Field {
+	return []Field{
 		NewField("user_name", TYPE_STRING, false).
 			WithLabel("Username").
 			WithDescription("User's display name").
@@ -167,8 +168,6 @@ func (u *Users) init() {
 			WithOption("valueField", "id").
 			WithOption("displayField", "name"),
 	}
-
-	u.Fields = fields
 }
 
 // Global module instance (initialized at startup)
