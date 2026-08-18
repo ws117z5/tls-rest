@@ -5,12 +5,12 @@
 // content can never inject markup. This module only holds the pure helpers the
 // editor and renderer need — no React, no DOM.
 //
-// Images uploaded to the backend can be referenced by their id in normal image
-// syntax, e.g. ![caption](<id>); resolveImageSrc turns a bare id into the
-// /api/posts/images/<id> URL. Absolute http(s) and root-relative URLs are also
-// allowed; anything else is dropped.
+// Images uploaded to the backend are referenced by their guid in normal image
+// syntax, e.g. ![caption](<guid>.png); resolveImageSrc turns a bare guid into
+// the /image/<guid>.<ext> URL, which the server serves with access control.
+// Absolute http(s) and root-relative URLs are passed through unchanged.
 
-const IMG_BASE = "/api/posts/images/";
+const IMG_BASE = "/image/";
 
 // Allow only safe link targets: http(s), root-relative, mailto, and in-page
 // anchors. Everything else (javascript:, data:, etc.) is rejected.
@@ -19,13 +19,13 @@ export function safeUrl(url: string): string {
     return /^(https?:\/\/|\/|mailto:|#)/i.test(u) ? u : "";
 }
 
-// Resolve an image src: pass through safe absolute/relative URLs, turn a bare
-// backend image id into its API URL, and drop anything else.
+// Resolve an image src: pass through safe absolute/root-relative URLs, and turn
+// a bare image reference (guid, optionally with a .ext) into its /image/ URL.
 export function resolveImageSrc(src: string): string {
     const s = (src || "").trim();
     if (!s) return "";
     if (/^(https?:\/\/|\/)/i.test(s)) return s;
-    if (/^[a-zA-Z0-9_-]+$/.test(s)) return IMG_BASE + s;
+    if (/^[a-zA-Z0-9_.-]+$/.test(s)) return IMG_BASE + s;
     return "";
 }
 
@@ -48,6 +48,12 @@ export const MD_TOOLS: MdTool[] = [
     { label: "Quote", title: "Quote", open: "> ", close: "" },
     { label: "List", title: "List item", open: "- ", close: "" },
     { label: "Code block", title: "Code block", open: "\n```\n", close: "\n```\n" },
+    // Inline / block LaTeX (rendered by KaTeX). $a^2+b^2$ and $$ … $$.
+    { label: "∑", title: "Inline math", open: "$", close: "$" },
+    { label: "∑∑", title: "Block math", open: "\n$$\n", close: "\n$$\n" },
+    // Whitelisted component (see fields/Markdown/components). Renders the "note"
+    // container directive; other allowed components follow the same :::name form.
+    { label: "Note", title: "Note component", open: "\n:::note\n", close: "\n:::\n" },
 ];
 
 export interface WrapResult {
@@ -95,9 +101,14 @@ export function stripMarkdown(input: string, max = 140): string {
     if (!input) return "";
     let s = input;
     s = s.replace(/```[\s\S]*?```/g, " ");         // fenced code blocks
+    s = s.replace(/\$\$[\s\S]*?\$\$/g, " ");        // block math
+    s = s.replace(/\$([^$]+)\$/g, "$1");            // inline math -> its source
+    s = s.replace(/^:::.*$/gm, " ");                // directive fences
+    s = s.replace(/:[a-zA-Z][\w-]*(\[[^\]]*\])?(\{[^}]*\})?/g, "$1"); // inline directives -> label
     s = s.replace(/`([^`]+)`/g, "$1");             // inline code
     s = s.replace(/!\[[^\]]*\]\([^)]*\)/g, " ");   // images
     s = s.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1"); // links -> link text
+    s = s.replace(/[\[\]]/g, "");                  // leftover directive-label brackets
     s = s.replace(/^#{1,6}\s+/gm, "");             // headings
     s = s.replace(/^\s{0,3}>\s?/gm, "");           // blockquotes
     s = s.replace(/^\s*[-*+]\s+/gm, "");           // list bullets

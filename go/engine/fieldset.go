@@ -135,6 +135,29 @@ func (f Field) WithOption(key string, value interface{}) Field {
 	return f
 }
 
+// WithoutDescription drops this field's description column in view/edit forms, so
+// the value spans the full row.
+func (f Field) WithoutDescription() Field {
+	f.Options["hideDescription"] = true
+	return f
+}
+
+// WithDescriptionWidth predefines this field's description-column width (px) for
+// view/edit forms. The whole form's description column takes the widest such
+// value across its fields.
+func (f Field) WithDescriptionWidth(px int) Field {
+	f.Options["descriptionWidth"] = px
+	return f
+}
+
+// WithValueWidth predefines this field's value-column width (px) for view/edit
+// forms. The whole form's value column takes the widest such value across its
+// fields (unset => the value column flex-fills the row).
+func (f Field) WithValueWidth(px int) Field {
+	f.Options["valueWidth"] = px
+	return f
+}
+
 func (f Field) NonFilterable() Field {
 	f.Filterable = false
 	return f

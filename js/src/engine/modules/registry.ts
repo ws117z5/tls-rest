@@ -1,27 +1,5 @@
 import React from "react";
 
-// Webpack 5's import.meta.webpackContext (used below for build-time discovery)
-// is not in the default TypeScript lib and we don't depend on
-// @types/webpack-env, so declare just the surface we use. Kept here via
-// `declare global` so it travels with this file regardless of tsconfig include.
-declare global {
-    interface ImportMeta {
-        webpackContext(
-            request: string,
-            options?: {
-                recursive?: boolean;
-                regExp?: RegExp;
-                mode?: "sync" | "eager" | "weak" | "lazy" | "lazy-once";
-            }
-        ): {
-            keys(): string[];
-            <T = any>(id: string): T;
-            resolve(id: string): string;
-            id: string | number;
-        };
-    }
-}
-
 // Per-module custom presentation, discovered automatically.
 //
 // A module needs NO manual registration to work — the generic ModulePage renders

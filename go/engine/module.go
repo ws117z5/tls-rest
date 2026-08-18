@@ -41,6 +41,36 @@ type ModuleHandler interface {
 	Delete(w http.ResponseWriter, r *http.Request)
 }
 
+// HandlerOverrides lets a module replace individual engine handlers without
+// implementing all of them (unlike CustomHandler, which is all-or-nothing). A
+// nil field falls through to CustomHandler and then the default controller, so a
+// module can override just one action (e.g. List) and keep the rest generic.
+type HandlerOverrides struct {
+	List   http.HandlerFunc
+	View   http.HandlerFunc
+	Create http.HandlerFunc
+	Edit   http.HandlerFunc
+	Delete http.HandlerFunc
+}
+
+// CustomRoute is an extra route a module registers beyond the standard CRUD
+// (e.g. a binary upload or serve endpoint). When Absolute is true the Path is
+// registered on the root router as-is; otherwise it is relative to the module's
+// /<id> subrouter. Methods defaults to GET when empty.
+type CustomRoute struct {
+	Path     string
+	Methods  []string
+	Handler  http.HandlerFunc
+	Absolute bool
+}
+
+// CustomRouter is implemented by modules that register routes beyond CRUD.
+// registerSingleModuleRoutes detects it, so a module only needs to populate its
+// CustomRoutes field (ModuleAbstract satisfies this automatically).
+type CustomRouter interface {
+	GetCustomRoutes() []CustomRoute
+}
+
 // Module represents a business module in your system.
 type ModuleAbstract[T any] struct {
 	ID     string
@@ -63,10 +93,21 @@ type ModuleAbstract[T any] struct {
 	// Optional custom handlers - if nil, will use default behavior
 	CustomHandler ModuleHandler
 	Controller    *BaseController // Exported for access by custom handlers
+
+	// Overrides replaces individual engine handlers (granular; a nil field uses
+	// the default). CustomRoutes adds endpoints beyond CRUD (e.g. binary
+	// upload/serve). Both are honoured automatically on route registration.
+	Overrides    HandlerOverrides
+	CustomRoutes []CustomRoute
 }
 
 func (m *ModuleAbstract[T]) GetID() string {
 	return m.ID
+}
+
+// GetCustomRoutes exposes the module's extra routes (satisfies CustomRouter).
+func (m *ModuleAbstract[T]) GetCustomRoutes() []CustomRoute {
+	return m.CustomRoutes
 }
 
 func (m *ModuleAbstract[T]) GetName() string {
@@ -343,6 +384,16 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 				Validation:   map[string]interface{}{"min": 0},
 			},
 		}
+		// System fields are engine-managed. If a module declares one of the
+		// non-editable system fields itself (e.g. its own uuid), force it
+		// read-only so it can never be edited regardless of how it was declared.
+		// access is excluded: it is the one system field admins are meant to set.
+		for i := range fields {
+			if IsSystemField(fields[i].Name) && fields[i].Name != "access" {
+				fields[i].ReadOnly = true
+			}
+		}
+
 		fieldMap := map[string]bool{}
 		for _, f := range fields {
 			fieldMap[f.Name] = true
@@ -453,6 +504,10 @@ func (m *ModuleAbstract[T]) List(w http.ResponseWriter, r *http.Request) {
 		})
 	}()
 
+	if m.Overrides.List != nil {
+		m.Overrides.List(w, r)
+		return
+	}
 	if m.CustomHandler != nil {
 		m.CustomHandler.List(w, r)
 		return
@@ -478,6 +533,10 @@ func (m *ModuleAbstract[T]) View(w http.ResponseWriter, r *http.Request) {
 		LogModuleEvent(event)
 	}()
 
+	if m.Overrides.View != nil {
+		m.Overrides.View(w, r)
+		return
+	}
 	if m.CustomHandler != nil {
 		m.CustomHandler.View(w, r)
 		return
@@ -496,6 +555,10 @@ func (m *ModuleAbstract[T]) Create(w http.ResponseWriter, r *http.Request) {
 		LogModuleEvent(event)
 	}()
 
+	if m.Overrides.Create != nil {
+		m.Overrides.Create(w, r)
+		return
+	}
 	if m.CustomHandler != nil {
 		m.CustomHandler.Create(w, r)
 		return
@@ -521,6 +584,10 @@ func (m *ModuleAbstract[T]) Edit(w http.ResponseWriter, r *http.Request) {
 		LogModuleEvent(event)
 	}()
 
+	if m.Overrides.Edit != nil {
+		m.Overrides.Edit(w, r)
+		return
+	}
 	if m.CustomHandler != nil {
 		m.CustomHandler.Edit(w, r)
 		return
@@ -546,6 +613,10 @@ func (m *ModuleAbstract[T]) Delete(w http.ResponseWriter, r *http.Request) {
 		LogModuleEvent(event)
 	}()
 
+	if m.Overrides.Delete != nil {
+		m.Overrides.Delete(w, r)
+		return
+	}
 	if m.CustomHandler != nil {
 		m.CustomHandler.Delete(w, r)
 		return
@@ -679,7 +750,7 @@ func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 		sqlType = "NUMERIC"
 	case TYPE_STRING:
 		sqlType = "VARCHAR(255)"
-	case TYPE_TEXT, TYPE_HTML:
+	case TYPE_TEXT, TYPE_HTML, TYPE_MARKDOWN:
 		sqlType = "TEXT"
 	case TYPE_DATE:
 		sqlType = "DATE"
@@ -961,6 +1032,23 @@ func registerSingleModuleRoutes(router *mux.Router, module ModuleInterface) {
 	subrouter.HandleFunc("/{id}", module.View).Methods("GET")
 	subrouter.HandleFunc("/{id}", module.Edit).Methods("PUT", "PATCH")
 	subrouter.HandleFunc("/{id}", module.Delete).Methods("DELETE")
+
+	// Register any module-supplied routes beyond CRUD (e.g. binary upload/serve).
+	// Absolute paths go on the root router; others are relative to /<moduleID>.
+	if cr, ok := module.(CustomRouter); ok {
+		for _, rt := range cr.GetCustomRoutes() {
+			methods := rt.Methods
+			if len(methods) == 0 {
+				methods = []string{"GET"}
+			}
+			if rt.Absolute {
+				router.HandleFunc(rt.Path, rt.Handler).Methods(methods...)
+			} else {
+				subrouter.HandleFunc(rt.Path, rt.Handler).Methods(methods...)
+			}
+			ModuleLogger.Printf("  custom route for %s: %v %s (absolute=%v)", moduleID, methods, rt.Path, rt.Absolute)
+		}
+	}
 
 	ModuleLogger.Printf("Routes registered for module %s: GET,POST /%s, GET,PUT,PATCH,DELETE /%s/{id}",
 		moduleID, moduleID, moduleID)

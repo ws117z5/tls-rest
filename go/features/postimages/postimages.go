@@ -2,6 +2,7 @@ package postimages
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -19,7 +20,7 @@ import (
 //
 // Requires a table such as:
 //
-//	CREATE TABLE post_images (
+//	CREATE TABLE images (
 //	    id         BIGSERIAL PRIMARY KEY,
 //	    uuid       TEXT NOT NULL,
 //	    post_id    BIGINT,
@@ -29,7 +30,7 @@ import (
 //	    created    TIMESTAMPTZ NOT NULL DEFAULT now()
 //	);
 type PostImage struct {
-	tableName struct{} `pg:"post_images"`
+	tableName struct{} `pg:"images"`
 
 	Id       int64  `pg:"id,pk" json:"id"`
 	Uuid     string `pg:"uuid" json:"uuid"`
@@ -71,12 +72,18 @@ func loadImageFromDB(key string) (cachedImage, error) {
 		return cachedImage{}, err
 	}
 
-	img := &PostImage{}
-	if err := db.Model(img).Where("id = ?", id).Select(); err != nil {
+	rows, err := db.RQuery("SELECT data, mime_type FROM images WHERE id = $1", id)
+	if err != nil {
 		return cachedImage{}, err
 	}
+	if len(rows) == 0 {
+		return cachedImage{}, fmt.Errorf("post image %d not found", id)
+	}
 
-	return cachedImage{Data: img.Data, MimeType: img.MimeType}, nil
+	return cachedImage{
+		Data:     pgdb.AsBytes(rows[0]["data"]),
+		MimeType: pgdb.AsString(rows[0]["mime_type"]),
+	}, nil
 }
 
 // Upload stores an uploaded image in the database and returns its metadata
@@ -123,11 +130,19 @@ func Upload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "database unavailable", http.StatusInternalServerError)
 		return
 	}
-	if _, err := db.Model(img).Insert(); err != nil {
+	id, err := db.InsertRow("images", map[string]interface{}{
+		"uuid":      img.Uuid,
+		"post_id":   img.PostId,
+		"filename":  img.Filename,
+		"mime_type": img.MimeType,
+		"data":      img.Data,
+	})
+	if err != nil {
 		log.Printf("postimages Upload: insert failed: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	img.Id = id
 
 	// Prime the cache so the first request for this image avoids a DB round-trip.
 	imageCache.Set(strconv.FormatInt(img.Id, 10), cachedImage{Data: data, MimeType: mimeType})
@@ -171,17 +186,32 @@ func List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var images []PostImage
-	q := db.Model(&images).Column("id", "uuid", "post_id", "filename", "mime_type")
+	sql := "SELECT id, uuid, post_id, filename, mime_type FROM images"
+	var args []interface{}
 	if v := r.URL.Query().Get("post_id"); v != "" {
 		if postID, perr := strconv.ParseInt(v, 10, 64); perr == nil {
-			q = q.Where("post_id = ?", postID)
+			sql += " WHERE post_id = $1"
+			args = append(args, postID)
 		}
 	}
-	if err := q.Order("id ASC").Select(); err != nil {
+	sql += " ORDER BY id ASC"
+
+	rows, err := db.RQuery(sql, args...)
+	if err != nil {
 		log.Printf("postimages List: select failed: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	images := make([]PostImage, 0, len(rows))
+	for _, row := range rows {
+		images = append(images, PostImage{
+			Id:       pgdb.AsInt64(row["id"]),
+			Uuid:     pgdb.AsString(row["uuid"]),
+			PostId:   pgdb.AsInt64(row["post_id"]),
+			Filename: pgdb.AsString(row["filename"]),
+			MimeType: pgdb.AsString(row["mime_type"]),
+		})
 	}
 
 	writeJSON(w, images)

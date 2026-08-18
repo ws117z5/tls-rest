@@ -14,7 +14,6 @@ import (
 	"tls-rest/go/lib/auth"
 	"tls-rest/go/lib/db/pgdb"
 
-	"github.com/go-pg/pg/v10"
 	"github.com/go-pg/urlstruct"
 	"github.com/gorilla/mux"
 )
@@ -40,39 +39,69 @@ type Data struct {
 	Data     []Module
 }
 
-// Helper: Build WHERE clause from query params and struct fields
-func applyWhereFromQuery(q *pg.Query, params map[string][]string, model interface{}) *pg.Query {
+// moduleColumns is the SELECT list for the modules table.
+const moduleColumns = "id, uuid, name, created_by, created_at, updated_at"
+
+// whereFromQuery builds a parameterised WHERE clause from query params, matching
+// each param against a field of `model` (by field name or json tag). Only matched
+// fields become conditions, and the column comes from the struct (json tag or
+// lowercased field name) — never the raw query key — so this can't inject
+// identifiers. Placeholders are Postgres-native $N.
+func whereFromQuery(params map[string][]string, model interface{}) (string, []interface{}) {
 	modelType := reflect.TypeOf(model)
 	if modelType.Kind() == reflect.Ptr {
 		modelType = modelType.Elem()
 	}
+
+	var clauses []string
+	var args []interface{}
+	i := 1
+
 	for key, values := range params {
 		if len(values) == 0 {
 			continue
 		}
-		// Check if key matches a struct field (by json tag or field name)
-		for i := 0; i < modelType.NumField(); i++ {
-			field := modelType.Field(i)
+		for f := 0; f < modelType.NumField(); f++ {
+			field := modelType.Field(f)
 			jsonTag := field.Tag.Get("json")
 			if strings.EqualFold(field.Name, key) || (jsonTag != "" && strings.EqualFold(jsonTag, key)) {
-				q = q.Where(fmt.Sprintf("%s = ?", key), values[0])
+				col := jsonTag
+				if col == "" {
+					col = strings.ToLower(field.Name)
+				}
+				clauses = append(clauses, fmt.Sprintf("%s = $%d", col, i))
+				args = append(args, values[0])
+				i++
 				break
 			}
 		}
 	}
-	return q
+
+	if len(clauses) == 0 {
+		return "", nil
+	}
+	return strings.Join(clauses, " AND "), args
+}
+
+// rowToModule maps a result-set row (from RQuery) into a Module.
+func rowToModule(row map[string]interface{}) Module {
+	return Module{
+		ID:        pgdb.AsInt64(row["id"]),
+		UUID:      pgdb.AsString(row["uuid"]),
+		Name:      pgdb.AsString(row["name"]),
+		CreatedBy: pgdb.AsString(row["created_by"]),
+		CreatedAt: pgdb.AsTime(row["created_at"]),
+		UpdatedAt: pgdb.AsTime(row["updated_at"]),
+	}
 }
 
 func List(w http.ResponseWriter, r *http.Request) {
-	//fmt.Fprintln(w, "List Posts!")
 	session, ok := r.Context().Value(auth.SESSION_KEY).(*auth.ContextKey)
 	if ok && session != nil {
 		// Use session.ID, session.UserID, etc.
 	}
-	//vars := mux.Vars(r)
 
 	modules := make([]Module, 0)
-	//var values = pager.Values(r.URL.Query())
 
 	filter := new(Filter)
 	ctx := new(context.Context)
@@ -83,15 +112,20 @@ func List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db, _ := pgdb.GetInstance()
-	q := db.Model(&modules)
-	q = applyWhereFromQuery(q, r.URL.Query(), Module{})
-	err = q.
-		Limit(filter.Pager.GetLimit()).
-		Offset(filter.Pager.GetOffset()).
-		Select()
 
+	where, args := whereFromQuery(r.URL.Query(), Module{})
+	query := "SELECT " + moduleColumns + " FROM modules"
+	if where != "" {
+		query += " WHERE " + where
+	}
+	query += fmt.Sprintf(" LIMIT %d OFFSET %d", filter.Pager.GetLimit(), filter.Pager.GetOffset())
+
+	rows, err := db.RQuery(query, args...)
 	if err != nil {
 		log.Println(err)
+	}
+	for _, row := range rows {
+		modules = append(modules, rowToModule(row))
 	}
 
 	err = json.NewEncoder(w).Encode(Data{lib.GetFields(Module{}), modules})
@@ -110,11 +144,15 @@ func Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db, _ := pgdb.GetInstance()
-	_, err = db.Model(&module).Insert()
+	id, err := db.InsertRow("modules", map[string]interface{}{
+		"name":       module.Name,
+		"created_by": module.CreatedBy,
+	})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	module.ID = id
 
 	w.WriteHeader(http.StatusCreated)
 	err = json.NewEncoder(w).Encode(module)
@@ -128,12 +166,16 @@ func View(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
 	db, _ := pgdb.GetInstance()
-	module := new(Module)
-	err := db.Model(module).Where("id = ?", vars["id"]).Select()
+	rows, err := db.RQuery("SELECT "+moduleColumns+" FROM modules WHERE id = $1", vars["id"])
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusNotFound)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if len(rows) == 0 {
+		http.Error(w, "module not found", http.StatusNotFound)
+		return
+	}
+	module := rowToModule(rows[0])
 
 	err = json.NewEncoder(w).Encode(module)
 	if err != nil {
@@ -154,8 +196,11 @@ func Edit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db, _ := pgdb.GetInstance()
-	module.ID = 0 // Reset ID to insert as new record
-	_, err = db.Model(&module).Where("id = ?", moduleId).Update()
+	_, err = db.UpdateRow("modules", map[string]interface{}{
+		"name":       module.Name,
+		"created_by": module.CreatedBy,
+		"updated_at": time.Now(),
+	}, "id", moduleId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -174,8 +219,7 @@ func Delete(w http.ResponseWriter, r *http.Request) {
 	moduleId := vars["id"]
 
 	db, _ := pgdb.GetInstance()
-	module := new(Module)
-	_, err := db.Model(module).Where("id = ?", moduleId).Delete()
+	_, err := db.DeleteRow("modules", "id", moduleId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

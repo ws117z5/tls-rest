@@ -32,6 +32,10 @@ export interface BaseFieldProps {
   disabled?: boolean;
   className?: string;
   module?: string; // owning module name (for fields that call module-scoped endpoints, e.g. Image)
+  // Optional label override. When provided (including ""), it replaces field.label
+  // — the two-column form passes "" so the field renders no internal label and
+  // the description column is the single source of the label.
+  label?: string;
 }
 
 // Field type mapping
@@ -136,9 +140,16 @@ const DefaultField: React.FC<BaseFieldProps> = ({ field, value, mode }) => (
 export const Field: React.FC<BaseFieldProps> = (props) => {
   const { field, mode } = props;
   
-  // Find the appropriate component for the field type and mode
-  const fieldComponents = FIELD_COMPONENTS[field.type];
-  
+  // Find the appropriate component for the field type and mode. A field may
+  // opt into the select widget (widget:"select") even when its stored type is
+  // e.g. Int (a foreign-key id) — honour that so table-backed selects render as
+  // dropdowns rather than raw number inputs.
+  const effectiveType =
+    field.options && field.options.widget === "select" && FIELD_COMPONENTS[FIELD_TYPES.SELECT]
+      ? FIELD_TYPES.SELECT
+      : field.type;
+  const fieldComponents = FIELD_COMPONENTS[effectiveType];
+
   if (!fieldComponents) {
     console.warn(`No component found for field type: ${field.type}`);
     return <DefaultField {...props} />;
@@ -162,7 +173,7 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
   const enhancedProps = {
     ...props,
     id: field.name,
-    label: field.label,
+    label: props.label !== undefined ? props.label : field.label,
     placeholder: field.description || field.label,
     required: field.required,
     disabled: field.readonly || props.disabled,

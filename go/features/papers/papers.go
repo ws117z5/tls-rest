@@ -13,10 +13,25 @@ import (
 
 	"tls-rest/go/lib/db/pgdb"
 
-	"github.com/go-pg/pg/v10"
 	"github.com/go-pg/urlstruct"
 	"github.com/gorilla/mux"
 )
+
+// proomColumns is the SELECT list for the paper-room table(s).
+const proomColumns = "uuid, id, name, password, created_by, users, created"
+
+// rowToProom maps a result-set row (from RQuery) into a Proom.
+func rowToProom(row map[string]interface{}) Proom {
+	return Proom{
+		Uuid:      pgdb.AsString(row["uuid"]),
+		Id:        pgdb.AsInt64(row["id"]),
+		Name:      pgdb.AsString(row["name"]),
+		Password:  pgdb.AsString(row["password"]),
+		CreatedBy: pgdb.AsString(row["created_by"]),
+		Users:     pgdb.AsString(row["users"]),
+		Created:   pgdb.AsTime(row["created"]),
+	}
+}
 
 type Data struct {
 	Fieldset map[string]string
@@ -72,18 +87,12 @@ func List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db, _ := pgdb.GetInstance()
-	err = db.Model(&rooms).
-		//TODO fix this
-		//WhereStruct(filter).
-		//Limit(filter.Pager.GetLimit()).
-		//Offset(filter.Pager.GetOffset()).
-
-		//Apply(pager.Pagination(values)).
-		//Apply(orm.URLFilters(r.URL.Query())).
-		Select()
-
+	rows, err := db.RQuery("SELECT " + proomColumns + " FROM prooms")
 	if err != nil {
 		log.Println(err)
+	}
+	for _, row := range rows {
+		rooms = append(rooms, rowToProom(row))
 	}
 
 	//todo clean inactive rooms
@@ -116,7 +125,13 @@ func CreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db, _ := pgdb.GetInstance()
-	_, err = db.Model(&pRoom).Insert()
+	_, err = db.InsertRow("prooms", map[string]interface{}{
+		"uuid":       pRoom.Uuid,
+		"name":       pRoom.Name,
+		"password":   pRoom.Password,
+		"created_by": pRoom.CreatedBy,
+		"users":      pRoom.Users,
+	})
 
 	if err != nil {
 		// A failed insert is a server/DB problem, not a client "bad request".
@@ -192,11 +207,15 @@ func AddRoomUser(w http.ResponseWriter, r *http.Request) {
 	db, _ := pgdb.GetInstance()
 	pRoom := new(Proom)
 
-	err = db.Model(pRoom).Table("proom").Where("? = ?", pg.Ident("uuid"), roomId).Select()
-
+	prows, err := db.RQuery("SELECT "+proomColumns+" FROM proom WHERE uuid = $1", roomId)
 	if err != nil {
 		panic(err)
 	}
+	if len(prows) == 0 {
+		http.Error(w, "room not found", http.StatusNotFound)
+		return
+	}
+	*pRoom = rowToProom(prows[0])
 
 	err = json.Unmarshal([]byte(pRoom.Users), &currentUsers)
 	if err != nil {
@@ -222,7 +241,13 @@ func AddRoomUser(w http.ResponseWriter, r *http.Request) {
 
 	pRoom.Users = string(jsonUsers)
 
-	_, err = db.Model(pRoom).Table("prooms").Insert()
+	_, err = db.InsertRow("prooms", map[string]interface{}{
+		"uuid":       pRoom.Uuid,
+		"name":       pRoom.Name,
+		"password":   pRoom.Password,
+		"created_by": pRoom.CreatedBy,
+		"users":      pRoom.Users,
+	})
 
 	if err != nil {
 		panic(err)
@@ -241,11 +266,15 @@ func ViewRoomUsers(w http.ResponseWriter, r *http.Request) {
 	db, _ := pgdb.GetInstance()
 	pRoom := new(Proom)
 
-	err := db.Model(pRoom).Table("proom").Where("? = ?", pg.Ident("uuid"), roomId).Select()
-
+	prows, err := db.RQuery("SELECT "+proomColumns+" FROM proom WHERE uuid = $1", roomId)
 	if err != nil {
 		panic(err)
 	}
+	if len(prows) == 0 {
+		http.Error(w, "room not found", http.StatusNotFound)
+		return
+	}
+	*pRoom = rowToProom(prows[0])
 
 	jsonUsers, err := json.Marshal(pRoom.Users)
 	if err != nil {

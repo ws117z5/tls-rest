@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"tls-rest/go/lib/db/cache"
+	"tls-rest/go/lib/db/pgdb"
 )
 
 // This file centralises request-time access filtering for the fieldset engine.
@@ -40,6 +41,14 @@ func IsSystemField(name string) bool {
 	return systemFields[name]
 }
 
+// adminOnlyData lists system fields whose *values* are withheld from non-admins
+// entirely (not just hidden from the schema). uuid qualifies: a non-admin never
+// receives it. id does NOT — the client routes and acts on records by id, so it
+// must remain readable even when the uuid is not.
+var adminOnlyData = map[string]bool{
+	"uuid": true,
+}
+
 // viewer is the access context of the current request.
 type viewer struct {
 	isAdmin bool
@@ -60,6 +69,36 @@ func viewerFromRequest(r *http.Request) viewer {
 	return viewer{isAdmin: s.IsAdmin, level: s.AccessLevel}
 }
 
+// CanViewRecord reports whether the request's viewer may read a specific record
+// of a table, applying the same row-level access rule the fieldset engine uses
+// for lists: admins see everything; everyone else sees a row only when its
+// access level is within their own. This is the single place that answers
+// "can this user access this record" — features (e.g. image serving) call it
+// instead of re-implementing the check.
+func CanViewRecord(r *http.Request, tableName string, id int64) (bool, error) {
+	v := viewerFromRequest(r)
+
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		return false, err
+	}
+	rows, err := db.RQuery("SELECT access FROM "+db.Quote(tableName)+" WHERE id = $1", id)
+	if err != nil {
+		return false, err
+	}
+	if len(rows) == 0 {
+		return false, nil
+	}
+	if v.isAdmin {
+		return true, nil
+	}
+	access := 0
+	if rows[0]["access"] != nil {
+		access = int(pgdb.AsInt64(rows[0]["access"]))
+	}
+	return access <= v.level, nil
+}
+
 // fieldVisibleInSchema reports whether a field should be described to the user
 // (i.e. appear as a column/form field). System fields are admin-only; access-
 // gated fields are hidden from lower-level users.
@@ -77,11 +116,15 @@ func (v viewer) fieldVisibleInSchema(f Field) bool {
 }
 
 // fieldReadableInData reports whether a field's value may be returned in data.
-// System fields are always readable (the client needs them); non-system access-
-// gated fields are withheld from users below the required level.
+// System fields are generally readable (the client needs them), except those in
+// adminOnlyData (e.g. uuid) which are withheld from non-admins entirely; other
+// non-system access-gated fields are withheld from users below the required level.
 func (v viewer) fieldReadableInData(f Field) bool {
 	if v.isAdmin {
 		return true
+	}
+	if adminOnlyData[f.Name] {
+		return false
 	}
 	if IsSystemField(f.Name) {
 		return true

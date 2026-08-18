@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -107,4 +108,19 @@ func SendJSONResponse(w io.Writer, data interface{}) error {
 	}
 
 	return nil
+}
+
+// WriteJSON writes v as a JSON response with the given status code. This is the
+// single JSON-response helper for HTTP handlers — do not redefine per package.
+func WriteJSON(w http.ResponseWriter, status int, v interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		fmt.Fprintln(w, "error JSON encoding the data response object")
+	}
+}
+
+// JSONError writes {"error": msg} with the given status code.
+func JSONError(w http.ResponseWriter, status int, msg string) {
+	WriteJSON(w, status, map[string]string{"error": msg})
 }

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	engine "tls-rest/go/engine"
+	"tls-rest/go/lib"
 	"tls-rest/go/lib/auth"
 	pgdb "tls-rest/go/lib/db/pgdb"
 
@@ -43,55 +44,23 @@ type credentials struct {
 	LastName  string `json:"last_name"`
 }
 
-func writeJSON(w http.ResponseWriter, status int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
-}
-
-func errMsg(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, map[string]string{"error": msg})
-}
-
-func asInt(v interface{}) int {
-	switch n := v.(type) {
-	case int64:
-		return int(n)
-	case int:
-		return n
-	case int32:
-		return int(n)
-	case float64:
-		return int(n)
-	default:
-		return 0
-	}
-}
-
-func asString(v interface{}) string {
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return ""
-}
-
 // Login handles POST /api/login {email, password}. On success it establishes an
 // authenticated session and returns the basic user info.
 func Login(w http.ResponseWriter, r *http.Request) {
 	var c credentials
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-		errMsg(w, http.StatusBadRequest, "invalid request")
+		lib.JSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 	c.Email = strings.TrimSpace(strings.ToLower(c.Email))
 	if c.Email == "" || c.Password == "" {
-		errMsg(w, http.StatusBadRequest, "email and password are required")
+		lib.JSONError(w, http.StatusBadRequest, "email and password are required")
 		return
 	}
 
 	db, err := pgdb.GetInstance()
 	if err != nil {
-		errMsg(w, http.StatusInternalServerError, "database unavailable")
+		lib.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
 	}
 
@@ -99,26 +68,26 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		`SELECT id, user_name, password_hash FROM users WHERE lower(email) = $1 LIMIT 1`, c.Email,
 	)
 	if err != nil {
-		errMsg(w, http.StatusInternalServerError, err.Error())
+		lib.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	// Uniform message so we don't reveal whether the email exists.
 	if len(rows) == 0 {
-		errMsg(w, http.StatusUnauthorized, "invalid email or password")
+		lib.JSONError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
 
-	hash := asString(rows[0]["password_hash"])
+	hash := pgdb.AsString(rows[0]["password_hash"])
 	if hash == "" || bcrypt.CompareHashAndPassword([]byte(hash), []byte(c.Password)) != nil {
-		errMsg(w, http.StatusUnauthorized, "invalid email or password")
+		lib.JSONError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
 
-	id := asInt(rows[0]["id"])
-	username := asString(rows[0]["user_name"])
+	id := int(pgdb.AsInt64(rows[0]["id"]))
+	username := pgdb.AsString(rows[0]["user_name"])
 	auth.Login(w, r, id, username)
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	lib.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":   true,
 		"user": map[string]interface{}{"id": id, "user_name": username},
 	})
@@ -127,7 +96,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 // Logout handles POST /api/logout, dropping the session back to anonymous.
 func Logout(w http.ResponseWriter, r *http.Request) {
 	auth.Logout(w, r)
-	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+	lib.WriteJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
 // Register handles POST /api/register {email, password, user_name?, first_name?,
@@ -135,29 +104,29 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 func Register(w http.ResponseWriter, r *http.Request) {
 	var c credentials
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-		errMsg(w, http.StatusBadRequest, "invalid request")
+		lib.JSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 	c.Email = strings.TrimSpace(strings.ToLower(c.Email))
 	if c.Email == "" || len(c.Password) < 6 {
-		errMsg(w, http.StatusBadRequest, "email and a password (min 6 chars) are required")
+		lib.JSONError(w, http.StatusBadRequest, "email and a password (min 6 chars) are required")
 		return
 	}
 
 	db, err := pgdb.GetInstance()
 	if err != nil {
-		errMsg(w, http.StatusInternalServerError, "database unavailable")
+		lib.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
 	}
 
 	if rows, e := db.RQuery(`SELECT id FROM users WHERE lower(email) = $1 LIMIT 1`, c.Email); e == nil && len(rows) > 0 {
-		errMsg(w, http.StatusConflict, "an account with this email already exists")
+		lib.JSONError(w, http.StatusConflict, "an account with this email already exists")
 		return
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(c.Password), bcrypt.DefaultCost)
 	if err != nil {
-		errMsg(w, http.StatusInternalServerError, "could not hash password")
+		lib.JSONError(w, http.StatusInternalServerError, "could not hash password")
 		return
 	}
 
@@ -186,14 +155,14 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			msg = err.Error()
 		}
-		errMsg(w, http.StatusInternalServerError, msg)
+		lib.JSONError(w, http.StatusInternalServerError, msg)
 		return
 	}
 
-	id := asInt(ins[0]["id"])
+	id := int(pgdb.AsInt64(ins[0]["id"]))
 	auth.Login(w, r, id, userName)
 
-	writeJSON(w, http.StatusOK, map[string]interface{}{
+	lib.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":   true,
 		"user": map[string]interface{}{"id": id, "user_name": userName},
 	})

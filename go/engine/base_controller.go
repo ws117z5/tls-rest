@@ -49,6 +49,9 @@ func (bc *BaseController) createFieldsetMap(r *http.Request) map[string]interfac
 			"searchable": field.Searchable,
 			"mode":       field.Mode,
 			"access":     field.Access,
+			// Resolved so list cells can render a select value's label (e.g. the
+			// user's group name instead of its id).
+			"options": resolveFieldOptions(field).Options,
 		}
 	}
 

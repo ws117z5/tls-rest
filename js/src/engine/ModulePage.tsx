@@ -121,6 +121,18 @@ const ModulePage: React.FC<ModulePageProps> = ({
         [base, load]
     );
 
+    const bulkRemove = useCallback(
+        async (rows: any[]) => {
+            try {
+                await Promise.all(rows.map((row) => axios.delete(`${base}/${row.id}`)));
+            } catch (e) {
+                console.error("Bulk delete failed:", e);
+            }
+            load(); // single reload after all deletes
+        },
+        [base, load]
+    );
+
     const submit = useCallback(
         async (form: any) => {
             try {
@@ -211,6 +223,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
                         onView={can("view") ? (row: any) => go(`${base}/${row.id}`) : undefined}
                         onEdit={can("edit") ? (row: any) => go(`${base}/${row.id}/edit`) : undefined}
                         onDelete={can("delete") ? remove : undefined}
+                        onBulkDelete={can("delete") ? bulkRemove : undefined}
                     />
                 </FieldsetProvider>
             </div>

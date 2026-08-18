@@ -1,20 +1,27 @@
 package pgdb
 
 import (
-	//"github.com/lib/pq"
 	"context"
 	"fmt"
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"tls-rest/go/constants"
-
 	"tls-rest/go/lib/log"
 
-	"github.com/go-pg/pg/v10"
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// This package wraps pgx v5 (github.com/jackc/pgx/v5). pgx speaks PostgreSQL's
+// native protocol and uses $1/$2 placeholders directly, so raw SQL written with
+// $N — in this layer, in the fieldset engine, and in the auth/pages code — binds
+// correctly with no placeholder translation. (The previous go-pg driver used ?
+// placeholders, which is why $N queries failed with "there is no parameter $1".)
 
 type DbLogEvent struct {
 	Timestamp    time.Time     `json:"timestamp"`
@@ -28,20 +35,36 @@ type DbLogEvent struct {
 	Success      bool          `json:"success"`
 }
 
-// GetInstance returns an instance of pgDb
-func GetInstance() (*Db, error) {
-	db := pg.Connect(&pg.Options{
-		//Addr: config.PDb.Addr,
-		Database: constants.PDb.Database,
-		User:     constants.PDb.User,
-		Password: constants.PDb.Password,
+// A single shared connection pool is created lazily and reused across all
+// GetInstance() calls. pgxpool is safe for concurrent use; each GetInstance
+// returns a lightweight *Db wrapper over the same pool.
+var (
+	sharedPool *pgxpool.Pool
+	poolOnce   sync.Once
+	poolErr    error
+)
+
+func dsn() string {
+	return fmt.Sprintf(
+		"host=localhost port=5432 user=%s password=%s dbname=%s sslmode=disable",
+		constants.PDb.User, constants.PDb.Password, constants.PDb.Database,
+	)
+}
+
+func getPool() (*pgxpool.Pool, error) {
+	poolOnce.Do(func() {
+		sharedPool, poolErr = pgxpool.New(context.Background(), dsn())
 	})
+	return sharedPool, poolErr
+}
 
-	ctx := context.Background()
-
-	err := db.Ping(ctx)
-
-	return &Db{conn: db}, err
+// GetInstance returns a *Db backed by the shared pgx pool.
+func GetInstance() (*Db, error) {
+	pool, err := getPool()
+	if err != nil {
+		return nil, err
+	}
+	return &Db{pool: pool}, nil
 }
 
 type DefaultDb struct {
@@ -52,51 +75,64 @@ type DefaultDb struct {
 }
 
 type Db struct {
-	conn         *pg.DB
+	pool         *pgxpool.Pool
 	queriesCount int
 	queriesTime  float64
 
 	LastInsertId int64
 }
 
-// NewDb initializes a new database connection
-func NewDb(opts *pg.Options) *Db {
-	conn := pg.Connect(opts)
-	return &Db{conn: conn}
-}
-
-// Close closes the database connection
-func (db *Db) Close() error {
-	return db.conn.Close()
-}
-
-func (db *Db) Model(model ...interface{}) *pg.Query {
-	// Forward the caller's model(s) to go-pg. The variadic must be spread with
-	// `model...`; and db.conn must NOT be passed as a model — doing so made go-pg
-	// derive the table name from *pg.DB (type "DB" -> "dbs"), producing
-	// `relation "dbs" does not exist` for every query.
-	return db.conn.Model(model...)
-}
-
-// Query executes a query and returns the result
-func (db *Db) Query(query string, args ...interface{}) (pg.Result, error) {
-	startTime := time.Now()
-	result, err := db.conn.Exec(query, args...)
-	db.queriesCount++
-	db.queriesTime += time.Since(startTime).Seconds()
+// NewDb builds a *Db from a pgx connection string ("postgres://…" or keyword
+// "host=… user=…"). Returns an error if the pool cannot be created.
+func NewDb(connString string) (*Db, error) {
+	pool, err := pgxpool.New(context.Background(), connString)
 	if err != nil {
+		return nil, err
+	}
+	return &Db{pool: pool}, nil
+}
+
+func (db *Db) track(start time.Time) {
+	db.queriesCount++
+	db.queriesTime += time.Since(start).Seconds()
+}
+
+// Close releases the shared pool. Note the pool is shared across all *Db
+// wrappers; closing it affects every caller.
+func (db *Db) Close() error {
+	db.pool.Close()
+	return nil
+}
+
+// Query executes a statement that returns no rows (INSERT/UPDATE/DELETE/DDL) and
+// returns the command tag. Alias kept for callers that used the old name.
+func (db *Db) Query(query string, args ...interface{}) (pgconn.CommandTag, error) {
+	return db.Exec(query, args...)
+}
+
+// Exec executes a statement that returns no rows and returns the command tag.
+func (db *Db) Exec(query string, args ...interface{}) (pgconn.CommandTag, error) {
+	start := time.Now()
+	tag, err := db.pool.Exec(context.Background(), query, args...)
+	db.track(start)
+	if err != nil {
+		log.Printf("SQL error: %s\nError: %v", query, err)
+		return tag, err
+	}
+	return tag, nil
+}
+
+// RQuery runs a query and returns the rows as a slice of column->value maps.
+func (db *Db) RQuery(query string, args ...interface{}) ([]map[string]interface{}, error) {
+	start := time.Now()
+	rows, err := db.pool.Query(context.Background(), query, args...)
+	if err != nil {
+		db.track(start)
 		log.Printf("SQL error: %s\nError: %v", query, err)
 		return nil, err
 	}
-	return result, nil
-}
-
-func (db *Db) RQuery(query string, args ...interface{}) ([]map[string]interface{}, error) {
-	startTime := time.Now()
-	var results []map[string]interface{}
-	_, err := db.conn.Query(&results, query, args...)
-	db.queriesCount++
-	db.queriesTime += time.Since(startTime).Seconds()
+	results, err := pgx.CollectRows(rows, pgx.RowToMap)
+	db.track(start)
 	if err != nil {
 		log.Printf("SQL error: %s\nError: %v", query, err)
 		return nil, err
@@ -104,62 +140,35 @@ func (db *Db) RQuery(query string, args ...interface{}) ([]map[string]interface{
 	return results, nil
 }
 
-// func (db *Db) QueryResults(res pg.Result) ([]map[string]interface{}, error) {
-// 	var results []map[string]interface{}
-// 	_, err := db.conn.Query(&results, pg.Scan(pg.ResultRows(pg)))
-// 	if err != nil {
-// 		log.Printf("SQL error: %v", err)
-// 		return nil, err
-// 	}
-// 	return results, nil
-// }
-
-// todo add support for inserting rows with returning ID
-// Exec executes a query without returning rows
-func (db *Db) Exec(query string, args ...interface{}) (pg.Result, error) {
-	startTime := time.Now()
-	result, err := db.conn.Exec(query, args...)
-	db.queriesCount++
-	db.queriesTime += time.Since(startTime).Seconds()
-	if err != nil {
-		log.Printf("SQL error: %s\nError: %v", query, err)
-		return nil, err
-	}
-	return result, nil
-}
-
-// GetInsertID returns the last inserted ID (Postgres: use RETURNING id in your query)
-func (db *Db) GetInsertID(result pg.Result) (int64, error) {
-	// Not directly supported; use RETURNING in your insert query
+// GetInsertID returns the id of the most recent InsertRow (pgx has no implicit
+// LastInsertId; InsertRow uses RETURNING id and records it here).
+func (db *Db) GetInsertID(_ pgconn.CommandTag) (int64, error) {
 	return db.LastInsertId, nil
 }
 
-// GetAffectedRows returns the number of affected rows
-func (db *Db) GetAffectedRows(result pg.Result) (int64, error) {
-	return int64(result.RowsAffected()), nil
+// GetAffectedRows returns the number of rows affected by an Exec/Query result.
+func (db *Db) GetAffectedRows(result pgconn.CommandTag) (int64, error) {
+	return result.RowsAffected(), nil
 }
 
-// GetAll fetches all rows as a slice of maps
+// GetAll fetches all rows as a slice of maps.
 func (db *Db) GetAll(query string, args ...interface{}) ([]map[string]interface{}, error) {
-	//var results []map[string]interface{}
-	results, err := db.RQuery(query, args...)
-	if err != nil {
-		return nil, err
-	}
-
-	return results, nil
+	return db.RQuery(query, args...)
 }
 
-// GetOne fetches a single value
+// GetOne fetches the first row as a map. Returns an error if no rows match.
 func (db *Db) GetOne(query string, args ...interface{}) (interface{}, error) {
 	results, err := db.RQuery(query, args...)
 	if err != nil {
 		return nil, err
 	}
+	if len(results) == 0 {
+		return nil, fmt.Errorf("no rows returned")
+	}
 	return results[0], nil
 }
 
-// Quote safely quotes a table or column name
+// Quote safely quotes a (possibly dotted) table or column identifier.
 func (db *Db) Quote(name string) string {
 	parts := strings.Split(name, ".")
 	for i, part := range parts {
@@ -168,12 +177,13 @@ func (db *Db) Quote(name string) string {
 	return strings.Join(parts, ".")
 }
 
-// Escape escapes a value for safe use in queries
+// Escape escapes a value for safe use inside a single-quoted SQL literal. Prefer
+// parameter binding ($N) over this wherever possible.
 func (db *Db) Escape(value string) string {
 	return strings.ReplaceAll(value, "'", "''")
 }
 
-// InsertRow inserts a row into a table
+// InsertRow inserts a row and returns its id (via RETURNING id).
 func (db *Db) InsertRow(table string, fieldValues map[string]interface{}) (int64, error) {
 	fields := []string{}
 	values := []interface{}{}
@@ -193,9 +203,12 @@ func (db *Db) InsertRow(table string, fieldValues map[string]interface{}) (int64
 		strings.Join(placeholders, ", "),
 	)
 
+	start := time.Now()
 	var id int64
-	_, err := db.conn.QueryOne(pg.Scan(&id), query, values...)
+	err := db.pool.QueryRow(context.Background(), query, values...).Scan(&id)
+	db.track(start)
 	if err != nil {
+		log.Printf("SQL error: %s\nError: %v", query, err)
 		return 0, err
 	}
 
@@ -203,7 +216,8 @@ func (db *Db) InsertRow(table string, fieldValues map[string]interface{}) (int64
 	return id, nil
 }
 
-// UpdateRow updates a row in a table
+// UpdateRow updates a row identified by keyField=keyValue and returns the number
+// of affected rows.
 func (db *Db) UpdateRow(table string, fieldValues map[string]interface{}, keyField string, keyValue interface{}) (int64, error) {
 	setClauses := []string{}
 	values := []interface{}{}
@@ -215,6 +229,7 @@ func (db *Db) UpdateRow(table string, fieldValues map[string]interface{}, keyFie
 		i++
 	}
 	values = append(values, keyValue)
+
 	query := fmt.Sprintf("UPDATE %s SET %s WHERE %s = $%d",
 		db.Quote(table),
 		strings.Join(setClauses, ", "),
@@ -222,34 +237,103 @@ func (db *Db) UpdateRow(table string, fieldValues map[string]interface{}, keyFie
 		i,
 	)
 
-	result, err := db.Exec(query, values...)
+	tag, err := db.Exec(query, values...)
 	if err != nil {
 		return 0, err
 	}
-	return db.GetAffectedRows(result)
+	return tag.RowsAffected(), nil
 }
 
-// DeleteRow deletes a row from a table
+// DeleteRow deletes rows matching keyField=keyValue and returns the number
+// affected.
 func (db *Db) DeleteRow(table string, keyField string, keyValue interface{}) (int64, error) {
 	query := fmt.Sprintf("DELETE FROM %s WHERE %s = $1",
 		db.Quote(table),
 		db.Quote(keyField),
 	)
-	result, err := db.Exec(query, keyValue)
+	tag, err := db.Exec(query, keyValue)
 	if err != nil {
 		return 0, err
 	}
-	return db.GetAffectedRows(result)
+	return tag.RowsAffected(), nil
 }
 
-// GetQueriesCount returns the number of executed queries
+// TableExists reports whether a table exists in the public schema.
+func (db *Db) TableExists(tableName string) (bool, error) {
+	query := `SELECT EXISTS (
+		SELECT 1 FROM information_schema.tables
+		WHERE table_schema = 'public'
+		AND table_name = $1
+	)`
+	var exists bool
+	err := db.pool.QueryRow(context.Background(), query, tableName).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if table exists: %w", err)
+	}
+	return exists, nil
+}
+
+// GetQueriesCount returns the number of executed queries.
 func (db *Db) GetQueriesCount() int {
 	return db.queriesCount
 }
 
-// GetQueriesTime returns the total time spent on queries
+// GetQueriesTime returns the total time spent on queries.
 func (db *Db) GetQueriesTime() float64 {
 	return db.queriesTime
+}
+
+// --- Result-map value coercion helpers ---
+//
+// pgx.RowToMap returns Go-typed values (int64 for integers, string for text,
+// time.Time for timestamps, []byte for bytea). These helpers read a map value
+// tolerantly so callers converting RQuery results into structs don't repeat the
+// same type switches.
+
+func AsInt64(v interface{}) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int32:
+		return int64(n)
+	case int:
+		return int64(n)
+	case float64:
+		return int64(n)
+	case string:
+		x, _ := strconv.ParseInt(n, 10, 64)
+		return x
+	}
+	return 0
+}
+
+func AsString(v interface{}) string {
+	switch s := v.(type) {
+	case string:
+		return s
+	case []byte:
+		return string(s)
+	case nil:
+		return ""
+	}
+	return fmt.Sprintf("%v", v)
+}
+
+func AsBytes(v interface{}) []byte {
+	switch b := v.(type) {
+	case []byte:
+		return b
+	case string:
+		return []byte(b)
+	}
+	return nil
+}
+
+func AsTime(v interface{}) time.Time {
+	if t, ok := v.(time.Time); ok {
+		return t
+	}
+	return time.Time{}
 }
 
 // --- Type coercion helpers (same as MySQL version) ---
@@ -266,7 +350,7 @@ func CoerceByType(data map[string]interface{}, current *map[string]interface{}, 
 		raw, ok := data[key]
 		if !ok {
 			log.Warningf("Missing value for field %s", key)
-			continue // missing value is skipped
+			continue
 		}
 
 		val, err := CoerceValue(raw, expectedType)
@@ -289,7 +373,6 @@ func CoerceToSchema[T any](data map[string]interface{}) (map[string]interface{},
 
 	for i := 0; i < schemaType.NumField(); i++ {
 		field := schemaType.Field(i)
-		// Handle embedded struct recursively
 		if field.Anonymous && field.Type.Kind() == reflect.Struct {
 			if err := CoerceByType(data, &coerced, field.Type); err != nil {
 				return nil, err
@@ -305,7 +388,7 @@ func CoerceToSchema[T any](data map[string]interface{}) (map[string]interface{},
 
 		raw, ok := data[key]
 		if !ok {
-			continue // missing value is skipped
+			continue
 		}
 
 		val, err := CoerceValue(raw, expectedType)
@@ -359,21 +442,4 @@ func CoerceValue(value interface{}, t reflect.Type) (interface{}, error) {
 		}
 	}
 	return value, nil
-}
-
-// TableExists checks if a table exists in the database
-func (db *Db) TableExists(tableName string) (bool, error) {
-	query := `SELECT EXISTS (
-		SELECT 1 FROM information_schema.tables 
-		WHERE table_schema = 'public' 
-		AND table_name = ?
-	)`
-
-	var exists bool
-	_, err := db.conn.QueryOne(pg.Scan(&exists), query, tableName)
-	if err != nil {
-		return false, fmt.Errorf("failed to check if table exists: %w", err)
-	}
-
-	return exists, nil
 }

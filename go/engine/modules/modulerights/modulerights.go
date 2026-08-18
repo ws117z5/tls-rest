@@ -1,8 +1,6 @@
 package modulerights
 
 import (
-	"time"
-
 	config "tls-rest/go/constants"
 	. "tls-rest/go/engine"
 	"tls-rest/go/lib/auth"
@@ -18,30 +16,6 @@ import (
 // in an integer `modes` column. The resolver OR-s a user's group rights and
 // their own user rights (plus the module default) to get effective access.
 
-// UserGroupRight is one group grant.
-type UserGroupRight struct {
-	tableName struct{} `pg:"user_group_rights"`
-
-	ID      int64     `json:"id"`
-	GroupID int64     `json:"group_id"`
-	Module  string    `json:"module"`
-	Modes   int       `json:"modes"`
-	Created time.Time `sql:"default:now()" json:"created"`
-	Updated time.Time `sql:"default:now()" json:"updated"`
-}
-
-// UserRight is one per-user grant.
-type UserRight struct {
-	tableName struct{} `pg:"user_rights"`
-
-	ID      int64     `json:"id"`
-	UserID  int64     `json:"user_id"`
-	Module  string    `json:"module"`
-	Modes   int       `json:"modes"`
-	Created time.Time `sql:"default:now()" json:"created"`
-	Updated time.Time `sql:"default:now()" json:"updated"`
-}
-
 // moduleSelectOptions lists the declared modules (from go.config.json) as
 // select options {value:name, label:description||name} for the "module" field.
 func moduleSelectOptions() []map[string]interface{} {
@@ -51,7 +25,9 @@ func moduleSelectOptions() []map[string]interface{} {
 		if label == "" {
 			label = m.Name
 		}
-		opts = append(opts, map[string]interface{}{"value": m.Name, "label": label})
+		// The frontend Select renders option.name for the display text, so the
+		// display goes under "name" (not "label").
+		opts = append(opts, map[string]interface{}{"value": m.Name, "name": label})
 	}
 	return opts
 }
@@ -59,12 +35,14 @@ func moduleSelectOptions() []map[string]interface{} {
 // modeBitOptions describes the individual mode bits so the frontend can render
 // the modes bitmask as a set of checkboxes.
 func modeBitOptions() []map[string]interface{} {
+	// Include both "name" (the shape select-style widgets read) and "label" so
+	// whichever key the modes widget consumes shows the mode name.
 	return []map[string]interface{}{
-		{"label": "List", "value": auth.MODE_LIST},
-		{"label": "View", "value": auth.MODE_VIEW},
-		{"label": "Create", "value": auth.MODE_CREATE},
-		{"label": "Edit", "value": auth.MODE_EDIT},
-		{"label": "Delete", "value": auth.MODE_DELETE},
+		{"name": "List", "label": "List", "value": auth.MODE_LIST},
+		{"name": "View", "label": "View", "value": auth.MODE_VIEW},
+		{"name": "Create", "label": "Create", "value": auth.MODE_CREATE},
+		{"name": "Edit", "label": "Edit", "value": auth.MODE_EDIT},
+		{"name": "Delete", "label": "Delete", "value": auth.MODE_DELETE},
 	}
 }
 

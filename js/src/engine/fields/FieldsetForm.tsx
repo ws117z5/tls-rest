@@ -185,10 +185,33 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
     }
   };
 
-  renderField = (field: any) => {
+  // Standard column widths (px) used when the fieldset doesn't predefine one.
+  static STD_DESC_WIDTH = 220;
+
+  // Compute the shared column widths for the whole form. If any field predefines
+  // a description/value width, the column takes the widest of those; otherwise a
+  // standard width is used (value defaults to flex-fill when unset).
+  computeLayout = (fields: any[]) => {
+    const descWidths = fields
+      .filter((f: any) => !(f.options && f.options.hideDescription))
+      .map((f: any) => Number(f.options && f.options.descriptionWidth))
+      .filter((n: number) => !isNaN(n) && n > 0);
+    const valueWidths = fields
+      .map((f: any) => Number(f.options && f.options.valueWidth))
+      .filter((n: number) => !isNaN(n) && n > 0);
+
+    return {
+      descWidth: descWidths.length ? Math.max(...descWidths) : FieldsetFormClass.STD_DESC_WIDTH,
+      valueWidth: valueWidths.length ? Math.max(...valueWidths) : null, // null => flex fill
+    };
+  };
+
+  renderField = (field: any, layout: { descWidth: number; valueWidth: number | null }) => {
     const { mode, disabled } = this.props;
     const { formData, errors, touched } = this.state;
-    
+
+    const hideDescription = !!(field.options && field.options.hideDescription);
+
     const fieldProps: BaseFieldProps = {
       field,
       value: formData[field.name] || field.default_value,
@@ -196,17 +219,48 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
       mode: mode || MODES.EDIT,
       disabled: disabled || field.readonly,
       module: this.props.fieldsetContext?.module,
-      className: touched[field.name] && errors[field.name] ? 'is-invalid' : ''
+      className: touched[field.name] && errors[field.name] ? 'is-invalid' : '',
+      // The description column owns the label, so suppress the field's own.
+      label: '',
     };
 
-    return (
-      <div key={field.name} className="mb-3">
+    const valueStyle: React.CSSProperties = layout.valueWidth
+      ? { flex: `0 0 ${layout.valueWidth}px`, maxWidth: layout.valueWidth, minWidth: 0 }
+      : { flex: '1 1 auto', minWidth: 0 };
+
+    const valueCell = (
+      <div className="fieldset-cell fieldset-cell-value" style={valueStyle}>
         <Field {...fieldProps} />
         {touched[field.name] && errors[field.name] && (
-          <div className="invalid-feedback d-block">
-            {errors[field.name]}
-          </div>
+          <div className="invalid-feedback d-block">{errors[field.name]}</div>
         )}
+      </div>
+    );
+
+    // Field opted out of the description column: value spans the full row.
+    if (hideDescription) {
+      return (
+        <div key={field.name} className="fieldset-row d-flex mb-3">
+          {valueCell}
+        </div>
+      );
+    }
+
+    return (
+      <div key={field.name} className="fieldset-row d-flex gap-3 mb-3 align-items-start">
+        <div
+          className="fieldset-cell fieldset-cell-desc"
+          style={{ flex: `0 0 ${layout.descWidth}px`, maxWidth: layout.descWidth }}
+        >
+          <div className="fw-semibold">
+            {field.label}
+            {field.required && <span className="text-danger"> *</span>}
+          </div>
+          {field.description && (
+            <div className="text-muted small">{field.description}</div>
+          )}
+        </div>
+        {valueCell}
       </div>
     );
   };
@@ -247,6 +301,7 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
 
     const fields = fieldsetContext.getFieldsForMode();
     const isEditMode = mode === MODES.EDIT || mode === MODES.EDITSUBMIT || mode === MODES.CREATE;
+    const layout = this.computeLayout(fields);
 
     return (
       <form onSubmit={this.handleSubmit} className={`fieldset-form ${className}`}>
@@ -255,8 +310,8 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
             <span className="text-danger">*</span> Required fields
           </div>
         )}
-        
-        {fields.map(this.renderField)}
+
+        {fields.map((field: any) => this.renderField(field, layout))}
         
         {isEditMode && this.props.onSubmit && (
           <div className="form-actions mt-4">
