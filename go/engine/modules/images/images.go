@@ -16,6 +16,14 @@
 //
 // The bytes live in a `data BYTEA` column that the fieldset engine does not
 // create (it has no binary field type), so create/migrate the table explicitly:
+//
+//	CREATE TABLE images (
+//	    id BIGSERIAL PRIMARY KEY, uuid TEXT NOT NULL UNIQUE,
+//	    module TEXT, field TEXT, record_id BIGINT,
+//	    filename TEXT, mime_type TEXT,
+//	    access INT NOT NULL DEFAULT 0, data BYTEA NOT NULL,
+//	    created TIMESTAMPTZ NOT NULL DEFAULT now()
+//	);
 package images
 
 import (
@@ -138,25 +146,24 @@ func loadImage(ref string) (cachedImage, error) {
 	}
 
 	const cols = "id, data, mime_type"
-	var rows []map[string]interface{}
+	var row map[string]interface{}
 	if isAllDigits(ref) {
 		id, _ := strconv.ParseInt(ref, 10, 64)
-		rows, err = db.RQuery("SELECT "+cols+" FROM images WHERE id = $1", id)
+		row, err = db.GetOne("SELECT "+cols+" FROM images WHERE id = $1", id)
 	} else {
-		rows, err = db.RQuery("SELECT "+cols+" FROM images WHERE uuid = $1", ref)
+		row, err = db.GetOne("SELECT "+cols+" FROM images WHERE uuid = $1", ref)
 	}
 	if err != nil {
 		return cachedImage{}, err
 	}
-	if len(rows) == 0 {
+	if row == nil {
 		return cachedImage{}, nil // not found -> empty (serve turns this into 404)
 	}
 
-	row := rows[0]
 	return cachedImage{
-		Id:       pgdb.AsInt64(row["id"]),
-		Data:     pgdb.AsBytes(row["data"]),
-		MimeType: pgdb.AsString(row["mime_type"]),
+		Id:       pgdb.Coerce[int64](row["id"]),
+		Data:     pgdb.Coerce[[]byte](row["data"]),
+		MimeType: pgdb.Coerce[string](row["mime_type"]),
 	}, nil
 }
 
@@ -289,11 +296,11 @@ func recordAccess(moduleName string, recordID int64) int {
 	if err != nil {
 		return 0
 	}
-	rows, err := db.RQuery("SELECT access FROM "+db.Quote(moduleName)+" WHERE id = $1", recordID)
-	if err != nil || len(rows) == 0 || rows[0]["access"] == nil {
+	row, err := db.GetOne("SELECT access FROM "+db.Quote(moduleName)+" WHERE id = $1", recordID)
+	if err != nil || row == nil || row["access"] == nil {
 		return 0
 	}
-	return int(pgdb.AsInt64(rows[0]["access"]))
+	return pgdb.Coerce[int](row["access"])
 }
 
 func imageExt(filename, mime string) string {

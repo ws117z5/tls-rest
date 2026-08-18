@@ -82,19 +82,19 @@ func CanViewRecord(r *http.Request, tableName string, id int64) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	rows, err := db.RQuery("SELECT access FROM "+db.Quote(tableName)+" WHERE id = $1", id)
+	row, err := db.GetOne("SELECT access FROM "+db.Quote(tableName)+" WHERE id = $1", id)
 	if err != nil {
 		return false, err
 	}
-	if len(rows) == 0 {
+	if row == nil {
 		return false, nil
 	}
 	if v.isAdmin {
 		return true, nil
 	}
 	access := 0
-	if rows[0]["access"] != nil {
-		access = int(pgdb.AsInt64(rows[0]["access"]))
+	if row["access"] != nil {
+		access = pgdb.Coerce[int](row["access"])
 	}
 	return access <= v.level, nil
 }

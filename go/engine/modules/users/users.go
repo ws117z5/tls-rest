@@ -65,10 +65,10 @@ func FindOrCreateGoogleUser(s *GoogleAccount) (int64, string, error) {
 		return 0, "", err
 	}
 
-	if rows, e := db.RQuery(
+	if row, e := db.GetOne(
 		`SELECT id, user_name FROM users WHERE lower(email) = lower($1) LIMIT 1`, s.Email,
-	); e == nil && len(rows) > 0 {
-		return pgdb.AsInt64(rows[0]["id"]), pgdb.AsString(rows[0]["user_name"]), nil
+	); e == nil && row != nil {
+		return pgdb.Coerce[int64](row["id"]), pgdb.Coerce[string](row["user_name"]), nil
 	}
 
 	lastInitial := ""
@@ -77,20 +77,26 @@ func FindOrCreateGoogleUser(s *GoogleAccount) (int64, string, error) {
 	}
 	username := s.FirstName + lastInitial
 
-	ins, err := db.RQuery(
-		`INSERT INTO users (user_name, first_name, last_name, email, image)
-		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		username, s.FirstName, s.LastName, s.Email, s.Image,
-	)
-	if err != nil || len(ins) == 0 {
+	id, err := db.InsertRow("users", map[string]interface{}{
+		"user_name":  username,
+		"first_name": s.FirstName,
+		"last_name":  s.LastName,
+		"email":      s.Email,
+		"image":      s.Image,
+	})
+	if err != nil {
 		return 0, "", err
 	}
-	return pgdb.AsInt64(ins[0]["id"]), username, nil
+	return id, username, nil
 }
 
 func init() {
 	// Create module instance
 	UserModule = NewUsers()
+
 	// Initialize with database table - routes are automatically registered
 	UserModule.Initialize("users")
 }
+
+// All CRUD operations are handled automatically by the module system.
+// Routes are automatically registered when Initialize() is called.

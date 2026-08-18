@@ -22,7 +22,7 @@ const shutdownTimeout = 30 * time.Second
 // or termination signal, at which point it shuts down gracefully, draining
 // in-flight requests before returning.
 func RunServer() {
-	cert, err := tls.LoadX509KeyPair(".private/ec_certificate.pem", ".private/ec_private_key.pem")
+	cert, err := tls.LoadX509KeyPair(".private/cert.pem", ".private/key.pem")
 	if err != nil {
 		log.Fatalf("failed to load certificate and key: %v", err)
 	}

@@ -64,7 +64,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := db.RQuery(
+	row, err := db.GetOne(
 		`SELECT id, user_name, password_hash FROM users WHERE lower(email) = $1 LIMIT 1`, c.Email,
 	)
 	if err != nil {
@@ -72,19 +72,19 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Uniform message so we don't reveal whether the email exists.
-	if len(rows) == 0 {
+	if row == nil {
 		lib.JSONError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
 
-	hash := pgdb.AsString(rows[0]["password_hash"])
+	hash := pgdb.Coerce[string](row["password_hash"])
 	if hash == "" || bcrypt.CompareHashAndPassword([]byte(hash), []byte(c.Password)) != nil {
 		lib.JSONError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
 
-	id := int(pgdb.AsInt64(rows[0]["id"]))
-	username := pgdb.AsString(rows[0]["user_name"])
+	id := pgdb.Coerce[int](row["id"])
+	username := pgdb.Coerce[string](row["user_name"])
 	auth.Login(w, r, id, username)
 
 	lib.WriteJSON(w, http.StatusOK, map[string]interface{}{
@@ -119,7 +119,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if rows, e := db.RQuery(`SELECT id FROM users WHERE lower(email) = $1 LIMIT 1`, c.Email); e == nil && len(rows) > 0 {
+	if row, e := db.GetOne(`SELECT id FROM users WHERE lower(email) = $1 LIMIT 1`, c.Email); e == nil && row != nil {
 		lib.JSONError(w, http.StatusConflict, "an account with this email already exists")
 		return
 	}
@@ -145,22 +145,19 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		userName = local
 	}
 
-	ins, err := db.RQuery(
-		`INSERT INTO users (user_name, first_name, last_name, email, password_hash)
-		 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-		userName, firstName, c.LastName, c.Email, string(hash),
-	)
-	if err != nil || len(ins) == 0 {
-		msg := "could not create account"
-		if err != nil {
-			msg = err.Error()
-		}
-		lib.JSONError(w, http.StatusInternalServerError, msg)
+	id, err := db.InsertRow("users", map[string]interface{}{
+		"user_name":     userName,
+		"first_name":    firstName,
+		"last_name":     c.LastName,
+		"email":         c.Email,
+		"password_hash": string(hash),
+	})
+	if err != nil {
+		lib.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	id := int(pgdb.AsInt64(ins[0]["id"]))
-	auth.Login(w, r, id, userName)
+	auth.Login(w, r, int(id), userName)
 
 	lib.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":   true,

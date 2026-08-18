@@ -86,12 +86,12 @@ func whereFromQuery(params map[string][]string, model interface{}) (string, []in
 // rowToModule maps a result-set row (from RQuery) into a Module.
 func rowToModule(row map[string]interface{}) Module {
 	return Module{
-		ID:        pgdb.AsInt64(row["id"]),
-		UUID:      pgdb.AsString(row["uuid"]),
-		Name:      pgdb.AsString(row["name"]),
-		CreatedBy: pgdb.AsString(row["created_by"]),
-		CreatedAt: pgdb.AsTime(row["created_at"]),
-		UpdatedAt: pgdb.AsTime(row["updated_at"]),
+		ID:        pgdb.Coerce[int64](row["id"]),
+		UUID:      pgdb.Coerce[string](row["uuid"]),
+		Name:      pgdb.Coerce[string](row["name"]),
+		CreatedBy: pgdb.Coerce[string](row["created_by"]),
+		CreatedAt: pgdb.Coerce[time.Time](row["created_at"]),
+		UpdatedAt: pgdb.Coerce[time.Time](row["updated_at"]),
 	}
 }
 
@@ -120,7 +120,7 @@ func List(w http.ResponseWriter, r *http.Request) {
 	}
 	query += fmt.Sprintf(" LIMIT %d OFFSET %d", filter.Pager.GetLimit(), filter.Pager.GetOffset())
 
-	rows, err := db.RQuery(query, args...)
+	rows, err := db.GetAll(query, args...)
 	if err != nil {
 		log.Println(err)
 	}
@@ -166,16 +166,16 @@ func View(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
 	db, _ := pgdb.GetInstance()
-	rows, err := db.RQuery("SELECT "+moduleColumns+" FROM modules WHERE id = $1", vars["id"])
+	row, err := db.GetOne("SELECT "+moduleColumns+" FROM modules WHERE id = $1", vars["id"])
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if len(rows) == 0 {
+	if row == nil {
 		http.Error(w, "module not found", http.StatusNotFound)
 		return
 	}
-	module := rowToModule(rows[0])
+	module := rowToModule(row)
 
 	err = json.NewEncoder(w).Encode(module)
 	if err != nil {

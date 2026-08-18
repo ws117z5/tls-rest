@@ -23,42 +23,14 @@ const proomColumns = "uuid, id, name, password, created_by, users, created"
 // rowToProom maps a result-set row (from RQuery) into a Proom.
 func rowToProom(row map[string]interface{}) Proom {
 	return Proom{
-		Uuid:      pgdb.AsString(row["uuid"]),
-		Id:        pgdb.AsInt64(row["id"]),
-		Name:      pgdb.AsString(row["name"]),
-		Password:  pgdb.AsString(row["password"]),
-		CreatedBy: pgdb.AsString(row["created_by"]),
-		Users:     pgdb.AsString(row["users"]),
-		Created:   pgdb.AsTime(row["created"]),
+		Uuid:      pgdb.Coerce[string](row["uuid"]),
+		Id:        pgdb.Coerce[int64](row["id"]),
+		Name:      pgdb.Coerce[string](row["name"]),
+		Password:  pgdb.Coerce[string](row["password"]),
+		CreatedBy: pgdb.Coerce[string](row["created_by"]),
+		Users:     pgdb.Coerce[string](row["users"]),
+		Created:   pgdb.Coerce[time.Time](row["created"]),
 	}
-}
-
-type Data struct {
-	Fieldset map[string]string
-	Data     []Proom
-}
-
-type Proom struct {
-	Uuid      string    `json:"uuid"`
-	Id        int64     `json:"id"`
-	Name      string    `json:"name"`
-	Password  string    `json:"password"`
-	CreatedBy string    `json:"created_by"`
-	Users     string    `json:"users"`
-	Created   time.Time `sql:"default:now()" json:"created"`
-}
-
-type Puser struct {
-	Uuid    string `json:"uuid"`
-	Id      int64  `json:"id"`
-	Name    string `json:"name"`
-	Session string `json:"session"`
-}
-
-type Filter struct {
-	tableName struct{} `sql:"prooms" urlstruct:"b"`
-
-	urlstruct.Pager
 }
 
 var neg *negotiatior
@@ -87,7 +59,7 @@ func List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db, _ := pgdb.GetInstance()
-	rows, err := db.RQuery("SELECT " + proomColumns + " FROM prooms")
+	rows, err := db.GetAll("SELECT " + proomColumns + " FROM prooms")
 	if err != nil {
 		log.Println(err)
 	}
@@ -207,15 +179,15 @@ func AddRoomUser(w http.ResponseWriter, r *http.Request) {
 	db, _ := pgdb.GetInstance()
 	pRoom := new(Proom)
 
-	prows, err := db.RQuery("SELECT "+proomColumns+" FROM proom WHERE uuid = $1", roomId)
+	prow, err := db.GetOne("SELECT "+proomColumns+" FROM proom WHERE uuid = $1", roomId)
 	if err != nil {
 		panic(err)
 	}
-	if len(prows) == 0 {
+	if prow == nil {
 		http.Error(w, "room not found", http.StatusNotFound)
 		return
 	}
-	*pRoom = rowToProom(prows[0])
+	*pRoom = rowToProom(prow)
 
 	err = json.Unmarshal([]byte(pRoom.Users), &currentUsers)
 	if err != nil {
@@ -266,15 +238,15 @@ func ViewRoomUsers(w http.ResponseWriter, r *http.Request) {
 	db, _ := pgdb.GetInstance()
 	pRoom := new(Proom)
 
-	prows, err := db.RQuery("SELECT "+proomColumns+" FROM proom WHERE uuid = $1", roomId)
+	prow, err := db.GetOne("SELECT "+proomColumns+" FROM proom WHERE uuid = $1", roomId)
 	if err != nil {
 		panic(err)
 	}
-	if len(prows) == 0 {
+	if prow == nil {
 		http.Error(w, "room not found", http.StatusNotFound)
 		return
 	}
-	*pRoom = rowToProom(prows[0])
+	*pRoom = rowToProom(prow)
 
 	jsonUsers, err := json.Marshal(pRoom.Users)
 	if err != nil {

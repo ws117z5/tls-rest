@@ -5,7 +5,8 @@
   "main": "app.tsx",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "webpack --mode development"
+    "build:dev": "webpack --mode development",
+    "build:prod": "webpack --mode production"
   },
   "keywords": [],
   "author": "",
@@ -48,6 +49,7 @@
     "@react-three/fiber": "^9.7.0",
     "bootstrap": "^5.3.8",
     "motion": "^12.42.2",
+    "react-force-graph-2d": "^1.29.1",
     "react-markdown": "^10.1.0",
     "rehype-katex": "^7.0.1",
     "remark-directive": "^4.0.0",

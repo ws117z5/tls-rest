@@ -54,7 +54,7 @@ var (
 
 	//MDb mongodb://foo:bar@localhost:27017
 	MDb = Db{
-		Addr:     "mongodb://localhost:27017",
+		Addr:     Env("MONGO_ADDR", "mongodb://localhost:27017"),
 		Timeout:  10,
 		Database: "tls-rest",
 	}
@@ -70,7 +70,7 @@ var (
 
 	//RDb TODO move
 	RDb = Db{
-		Addr: "localhost:6379",
+		Addr: Env("REDIS_ADDR", "localhost:6379"),
 	}
 
 	// ---- Secrets / environment-specific config ----
@@ -87,14 +87,26 @@ var (
 	PdbPass      = RequireEnv("PG_PASSWORD")
 
 	// OPTIONAL: feature-specific, with sane non-secret fallbacks.
-	VKID           = EnvInt("VK_ID", 0)
-	VKSecKey       = Env("VK_SECRET_KEY", "")
-	VKLink         = Env("VK_LINK", "https://localhost:8080/users/Auth/Vk")
-	GoogleURLBlank = Env("GOOGLE_URL_BLANK", "urn:ietf:wg:oauth:2.0:oob")
-	GoogleURLLocal = Env("GOOGLE_URL_LOCAL", "https://localhost/users/Auth/Google")
+	VKID     = EnvInt("VK_ID", 0)
+	VKSecKey = Env("VK_SECRET_KEY", "")
 
-	//LocalURL TODO move
-	LocalURL = "https://localhost"
+	// OAuth providers (optional). A provider whose ID/secret is empty is simply
+	// offered-but-unconfigured: attempting it redirects to /login?error=
+	// provider_unconfigured rather than failing startup.
+	FacebookID     = Env("FACEBOOK_ID", "")
+	FacebookSecret = Env("FACEBOOK_SECRET", "")
+	GithubID       = Env("GITHUB_ID", "")
+	GithubSecret   = Env("GITHUB_SECRET", "")
+
+	// GoogleURLBlank is the OOB (out-of-band) sentinel — not a host, so it is
+	// not host-dependent and stays a constant.
+	GoogleURLBlank = Env("GOOGLE_URL_BLANK", "urn:ietf:wg:oauth:2.0:oob")
+
+	// NOTE: the former VKLink / GoogleURLLocal / LocalURL constants are gone.
+	// Absolute app URLs (OAuth redirects, canonical links) are now derived
+	// per-request from the host the client used — see go/lib/httpx.BaseURL and
+	// the APP_HOSTS allowlist. This lets one build serve localhost, LAN and the
+	// public domain without any hardcoded host.
 
 	//Config a config file
 	Config = new(ConfigType)

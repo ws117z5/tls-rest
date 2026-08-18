@@ -13,13 +13,15 @@ import (
 	// Import modules/pages/features to trigger their init() self-registration.
 	_ "tls-rest/go/engine/features/images"
 	_ "tls-rest/go/engine/modules/modulerights"
-	_ "tls-rest/go/engine/modules/posts"
 	_ "tls-rest/go/engine/modules/usergroups"
 	_ "tls-rest/go/engine/modules/users"
 	_ "tls-rest/go/engine/pages/login"
 	_ "tls-rest/go/engine/pages/profile"
+
+	//import non engine components
 	_ "tls-rest/go/features/opencv"
 	_ "tls-rest/go/features/papers"
+	_ "tls-rest/go/modules/posts"
 
 	module "tls-rest/go/engine"
 	middleware "tls-rest/go/lib/route/middlware"

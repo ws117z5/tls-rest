@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"tls-rest/go/lib/db/pgdb"
@@ -223,24 +222,10 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 		return nil, fmt.Errorf("failed to get total count: %w", err)
 	}
 
-	// Convert result to int
+	// GetOne now returns a map directly.
 	total := 0
 	if countResult != nil {
-		if countMap, ok := countResult.(map[string]interface{}); ok {
-			if count, exists := countMap["count"]; exists {
-				switch v := count.(type) {
-				case int64:
-					total = int(v)
-				case int:
-					total = v
-				case string:
-					// Try to parse string to int
-					if parsed, parseErr := strconv.Atoi(v); parseErr == nil {
-						total = parsed
-					}
-				}
-			}
-		}
+		total = pgdb.Coerce[int](countResult["count"])
 	}
 
 	// Build and execute main query

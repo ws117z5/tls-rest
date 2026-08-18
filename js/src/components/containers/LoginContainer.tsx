@@ -38,7 +38,8 @@ const Login: React.FC<LoginProps> = () => {
     }
   };
 
-  const loginGoogle = () => window.location.assign("/users/Auth/GoogleLogin");
+  const loginWith = (provider: string) =>
+    window.location.assign(`/users/Auth/${provider}Login`);
 
   const switchMode = (m: Mode) => {
     setMode(m);
@@ -97,7 +98,16 @@ const Login: React.FC<LoginProps> = () => {
 
       <ul className="list-unstyled mb-0">
         <li>
-          <AuthButton name="Continue with Google" call={loginGoogle} />
+          <AuthButton name="Continue with Google" call={() => loginWith("Google")} />
+        </li>
+        <li>
+          <AuthButton name="Continue with GitHub" call={() => loginWith("Github")} />
+        </li>
+        <li>
+          <AuthButton name="Continue with Facebook" call={() => loginWith("Facebook")} />
+        </li>
+        <li>
+          <AuthButton name="Continue with VK" call={() => loginWith("Vk")} />
         </li>
       </ul>
 

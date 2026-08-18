@@ -18,14 +18,6 @@ var meshCoordinator = mesh.NewCoordinator()
 // in the optimizer until the room negotiates its own.
 const defaultBitrateKbps = 800
 
-// reportRequest is the body a peer POSTs to /papers/{roomId}/report.
-type reportRequest struct {
-	Peer  string          `json:"peer"`
-	Up    float64         `json:"up"`
-	Down  float64         `json:"down"`
-	Stats []mesh.LinkStat `json:"stats"`
-}
-
 // ReportLink records a peer's measured links and returns the current plan (or a
 // "waiting" status while other peers still need to report).
 func ReportLink(w http.ResponseWriter, r *http.Request) {

@@ -7,12 +7,14 @@ import (
 
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	//pgdb "tls-rest/go/lib/db/pgdb"
 
 	constants "tls-rest/go/constants"
 	engine "tls-rest/go/engine"
+	"tls-rest/go/lib/httpx"
 	input "tls-rest/go/lib/subroutine/input"
 	server "tls-rest/go/lib/subroutine/server"
 	"tls-rest/leet"
@@ -54,6 +56,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "configuration error:", err)
 		os.Exit(1)
 	}
+
+	// Install the trusted-host allowlist used to derive absolute URLs
+	// (OAuth redirects, CORS) per request. APP_HOSTS is a comma-separated list
+	// of every hostname the app is served on; the first is canonical. Example:
+	//   APP_HOSTS=localhost,192.168.1.50,example.com
+	httpx.SetTrustedHosts(strings.Split(constants.Env("APP_HOSTS", "localhost"), ","))
 
 	// Validate go.config.json against the modules the engine actually registered:
 	// every declared module must have a Go definition and an endpoint. Logged

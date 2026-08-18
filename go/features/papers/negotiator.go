@@ -2,7 +2,6 @@ package papers
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"tls-rest/go/lib"
@@ -33,24 +32,6 @@ func NewMessage(msg, userId, roomId string) *message {
 		time.Now(),
 		msg,
 	}
-}
-
-type connection struct {
-	pc *webrtc.PeerConnection
-	dc *webrtc.DataChannel
-}
-
-type negotiatior struct {
-	connectionPool  chan *webrtc.PeerConnection
-	roomMessages    map[string][]message
-	roomUsers       map[string][]string
-	userConnections map[string]*webrtc.PeerConnection
-	userChannels    map[string]*webrtc.DataChannel
-
-	mx sync.RWMutex
-	//notifyAll func(string)
-	//addUser func(string)
-	//addRoom func(string, string)
 }
 
 func (neg *negotiatior) spawnPeerConnections() {

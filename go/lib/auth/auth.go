@@ -1,121 +1,97 @@
 package auth
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"io"
-	"strconv"
-
-	config "tls-rest/go/constants"
+	"net/http"
+	"strings"
 
 	"tls-rest/go/engine/modules/users"
 
-	"tls-rest/go/lib"
-
-	"net/http"
-
 	"github.com/gorilla/mux"
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/google"
 )
 
-var googleConf *oauth2.Config
-var stateString string
-
-func init() {
-	googleConf = &oauth2.Config{
-		RedirectURL:  "https://localhost/users/Auth/GoogleCallback",
-		ClientID:     config.GoogleID,
-		ClientSecret: config.GoogleSecret,
-		Scopes:       []string{"https://www.googleapis.com/auth/userinfo.email", "profile", "email"},
-		Endpoint:     google.Endpoint,
-	}
-
-	stateString, _ = lib.GetRandomHash(16)
-}
-
-// Auth simple auth
+// Auth is the OAuth entry point for every provider, wired at
+// /users/Auth/{authType}. authType is "<Provider>Login" to start a flow or
+// "<Provider>Callback" to complete it, e.g. GoogleLogin / GoogleCallback,
+// GithubLogin / GithubCallback, FacebookLogin / FacebookCallback,
+// VkLogin / VkCallback. Providers are declared once in providers.go.
 func Auth(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	vals := r.URL.Query()
-	//user_id
-
-	//https://oauth.vk.com/access_token?client_id=1&client_secret=H2Pk8htyFD8024mZaPHm&redirect_uri=http://mysite.ru&code=7a6fa4dff77a228eeda56603b8f53806c883f011c40b72630bb50df056f6479e52a
-	if typeName, ok := vars["authType"]; ok {
-		switch typeName {
-		case "Vk":
-
-			code := vals["code"][0]
-			appID := strconv.Itoa(config.VKID)
-			appSecret := config.VKSecKey
-			appLink := config.VKLink
-
-			url := "https://oauth.vk.com/access_token?client_id=" + appID + "&client_secret=" + appSecret + "&redirect_uri=" + appLink + "?code=" + code
-
-			if resp, err := http.Get(url); err == nil {
-				if body, err := io.ReadAll(resp.Body); err == nil {
-					fmt.Println(bytes.NewBuffer(body).String())
-				}
-			}
-
-		case "GoogleLogin":
-			handleGoogleLogin(w, r)
-		case "GoogleCallback":
-			handleGoogleCallback(w, r)
-		}
-	}
-}
-
-func handleGoogleLogin(w http.ResponseWriter, r *http.Request) {
-	url := googleConf.AuthCodeURL(stateString)
-	http.Redirect(w, r, url, http.StatusTemporaryRedirect)
-}
-
-func handleGoogleCallback(w http.ResponseWriter, r *http.Request) {
-	content, err := getUserInfo(r.FormValue("state"), r.FormValue("code"))
-	if err != nil {
-		fmt.Println(err.Error())
-		http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+	authType, ok := mux.Vars(r)["authType"]
+	if !ok {
+		http.NotFound(w, r)
 		return
 	}
 
-	var GoogleAccount = new(users.GoogleAccount)
-	err = json.Unmarshal(content, &GoogleAccount)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	name, action := parseAuthType(authType)
+	p := providers[name]
+	if p == nil || action == "" {
+		http.NotFound(w, r)
 		return
 	}
 
-	// Find or create the user, then establish an authenticated session and send
-	// them into the app.
-	userID, username, err := users.FindOrCreateGoogleUser(GoogleAccount)
+	switch action {
+	case "login":
+		startOAuth(w, r, p)
+	case "callback":
+		completeOAuth(w, r, p)
+	}
+}
+
+// parseAuthType splits "<Provider>Login"/"<Provider>Callback" into a canonical
+// provider key (lower-case) and the action.
+func parseAuthType(authType string) (name, action string) {
+	switch {
+	case strings.HasSuffix(authType, "Callback"):
+		return strings.ToLower(strings.TrimSuffix(authType, "Callback")), "callback"
+	case strings.HasSuffix(authType, "Login"):
+		return strings.ToLower(strings.TrimSuffix(authType, "Login")), "login"
+	}
+	return "", ""
+}
+
+// startOAuth kicks off the provider flow: set a CSRF state cookie and redirect
+// the user to the provider's consent screen.
+func startOAuth(w http.ResponseWriter, r *http.Request, p *providerDef) {
+	if !p.configured() {
+		http.Redirect(w, r, "/login?error=provider_unconfigured", http.StatusTemporaryRedirect)
+		return
+	}
+	state := setStateCookie(w, r)
+	http.Redirect(w, r, p.config(r).AuthCodeURL(state), http.StatusTemporaryRedirect)
+}
+
+// completeOAuth handles the provider redirect back: verify state, exchange the
+// code, fetch + normalize the account, then find/create the user and log in.
+func completeOAuth(w http.ResponseWriter, r *http.Request, p *providerDef) {
+	if !checkStateCookie(w, r) {
+		http.Redirect(w, r, "/login?error=state", http.StatusTemporaryRedirect)
+		return
+	}
+	code := r.FormValue("code")
+	if code == "" {
+		http.Redirect(w, r, "/login?error=oauth", http.StatusTemporaryRedirect)
+		return
+	}
+
+	cfg := p.config(r)
+	tok, err := cfg.Exchange(r.Context(), code)
 	if err != nil {
-		fmt.Println("google login failed:", err.Error())
+		http.Redirect(w, r, "/login?error=oauth", http.StatusTemporaryRedirect)
+		return
+	}
+
+	acc, err := p.fetch(r.Context(), cfg, tok)
+	if err != nil {
+		http.Redirect(w, r, "/login?error=oauth", http.StatusTemporaryRedirect)
+		return
+	}
+	acc.Provider = p.name
+
+	userID, username, err := users.FindOrCreateOAuthUser(acc)
+	if err != nil {
 		http.Redirect(w, r, "/login?error=oauth", http.StatusTemporaryRedirect)
 		return
 	}
 
 	Login(w, r, int(userID), username)
 	http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
-}
-
-func getUserInfo(state string, code string) ([]byte, error) {
-	if state != stateString {
-		return nil, fmt.Errorf("invalid oauth state")
-	}
-	token, err := googleConf.Exchange(oauth2.NoContext, code)
-	if err != nil {
-		return nil, fmt.Errorf("code exchange failed: %s", err.Error())
-	}
-	response, err := http.Get("https://www.googleapis.com/oauth2/v2/userinfo?access_token=" + token.AccessToken)
-	if err != nil {
-		return nil, fmt.Errorf("failed getting user info: %s", err.Error())
-	}
-	defer response.Body.Close()
-	contents, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed reading response body: %s", err.Error())
-	}
-	return contents, nil
 }

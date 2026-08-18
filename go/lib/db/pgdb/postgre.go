@@ -3,6 +3,7 @@ package pgdb
 import (
 	"context"
 	"fmt"
+	"net"
 	"reflect"
 	"strconv"
 	"strings"
@@ -45,9 +46,22 @@ var (
 )
 
 func dsn() string {
+	// Host/port/sslmode come from the environment so the same binary connects to
+	// a local Postgres in dev and a managed instance (often sslmode=require) in
+	// production. PG_ADDR may be "host" or "host:port"; PG_SSLMODE defaults to
+	// disable for local dev.
+	host, port := constants.Env("PG_HOST", "localhost"), constants.Env("PG_PORT", "5432")
+	if addr := constants.PDb.Addr; addr != "" {
+		if h, p, err := net.SplitHostPort(addr); err == nil {
+			host, port = h, p
+		} else {
+			host = addr
+		}
+	}
 	return fmt.Sprintf(
-		"host=localhost port=5432 user=%s password=%s dbname=%s sslmode=disable",
-		constants.PDb.User, constants.PDb.Password, constants.PDb.Database,
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		host, port, constants.PDb.User, constants.PDb.Password, constants.PDb.Database,
+		constants.Env("PG_SSLMODE", "disable"),
 	)
 }
 
@@ -157,13 +171,15 @@ func (db *Db) GetAll(query string, args ...interface{}) ([]map[string]interface{
 }
 
 // GetOne fetches the first row as a map. Returns an error if no rows match.
-func (db *Db) GetOne(query string, args ...interface{}) (interface{}, error) {
+// GetOne fetches the first row as a column->value map, or nil when no row
+// matches (nil map, nil error — callers check for a nil result).
+func (db *Db) GetOne(query string, args ...interface{}) (map[string]interface{}, error) {
 	results, err := db.RQuery(query, args...)
 	if err != nil {
 		return nil, err
 	}
 	if len(results) == 0 {
-		return nil, fmt.Errorf("no rows returned")
+		return nil, nil
 	}
 	return results[0], nil
 }
@@ -283,59 +299,6 @@ func (db *Db) GetQueriesTime() float64 {
 	return db.queriesTime
 }
 
-// --- Result-map value coercion helpers ---
-//
-// pgx.RowToMap returns Go-typed values (int64 for integers, string for text,
-// time.Time for timestamps, []byte for bytea). These helpers read a map value
-// tolerantly so callers converting RQuery results into structs don't repeat the
-// same type switches.
-
-func AsInt64(v interface{}) int64 {
-	switch n := v.(type) {
-	case int64:
-		return n
-	case int32:
-		return int64(n)
-	case int:
-		return int64(n)
-	case float64:
-		return int64(n)
-	case string:
-		x, _ := strconv.ParseInt(n, 10, 64)
-		return x
-	}
-	return 0
-}
-
-func AsString(v interface{}) string {
-	switch s := v.(type) {
-	case string:
-		return s
-	case []byte:
-		return string(s)
-	case nil:
-		return ""
-	}
-	return fmt.Sprintf("%v", v)
-}
-
-func AsBytes(v interface{}) []byte {
-	switch b := v.(type) {
-	case []byte:
-		return b
-	case string:
-		return []byte(b)
-	}
-	return nil
-}
-
-func AsTime(v interface{}) time.Time {
-	if t, ok := v.(time.Time); ok {
-		return t
-	}
-	return time.Time{}
-}
-
 // --- Type coercion helpers (same as MySQL version) ---
 
 func CoerceByType(data map[string]interface{}, current *map[string]interface{}, schemaType reflect.Type) error {
@@ -403,6 +366,17 @@ func CoerceToSchema[T any](data map[string]interface{}) (map[string]interface{},
 }
 
 func CoerceValue(value interface{}, t reflect.Type) (interface{}, error) {
+	// Concrete types not distinguished by Kind alone.
+	switch t {
+	case reflect.TypeOf([]byte(nil)):
+		return coerceBytes(value), nil
+	case reflect.TypeOf(time.Time{}):
+		if tm, ok := value.(time.Time); ok {
+			return tm, nil
+		}
+		return time.Time{}, nil
+	}
+
 	switch t.Kind() {
 	case reflect.String:
 		switch v := value.(type) {
@@ -410,36 +384,90 @@ func CoerceValue(value interface{}, t reflect.Type) (interface{}, error) {
 			return v, nil
 		case []byte:
 			return string(v), nil
+		case nil:
+			return "", nil
 		case fmt.Stringer:
 			return v.String(), nil
 		default:
 			return fmt.Sprintf("%v", v), nil
 		}
-	case reflect.Int, reflect.Int64:
-		switch v := value.(type) {
-		case int:
-			return v, nil
-		case int64:
-			return int(v), nil
-		case float64:
-			return int(v), nil
-		case string:
-			return strconv.Atoi(v)
-		}
+	case reflect.Int:
+		return int(coerceInt64(value)), nil
+	case reflect.Int32:
+		return int32(coerceInt64(value)), nil
+	case reflect.Int64:
+		return coerceInt64(value), nil
 	case reflect.Float64:
 		switch v := value.(type) {
 		case float64:
 			return v, nil
+		case float32:
+			return float64(v), nil
+		case int64:
+			return float64(v), nil
+		case int:
+			return float64(v), nil
 		case string:
-			return strconv.ParseFloat(v, 64)
+			f, _ := strconv.ParseFloat(v, 64)
+			return f, nil
 		}
+		return float64(0), nil
 	case reflect.Bool:
 		switch v := value.(type) {
 		case bool:
 			return v, nil
 		case string:
-			return strconv.ParseBool(v)
+			b, _ := strconv.ParseBool(v)
+			return b, nil
+		}
+		return false, nil
+	case reflect.Slice:
+		if t.Elem().Kind() == reflect.Uint8 {
+			return coerceBytes(value), nil
 		}
 	}
 	return value, nil
+}
+
+// Coerce converts a DB result value to T using CoerceValue (the single coercion
+// authority). It returns the zero value of T when the value can't be converted,
+// and is the ergonomic way to read a map value from RQuery/GetOne/GetAll as a
+// concrete Go type, e.g. Coerce[int64](row["id"]) or Coerce[string](row["name"]).
+func Coerce[T any](v interface{}) T {
+	var zero T
+	out, err := CoerceValue(v, reflect.TypeOf(zero))
+	if err != nil {
+		return zero
+	}
+	if typed, ok := out.(T); ok {
+		return typed
+	}
+	return zero
+}
+
+func coerceInt64(v interface{}) int64 {
+	switch n := v.(type) {
+	case int64:
+		return n
+	case int:
+		return int64(n)
+	case int32:
+		return int64(n)
+	case float64:
+		return int64(n)
+	case string:
+		x, _ := strconv.ParseInt(n, 10, 64)
+		return x
+	}
+	return 0
+}
+
+func coerceBytes(v interface{}) []byte {
+	switch b := v.(type) {
+	case []byte:
+		return b
+	case string:
+		return []byte(b)
+	}
+	return nil
 }

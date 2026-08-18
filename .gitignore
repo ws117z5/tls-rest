@@ -1,6 +1,8 @@
 .DS_Store
 .idea/
-.private/
+.private/*
+!.privale/
+!.private/.env.example
 debug
 js/.DS_Store
 js/dist/

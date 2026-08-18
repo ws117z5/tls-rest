@@ -170,7 +170,7 @@ func selectOptionsFromTable(table, valueField, displayField string) []map[string
 	}
 	query := fmt.Sprintf("SELECT %s AS value, %s AS label FROM %s ORDER BY %s",
 		db.Quote(valueField), db.Quote(displayField), db.Quote(table), db.Quote(displayField))
-	rows, err := db.RQuery(query)
+	rows, err := db.GetAll(query)
 	if err != nil {
 		return nil
 	}
@@ -178,7 +178,7 @@ func selectOptionsFromTable(table, valueField, displayField string) []map[string
 	for _, row := range rows {
 		options = append(options, map[string]interface{}{
 			"value": row["value"],
-			"name":  pgdb.AsString(row["label"]),
+			"name":  pgdb.Coerce[string](row["label"]),
 		})
 	}
 	return options
