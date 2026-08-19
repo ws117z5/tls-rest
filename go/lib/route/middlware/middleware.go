@@ -8,6 +8,7 @@ import (
 
 	"tls-rest/go/controllers"
 	module "tls-rest/go/engine"
+	"tls-rest/go/lib/accesslog"
 	. "tls-rest/go/lib/auth"
 	"tls-rest/go/lib/db/cache"
 	"tls-rest/go/lib/log"
@@ -83,6 +84,9 @@ func isAPICall(r *http.Request) bool {
 	return false
 }
 
+// msSince returns elapsed milliseconds since t, for access-log durations.
+func msSince(t time.Time) float64 { return float64(time.Since(t).Microseconds()) / 1000.0 }
+
 // isModuleEndpoint reports whether a path is a JSON data endpoint (a module CRUD
 // route, page endpoint, or feature route) rather than an SPA page. The set is
 // self-registered by modules/pages/features in the engine — see
@@ -112,6 +116,48 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 		sessionID := getSessionID(r)
 		requestID := log.LogRequest(r, userID, sessionID)
 
+		// Wrap the writer so we can record the final status for the access log.
+		rec := newResponseRecorder(w)
+		w = rec
+		clientIP := accesslog.ClientIP(r)
+		uid := 0
+		if userID != nil {
+			uid = *userID
+		}
+
+		// IP/CIDR access-control enforcement (access_rule table). A denied IP is
+		// blocked before any handler runs, and the attempt is recorded.
+		if allowed, ruleID := accesslog.Decision(clientIP); !allowed {
+			accesslog.Record(accesslog.Entry{
+				Time: startTime, Method: r.Method, Path: r.URL.Path,
+				Status: http.StatusForbidden, DurationMS: msSince(startTime),
+				UserID: uid, SessionID: sessionID, IP: clientIP, UserAgent: r.UserAgent(),
+				Blocked: true, DeniedReason: "ip_rule",
+			})
+			log.LogAuthEvent("access_denied", "Blocked by IP access rule", userID, sessionID, false, map[string]interface{}{
+				"ip": clientIP, "rule_id": ruleID, "request_id": requestID,
+			})
+			controllers.Error(w, r.WithContext(ctx), http.StatusForbidden)
+			return
+		}
+
+		// Record every request that passed IP enforcement, once the response is
+		// written (Postgres access_log + Prometheus metrics). module/action are
+		// filled in by the API branch below via the closure variables.
+		var recModule, recAction string
+		defer func() {
+			reason := ""
+			if rec.status == http.StatusUnauthorized || rec.status == http.StatusForbidden {
+				reason = "authz"
+			}
+			accesslog.Record(accesslog.Entry{
+				Time: startTime, Method: r.Method, Path: r.URL.Path,
+				Status: rec.status, DurationMS: msSince(startTime),
+				UserID: uid, SessionID: sessionID, IP: clientIP, UserAgent: r.UserAgent(),
+				Module: recModule, Action: recAction, DeniedReason: reason,
+			})
+		}()
+
 		// Log session event
 		log.LogAuthEvent("session_check", "Session validated", userID, sessionID, true, map[string]interface{}{
 			"request_id": requestID,
@@ -121,6 +167,7 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 		if isAPICall(r) {
 			// --- Module rights check (per-mode, group-resolved) ---
 			allowed, moduleName, action := authorizeAPIRequest(ci, r)
+			recModule, recAction = moduleName, action
 
 			if !allowed {
 				if r.URL.Path == "/login" || r.URL.Path == "/" {
