@@ -1,4 +1,4 @@
-//go:generate go run init/init.go
+// removed //go:generate go run init/init.go
 package main
 
 import (
@@ -17,7 +17,6 @@ import (
 	"tls-rest/go/lib/httpx"
 	input "tls-rest/go/lib/subroutine/input"
 	server "tls-rest/go/lib/subroutine/server"
-	"tls-rest/leet"
 
 	"tls-rest/go/lib/log"
 
@@ -47,7 +46,7 @@ func init() {
 
 func main() {
 
-	leet.Run()
+	//leet.Run()
 
 	startTime := time.Now()
 
