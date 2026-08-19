@@ -127,7 +127,6 @@ func loadEnv() {
 
 			if err := scanner.Err(); err != nil {
 				fmt.Fprintf(os.Stderr, "warning: reading %s: %v\n", path, err)
-				select {}
 			}
 
 			file.Close()
