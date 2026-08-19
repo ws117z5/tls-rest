@@ -24,26 +24,17 @@ RUN npx webpack --config-name prod
 
 
 # ---- Stage 2: Go binary (CGO on) -------------------------------------------
-FROM golang:1.25-bookworm AS backend
-# Native build deps:
-#   libopencv-dev  -> gocv / the opencv page (Debian 12 ships OpenCV 4.6, which
-#                     satisfies every gocv API the page uses; pkg-config exposes
-#                     opencv4.pc that gocv's cgo directives look up)
-#   libpcap-dev    -> gopacket / the netmapper packet-capture path
+FROM ghcr.io/hybridgroup/opencv:4.13.0 AS backend
+ENV GOTOOLCHAIN=auto
 RUN apt-get update \
- && apt-get install -y --no-install-recommends pkg-config libopencv-dev libpcap-dev \
+ && apt-get install -y --no-install-recommends libpcap-dev \
  && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-
-# CGO must be on for OpenCV + libpcap. The tags pull in the gated opencv page
-# (register_opencv.go / go/pages/opencv) and the netmapper pcap path
-# (coax_pcap.go).
 RUN CGO_ENABLED=1 GOOS=linux go build -tags "opencv netmap_pcap" \
-        -trimpath -ldflags="-s -w" -o /out/tls-rest .
+        -trimpath -ldflags="-s -w" -o /out/tls-rest 
 
 
 # ---- Stage 3: runtime -------------------------------------------------------
