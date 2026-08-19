@@ -8,7 +8,6 @@ require (
 	github.com/go-pg/urlstruct v1.0.1
 	github.com/go-redis/redis/v8 v8.11.5
 	github.com/gorilla/mux v1.8.1
-	github.com/lib/pq v1.10.3
 	github.com/pion/rtcp v1.2.17
 	github.com/prometheus/client_golang v1.23.2
 	//github.com/tsenart/vegeta/v12 v12.8.3 // indirect
@@ -20,15 +19,16 @@ require (
 
 require (
 	github.com/fatih/color v1.19.0
+	github.com/google/gopacket v1.1.19
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pion/webrtc/v4 v4.2.18
 	github.com/pkg/errors v0.9.1
 	golang.org/x/crypto v0.50.0
+	golang.org/x/net v0.53.0
 )
 
 require (
-	cloud.google.com/go/compute/metadata v0.9.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/codemodus/kace v0.5.1 // indirect
@@ -36,7 +36,6 @@ require (
 	github.com/dgryski/go-rendezvous v0.0.0-20200823014737-9f7001d12a5f // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/golang/snappy v1.0.0 // indirect
-	github.com/google/gopacket v1.1.19 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
@@ -71,7 +70,6 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	golang.org/x/net v0.53.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
 	golang.org/x/sys v0.43.0 // indirect
 	golang.org/x/text v0.36.0 // indirect
