@@ -38,15 +38,13 @@ RUN CGO_ENABLED=1 GOOS=linux go build -tags "opencv netmap_pcap" \
 
 
 # ---- Stage 3: runtime -------------------------------------------------------
-FROM debian:bookworm-slim
-# Runtime shared libraries (same Debian 12 => same OpenCV 4.6 ABI as the builder):
-#   libopencv-dev pulls every OpenCV runtime module gocv links against — the
-#     simplest reliable option. To slim the image, replace it with just the
-#     specific libopencv-*406 runtime packages gocv needs.
-#   libpcap0.8    -> netmapper capture at runtime
-#   ca-certificates -> outbound TLS (OAuth token endpoints, image fetch, …)
+FROM ghcr.io/hybridgroup/opencv:4.13.0
+
+# Install runtime tools required by your Go app (libpcap for network capture, ca-certificates for TLS)
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates libpcap0.8 libopencv-dev \
+ && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libpcap0.8 \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -57,7 +55,7 @@ COPY go.config.json                      ./go.config.json
 COPY templates                           ./templates
 COPY css                                 ./css
 COPY img                                 ./img
-#COPY init                                ./init
+COPY js/static                           ./js/static
 COPY --from=frontend /app/js/dist        ./js/dist
 
 # The server writes application logs here.
