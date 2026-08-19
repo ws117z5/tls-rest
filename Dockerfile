@@ -8,7 +8,7 @@
 # =============================================================================
 
 # ---- Stage 1: frontend bundle ----------------------------------------------
-FROM node:20-bookworm-slim AS frontend
+FROM node:26-bookworm-slim AS frontend
 WORKDIR /app/js
 
 # package*.json globs the manifest + committed lockfile; npm ci installs it
