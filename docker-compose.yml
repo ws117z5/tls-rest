@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: tls-rest
+    restart: always
+    ports:
+      - "8443:8443"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - ENV=production
+    volumes:
+      - /opt/workstation/certs/cert.pem:/app/.private/cert.pem:ro
+      - /opt/workstation/certs/key.pem:/app/.private/key.pem:ro
+      - /opt/workstation/app.env:/app/.private/.env:ro

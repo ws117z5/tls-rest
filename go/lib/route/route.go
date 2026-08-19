@@ -17,11 +17,10 @@ import (
 	_ "tls-rest/go/engine/modules/users"
 	_ "tls-rest/go/engine/pages/login"
 	_ "tls-rest/go/engine/pages/profile"
-
-	//import non engine components
-	_ "tls-rest/go/features/opencv"
-	_ "tls-rest/go/features/papers"
 	_ "tls-rest/go/modules/posts"
+	_ "tls-rest/go/pages/netmapper"
+	_ "tls-rest/go/pages/opencv"
+	_ "tls-rest/go/pages/papers"
 
 	module "tls-rest/go/engine"
 	middleware "tls-rest/go/lib/route/middlware"
@@ -77,7 +76,7 @@ var routes = []Route{
 		Handler: controllers.Index,
 		Satatic: false,
 	},
-	// papers now self-registers its routes (features/papers/routes.go).
+	// papers now self-registers its routes (pages/papers/routes.go).
 	// Users routes are now automatically registered via module system
 	// Posts routes are now automatically registered via module system
 	// Static routes are now handled by RegisterStaticRoutes() function

@@ -80,6 +80,15 @@ type PageAbstract struct {
 
 // Initialize registers the page's routes via the shared registrar seam.
 func (p *PageAbstract) Initialize() {
+	// Advertise this page's data endpoints (fieldset endpoint + custom routes)
+	// so the middleware recognizes them without a hardcoded list.
+	if p.Endpoint != "" {
+		RegisterEndpointPrefix(p.Endpoint)
+	}
+	for _, rt := range p.Routes {
+		RegisterEndpointPrefix(rt.Path)
+	}
+
 	AddRouteRegistrar(func(router *mux.Router) {
 		for _, rt := range p.Routes {
 			route := router.HandleFunc(rt.Path, rt.Handler)

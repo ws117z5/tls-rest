@@ -1,0 +1,21 @@
+# Dependencies / build outputs (reinstalled/rebuilt inside the image)
+js/node_modules
+js/dist
+node_modules
+
+# Secrets & local runtime state (never bake into the image; mount at runtime)
+.private
+logs
+*.env
+
+# VCS / editor / OS
+.git
+.gitignore
+.vscode
+.idea
+.DS_Store
+__MACOSX
+
+# Archives & misc not needed for the build
+*.zip
+README.md

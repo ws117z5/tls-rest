@@ -72,7 +72,7 @@ const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disa
                     {refs.map((img, idx) => (
                         <div key={img.id ?? idx} className="text-center" style={{ width: 90 }}>
                             <img
-                                src={imageUrl(img.id)}
+                                src={imageUrl(img)}
                                 alt={img.filename || String(img.id)}
                                 style={{
                                     width: 80,

@@ -29,7 +29,7 @@ func ReportLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req reportRequest
+	var req ReportRequest
 	if err := json.Unmarshal(b, &req); err != nil {
 		http.Error(w, "invalid report: "+err.Error(), http.StatusBadRequest)
 		return

@@ -1,0 +1,211 @@
+/* Login page design: a centered card with a native email/password form and a
+   column of full-width OAuth buttons (brand icon left, label centered). */
+
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    margin: 3rem auto;
+    padding: 2rem 1.75rem 1.5rem;
+    background: #ffffff;
+    border: 1px solid #e6e8eb;
+    border-radius: 14px;
+    box-shadow: 0 10px 30px rgba(20, 23, 28, 0.06);
+    box-sizing: border-box;
+}
+
+.login-title {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: #1a1d21;
+    text-align: center;
+}
+
+.login-subtitle {
+    margin: 0.35rem 0 1.4rem;
+    font-size: 0.9rem;
+    color: #6b7280;
+    text-align: center;
+}
+
+.login-error {
+    margin-bottom: 1rem;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.85rem;
+    color: #9f1d1d;
+    background: #fdecec;
+    border: 1px solid #f6c9c9;
+    border-radius: 8px;
+}
+
+/* --- form --- */
+
+.login-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.login-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.login-label {
+    font-size: 0.78rem;
+    font-weight: 600;
+    color: #4b5563;
+    letter-spacing: 0.01em;
+}
+
+.login-input {
+    width: 100%;
+    height: 44px;
+    padding: 0 0.85rem;
+    font-size: 0.95rem;
+    color: #1a1d21;
+    background: #fff;
+    border: 1px solid #d7dbe0;
+    border-radius: 9px;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    box-sizing: border-box;
+}
+
+.login-input:focus {
+    border-color: #4f7cff;
+    box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.15);
+}
+
+.login-submit {
+    width: 100%;
+    height: 46px;
+    margin-top: 0.4rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #fff;
+    background: #2563eb;
+    border: none;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+}
+
+.login-submit:hover:not(:disabled) {
+    background: #1d4ed8;
+}
+
+.login-submit:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+.login-submit:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* --- divider --- */
+
+.login-divider {
+    display: flex;
+    align-items: center;
+    margin: 1.25rem 0;
+    color: #9aa1ab;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.login-divider::before,
+.login-divider::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: #e6e8eb;
+}
+
+.login-divider span {
+    padding: 0 0.75rem;
+}
+
+/* --- OAuth buttons --- */
+
+.oauth-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.auth-button {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    width: 100%;
+    height: 46px;
+    padding: 0 2.75rem;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: #262b31;
+    background: #ffffff;
+    border: 1px solid #d7dbe0;
+    border-radius: 9px;
+    cursor: pointer;
+    transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.auth-button:hover:not(:disabled) {
+    background: #f6f8fa;
+    border-color: #c3c9d0;
+    box-shadow: 0 1px 2px rgba(20, 23, 28, 0.06);
+}
+
+.auth-button:active:not(:disabled) {
+    background: #eef1f4;
+}
+
+.auth-button:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
+/* Icon pinned to the left, label optically centered in the button. */
+.auth-button__icon {
+    position: absolute;
+    left: 0.9rem;
+    width: 20px;
+    height: 20px;
+    display: block;
+}
+
+.auth-button__label {
+    line-height: 1;
+}
+
+/* --- footer switch --- */
+
+.login-switch {
+    margin-top: 1.25rem;
+    text-align: center;
+}
+
+.login-link {
+    background: none;
+    border: none;
+    padding: 0;
+    font-size: 0.88rem;
+    color: #6b7280;
+    cursor: pointer;
+}
+
+.login-link strong {
+    color: #2563eb;
+    font-weight: 600;
+}
+
+.login-link:hover strong {
+    text-decoration: underline;
+}

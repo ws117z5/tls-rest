@@ -15,7 +15,7 @@ const ImageView: React.FC<ImageViewProps> = ({ value }) => {
             {refs.map((img, i) => (
                 <img
                     key={img.id ?? i}
-                    src={imageUrl(img.id)}
+                    src={imageUrl(img)}
                     alt={img.filename || String(img.id)}
                     style={{ maxWidth: 200, maxHeight: 200, objectFit: "contain", border: "1px solid #eee" }}
                 />

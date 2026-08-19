@@ -39,12 +39,18 @@ function extOf(ref: ImageRef): string {
  * (uuid) reference /image/{guid}.{ext}; falls back to the id for legacy refs.
  * Serving is access-controlled server-side.
  */
-export function imageUrl(ref: ImageRef): string {
-    if (ref.url) return `${Config.serverURL}${ref.url.replace(/^\//, "")}`;
-    const guid = ref.uuid || String(ref.id);
-    const ext = extOf(ref);
-    const name = ext ? `${guid}.${ext}` : guid;
-    return `${Config.serverURL}image/${name}`;
+export function imageUrl(ref: ImageRef, opts?: { preview?: boolean }): string {
+    let base: string;
+    if (ref.url) {
+        base = `${Config.serverURL}${ref.url.replace(/^\//, "")}`;
+    } else {
+        const guid = ref.uuid || String(ref.id);
+        const ext = extOf(ref);
+        const name = ext ? `${guid}.${ext}` : guid;
+        base = `${Config.serverURL}image/${name}`;
+    }
+    // Preview mode asks the server for the compressed 80x80 content-aware thumb.
+    return opts?.preview ? `${base}${base.includes("?") ? "&" : "?"}preview` : base;
 }
 
 /**

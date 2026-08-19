@@ -18,36 +18,54 @@ import (
 // shutdownTimeout bounds how long in-flight requests get to finish on shutdown.
 const shutdownTimeout = 30 * time.Second
 
-// RunServer starts the HTTPS server and blocks until it receives an interrupt
-// or termination signal, at which point it shuts down gracefully, draining
-// in-flight requests before returning.
+// RunServer starts the HTTPS server on port 8443 using Cloudflare Origin Certificates.
+// It blocks until receiving an interrupt or termination signal for graceful shutdown.
 func RunServer() {
-	cert, err := tls.LoadX509KeyPair(".private/cert.pem", ".private/key.pem")
+	// Load Cloudflare Origin Certificate and Private Key.
+	// Ensure these files exist at the configured path or pass via environment variables.
+	certPath := os.Getenv("CF_CERT_PATH")
+	if certPath == "" {
+		certPath = ".private/cert.pem" // Path to Cloudflare Origin Cert
+	}
+
+	keyPath := os.Getenv("CF_KEY_PATH")
+	if keyPath == "" {
+		keyPath = ".private/key.pem" // Path to Cloudflare Origin Key
+	}
+
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
-		log.Fatalf("failed to load certificate and key: %v", err)
+		log.Fatalf("failed to load Cloudflare origin certificate and key: %v", err)
 	}
 
 	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
-		// TLS 1.2 floor; 1.3 is negotiated automatically when the client supports it.
+		// TLS 1.2 minimum; TLS 1.3 is preferred and auto-negotiated by Cloudflare.
 		MinVersion: tls.VersionTLS12,
-		// Prefer the fast, modern X25519 curve, then P-256.
+		// Prefer fast, secure curves supported by Cloudflare.
 		CurvePreferences: []tls.CurveID{tls.X25519, tls.CurveP256},
-		// Advertise HTTP/2. net/http enables h2 natively for TLS servers, so the
-		// external golang.org/x/net/http2 package is no longer required.
+		// Recommended Cipher Suites for Cloudflare origin connections
+		CipherSuites: []uint16{
+			tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256,
+			tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384,
+			tls.TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256,
+			tls.TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256,
+		},
+		// Advertise HTTP/2 for optimal performance with Cloudflare edge.
 		NextProtos: []string{"h2", "http/1.1"},
 	}
 
-	// Wrap the whole router (static assets included) with baseline security
-	// headers as the outermost layer.
+	// Wrap the router with baseline security headers.
 	handler := middleware.SecureHeaders(route.GetRouter())
 
 	srv := &http.Server{
-		Addr:      ":https", // 443
+		Addr:      ":8443", // Configured for Cloudflare HTTPS origin port 8443
 		Handler:   handler,
 		TLSConfig: tlsConfig,
 
-		// A full timeout budget protects against slow-loris and leaked connections.
+		// Timeout configuration to mitigate slow-loris attacks and connection leaks.
 		ReadTimeout:       15 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -55,11 +73,11 @@ func RunServer() {
 		MaxHeaderBytes:    1 << 20, // 1 MiB
 	}
 
-	// Serve in the background so the main goroutine can wait for a signal.
+	// Serve in the background so the main goroutine can listen for OS signals.
 	serveErr := make(chan error, 1)
 	go func() {
-		log.Printf("HTTPS server listening on %s (HTTP/2 enabled)", srv.Addr)
-		// The certificate is already in TLSConfig, so the file arguments are empty.
+		log.Printf("HTTPS server listening on %s (Cloudflare TLS / HTTP/2 enabled)", srv.Addr)
+		// Certificate is loaded into TLSConfig; file arguments are left blank.
 		err := srv.ListenAndServeTLS("", "")
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveErr <- err
@@ -68,7 +86,7 @@ func RunServer() {
 		serveErr <- nil
 	}()
 
-	// Wait for either a fatal serve error or a termination signal.
+	// Wait for serve error or shutdown signal.
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 

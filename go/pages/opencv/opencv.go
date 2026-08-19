@@ -23,6 +23,8 @@ import (
 	"github.com/pion/webrtc/v4/pkg/media/ivfreader"
 	"github.com/pion/webrtc/v4/pkg/media/ivfwriter"
 	"gocv.io/x/gocv"
+
+	features "tls-rest/go/features/opencv"
 )
 
 const (
@@ -164,7 +166,7 @@ func Init(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[INIT][%s] Initializing Hardware Stream-In -> Stream-Out Pipeline...", streamID)
 
-	hwProfile := detectHardware()
+	hwProfile := features.DetectHardware()
 	log.Printf("[INIT][%s] Detected Hardware Profile: %s", streamID, hwProfile.Name)
 
 	// 1. INPUT FFMPEG (WebRTC VP8/IVF -> Raw BGR Frames)

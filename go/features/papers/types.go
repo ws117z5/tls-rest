@@ -39,14 +39,14 @@ type Filter struct {
 }
 
 // Negotiator
-type connection struct {
+type Connection struct {
 	pc *webrtc.PeerConnection
 	dc *webrtc.DataChannel
 }
 
-type negotiatior struct {
+type Negotiatior struct {
 	connectionPool  chan *webrtc.PeerConnection
-	roomMessages    map[string][]message
+	roomMessages    map[string][]Message
 	roomUsers       map[string][]string
 	userConnections map[string]*webrtc.PeerConnection
 	userChannels    map[string]*webrtc.DataChannel
@@ -57,12 +57,32 @@ type negotiatior struct {
 	//addRoom func(string, string)
 }
 
+func (neg *Negotiatior) GetConnections() chan *webrtc.PeerConnection {
+	return neg.connectionPool
+}
+
 //mesh handler
 
 // reportRequest is the body a peer POSTs to /papers/{roomId}/report.
-type reportRequest struct {
+type ReportRequest struct {
 	Peer  string          `json:"peer"`
 	Up    float64         `json:"up"`
 	Down  float64         `json:"down"`
 	Stats []mesh.LinkStat `json:"stats"`
+}
+
+type Message struct {
+	userId string
+	roomId string
+	time   time.Time
+	msg    string
+}
+
+func NewEmptyMessage() *Message {
+	return &Message{
+		"",
+		"",
+		time.Now(),
+		"",
+	}
 }

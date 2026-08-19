@@ -15,6 +15,8 @@ import (
 
 	"github.com/go-pg/urlstruct"
 	"github.com/gorilla/mux"
+
+	. "tls-rest/go/features/papers"
 )
 
 // proomColumns is the SELECT list for the paper-room table(s).
@@ -33,7 +35,7 @@ func rowToProom(row map[string]interface{}) Proom {
 	}
 }
 
-var neg *negotiatior
+var neg *Negotiatior
 
 func init() {
 	neg = NewNegotiator()
@@ -131,8 +133,8 @@ func RegisterUser(w http.ResponseWriter, r *http.Request) {
 
 	//var dc *webrtc.PeerConnection
 
-	dc := <-neg.connectionPool
-	defer neg.spawnPeerConnections()
+	dc := <-neg.GetConnections()
+	defer neg.SpawnPeerConnections()
 	defer neg.PutUserConnection(userId, dc)
 	defer neg.PutRoomMembers(roomId, userId)
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"tls-rest/go/controllers"
+	module "tls-rest/go/engine"
 	. "tls-rest/go/lib/auth"
 	"tls-rest/go/lib/db/cache"
 	"tls-rest/go/lib/log"
@@ -50,6 +51,14 @@ func isAPICall(r *http.Request) bool {
 		return true
 	}
 
+	// Image bytes are served by a real handler (ServeByRef) as a browser GET
+	// (e.g. <img src="/image/{guid}.{ext}"> or direct navigation). Without this
+	// it looks like a page navigation and the middleware would render the SPA
+	// shell instead of the image — which then client-redirects home.
+	if strings.HasPrefix(uri, "/image/") {
+		return true
+	}
+
 	// The /api/ namespace serves both XHR JSON (fieldset) and browser-loaded
 	// resources (post images), so those handlers must always run.
 	if strings.HasPrefix(uri, "/api/") {
@@ -74,15 +83,12 @@ func isAPICall(r *http.Request) bool {
 	return false
 }
 
-// isModuleEndpoint reports whether a path is a JSON data endpoint (papers or a
-// module CRUD route) rather than an SPA page.
+// isModuleEndpoint reports whether a path is a JSON data endpoint (a module CRUD
+// route, page endpoint, or feature route) rather than an SPA page. The set is
+// self-registered by modules/pages/features in the engine — see
+// module.RegisterEndpointPrefix — so adding one never requires editing this.
 func isModuleEndpoint(path string) bool {
-	return strings.HasPrefix(path, "/papers") ||
-		strings.HasPrefix(path, "/posts") ||
-		strings.HasPrefix(path, "/users") ||
-		strings.HasPrefix(path, "/user_groups") ||
-		strings.HasPrefix(path, "/user_group_rights") ||
-		strings.HasPrefix(path, "/user_rights")
+	return module.IsRegisteredEndpoint(path)
 }
 
 // Middleware dlv fails here
@@ -195,6 +201,13 @@ func authorizeAPIRequest(ci *cache.Session, r *http.Request) (allowed bool, modu
 	// and must NOT be gated as the "users" module.
 	if strings.HasPrefix(path, "/users/Auth") {
 		return true, "auth", "oauth"
+	}
+
+	// Public image serving (GET /image/{guid}.{ext}). Byte serving is allowed
+	// here; ServeByRef itself enforces per-record access via CanViewRecord, so a
+	// restricted image still 404s for users who can't view its owning record.
+	if strings.HasPrefix(path, "/image/") {
+		return true, "images", "image"
 	}
 	if path == "/api/login" || path == "/api/logout" || path == "/api/register" {
 		return true, "auth", "login"

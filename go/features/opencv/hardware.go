@@ -14,7 +14,7 @@ type HardwareProfile struct {
 	Codec      string
 }
 
-func detectHardware() HardwareProfile {
+func DetectHardware() HardwareProfile {
 	osType := runtime.GOOS
 
 	switch osType {

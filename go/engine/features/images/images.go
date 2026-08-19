@@ -137,6 +137,28 @@ var imageCache = cache.NewCache[cachedImage](loadImage, nil).
 	WithTTL(imageCacheTTL).
 	WithMaxBytes(imageCacheMaxBytes, func(ci cachedImage) int64 { return int64(len(ci.Data)) })
 
+// thumbCache holds generated 80x80 preview JPEGs, keyed by the same ref. Its
+// getter builds the thumbnail from the full image (imageCache) on a miss. On an
+// undecodable source (e.g. HEIC) it stores an empty entry so ServeByRef falls
+// back to the original bytes without retrying every request.
+var thumbCache = cache.NewCache[cachedImage](loadThumbnail, nil).
+	WithTTL(imageCacheTTL).
+	WithMaxBytes(imageCacheMaxBytes, func(ci cachedImage) int64 { return int64(len(ci.Data)) })
+
+func loadThumbnail(ref string) (cachedImage, error) {
+	full, err := imageCache.Get(ref)
+	if err != nil || full == nil || len(full.Data) == 0 {
+		return cachedImage{}, err
+	}
+	data, mime, terr := makeThumbnail(full.Data, previewSize)
+	if terr != nil {
+		// Undecodable source: cache an empty thumb so we don't retry; caller
+		// serves the original bytes instead.
+		return cachedImage{Id: full.Id}, nil
+	}
+	return cachedImage{Id: full.Id, Data: data, MimeType: mime}, nil
+}
+
 // loadImage is the cache getter: fetches an image's id + bytes by its guid
 // (uuid) or, for legacy references, by numeric id.
 func loadImage(ref string) (cachedImage, error) {
@@ -278,6 +300,18 @@ func ServeByRef(w http.ResponseWriter, r *http.Request) {
 	if ok, err := module.CanViewRecord(r, "images", ci.Id); err != nil || !ok {
 		http.NotFound(w, r) // 404, not 403: don't reveal restricted images exist
 		return
+	}
+
+	// Preview mode: serve the compressed 80x80 content-aware thumbnail. Access
+	// was already checked above (the thumbnail is the same record). Falls back to
+	// the original bytes if the source couldn't be decoded (e.g. HEIC).
+	if r.URL.Query().Has("preview") {
+		if t, terr := thumbCache.Get(ref); terr == nil && t != nil && len(t.Data) > 0 {
+			w.Header().Set("Content-Type", t.MimeType)
+			w.Header().Set("Cache-Control", "private, max-age=300")
+			w.Write(t.Data)
+			return
+		}
 	}
 
 	if ci.MimeType != "" {

@@ -9,24 +9,8 @@ import (
 	"github.com/pion/webrtc/v4"
 )
 
-type message struct {
-	userId string
-	roomId string
-	time   time.Time
-	msg    string
-}
-
-func NewEmptyMessage() *message {
-	return &message{
-		"",
-		"",
-		time.Now(),
-		"",
-	}
-}
-
-func NewMessage(msg, userId, roomId string) *message {
-	return &message{
+func NewMessage(msg, userId, roomId string) *Message {
+	return &Message{
 		userId,
 		roomId,
 		time.Now(),
@@ -34,7 +18,7 @@ func NewMessage(msg, userId, roomId string) *message {
 	}
 }
 
-func (neg *negotiatior) spawnPeerConnections() {
+func (neg *Negotiatior) SpawnPeerConnections() {
 	neg.mx.RLock()
 	defer neg.mx.RUnlock()
 	config := webrtc.Configuration{
@@ -93,7 +77,7 @@ func (neg *negotiatior) spawnPeerConnections() {
 			d.OnMessage(func(msg webrtc.DataChannelMessage) {
 
 				//when new connection inited
-				var message = new(message)
+				var message = new(Message)
 
 				lib.ParseJSON(msg.Data, &message)
 
@@ -127,21 +111,21 @@ func (neg *negotiatior) spawnPeerConnections() {
 }
 
 // We are forced to call the constructor to get an instance of candidate
-func NewNegotiator() *negotiatior {
+func NewNegotiator() *Negotiatior {
 
-	neg := &negotiatior{
+	neg := &Negotiatior{
 		connectionPool:  make(chan *webrtc.PeerConnection, 2),
-		roomMessages:    map[string][]message{},
+		roomMessages:    map[string][]Message{},
 		roomUsers:       map[string][]string{},
 		userChannels:    map[string]*webrtc.DataChannel{},
 		userConnections: map[string]*webrtc.PeerConnection{},
 	}
 
-	neg.spawnPeerConnections()
+	neg.SpawnPeerConnections()
 	return neg
 }
 
-func (neg *negotiatior) notifyAll(room string, message message) {
+func (neg *Negotiatior) notifyAll(room string, message Message) {
 	if room, roomExists := neg.roomUsers[room]; roomExists {
 		for _, user := range room {
 			if channel, channelExists := neg.userChannels[user]; channelExists {
@@ -153,22 +137,22 @@ func (neg *negotiatior) notifyAll(room string, message message) {
 	}
 }
 
-func (c *negotiatior) GetRoomMessages(roomId string) ([]message, bool) {
+func (c *Negotiatior) GetRoomMessages(roomId string) ([]Message, bool) {
 	c.mx.RLock()
 	defer c.mx.RUnlock()
 	roomMessages, exists := c.roomMessages[roomId]
 	return roomMessages, exists
 }
 
-func (c *negotiatior) PutRoomMessage(roomId string, userId string, msg interface{}) {
+func (c *Negotiatior) PutRoomMessage(roomId string, userId string, msg interface{}) {
 	c.mx.Lock()
 
 	switch v := msg.(type) {
 	case []byte:
 		_msg := NewMessage(string(msg.([]byte)), userId, roomId)
 		c.roomMessages[roomId] = append(c.roomMessages[roomId], *_msg)
-	case message:
-		c.roomMessages[roomId] = append(c.roomMessages[roomId], msg.(message))
+	case Message:
+		c.roomMessages[roomId] = append(c.roomMessages[roomId], msg.(Message))
 	default:
 		fmt.Printf("Print() invoked with unsupported type: '%T' (expected '%T')\n", msg, v)
 		return
@@ -177,40 +161,40 @@ func (c *negotiatior) PutRoomMessage(roomId string, userId string, msg interface
 	c.mx.Unlock()
 }
 
-func (c *negotiatior) GetUserConnection(userId string) (*webrtc.PeerConnection, bool) {
+func (c *Negotiatior) GetUserConnection(userId string) (*webrtc.PeerConnection, bool) {
 	c.mx.RLock()
 	defer c.mx.RUnlock()
 	userConnection, exists := c.userConnections[userId]
 	return userConnection, exists
 }
 
-func (c *negotiatior) PutUserConnection(userId string, pc *webrtc.PeerConnection) {
+func (c *Negotiatior) PutUserConnection(userId string, pc *webrtc.PeerConnection) {
 	c.mx.Lock()
 	c.userConnections[userId] = pc
 	c.mx.Unlock()
 }
 
-func (c *negotiatior) GetUserChannel(userId string) (*webrtc.DataChannel, bool) {
+func (c *Negotiatior) GetUserChannel(userId string) (*webrtc.DataChannel, bool) {
 	c.mx.RLock()
 	defer c.mx.RUnlock()
 	userChannel, exists := c.userChannels[userId]
 	return userChannel, exists
 }
 
-func (c *negotiatior) PutUserChannel(userId string, d *webrtc.DataChannel) {
+func (c *Negotiatior) PutUserChannel(userId string, d *webrtc.DataChannel) {
 	c.mx.Lock()
 	c.userChannels[userId] = d
 	c.mx.Unlock()
 }
 
-func (c *negotiatior) GetRoomMembers(roomId string) ([]string, bool) {
+func (c *Negotiatior) GetRoomMembers(roomId string) ([]string, bool) {
 	c.mx.RLock()
 	defer c.mx.RUnlock()
 	roomMembers, exists := c.roomUsers[roomId]
 	return roomMembers, exists
 }
 
-func (c *negotiatior) PutRoomMembers(roomId string, userId string) {
+func (c *Negotiatior) PutRoomMembers(roomId string, userId string) {
 	c.mx.Lock()
 	if roomMembers, exists := c.roomUsers[roomId]; exists {
 		found := false

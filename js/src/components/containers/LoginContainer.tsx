@@ -1,12 +1,22 @@
 import React, { useState } from "react";
 import axios from "axios";
 import AuthButton from "./AuthButton";
+import "./LoginContainer.css";
 
 interface LoginProps {
   name?: string;
 }
 
 type Mode = "login" | "register";
+
+// OAuth providers, in display order. `key` is the backend route segment
+// (/users/Auth/{key}Login); `icon` is served statically from /img/oauth.
+const PROVIDERS: { key: string; label: string; icon: string }[] = [
+  { key: "Google", label: "Continue with Google", icon: "/img/oauth/google.svg" },
+  { key: "Github", label: "Continue with GitHub", icon: "/img/oauth/github.svg" },
+  { key: "Facebook", label: "Continue with Facebook", icon: "/img/oauth/facebook.svg" },
+  { key: "Vk", label: "Continue with VK", icon: "/img/oauth/vk.svg" },
+];
 
 // Login form: email/password (via /api/login, /api/register) plus OAuth sign-in.
 // OAuth uses a full-page redirect to the backend flow (/users/Auth/{provider}),
@@ -47,17 +57,20 @@ const Login: React.FC<LoginProps> = () => {
   };
 
   return (
-    <div className="login-container" style={{ maxWidth: 380, margin: "2rem auto" }}>
-      <h1 className="h4 mb-3">{mode === "login" ? "Sign in" : "Create account"}</h1>
+    <div className="login-card">
+      <h1 className="login-title">{mode === "login" ? "Sign in" : "Create account"}</h1>
+      <p className="login-subtitle">
+        {mode === "login" ? "Welcome back." : "Join in a few seconds."}
+      </p>
 
-      {error && <div className="alert alert-danger">{error}</div>}
+      {error && <div className="login-error">{error}</div>}
 
-      <form onSubmit={submit}>
+      <form className="login-form" onSubmit={submit}>
         {mode === "register" && (
-          <div className="form-group mb-2">
-            <label className="form-label">Username</label>
+          <div className="login-field">
+            <label className="login-label">Username</label>
             <input
-              className="form-control"
+              className="login-input"
               value={userName}
               onChange={(e) => setUserName(e.target.value)}
               autoComplete="username"
@@ -65,11 +78,11 @@ const Login: React.FC<LoginProps> = () => {
           </div>
         )}
 
-        <div className="form-group mb-2">
-          <label className="form-label">Email</label>
+        <div className="login-field">
+          <label className="login-label">Email</label>
           <input
             type="email"
-            className="form-control"
+            className="login-input"
             value={email}
             required
             onChange={(e) => setEmail(e.target.value)}
@@ -77,11 +90,11 @@ const Login: React.FC<LoginProps> = () => {
           />
         </div>
 
-        <div className="form-group mb-3">
-          <label className="form-label">Password</label>
+        <div className="login-field">
+          <label className="login-label">Password</label>
           <input
             type="password"
-            className="form-control"
+            className="login-input"
             value={password}
             required
             onChange={(e) => setPassword(e.target.value)}
@@ -89,36 +102,27 @@ const Login: React.FC<LoginProps> = () => {
           />
         </div>
 
-        <button type="submit" className="btn btn-primary w-100" disabled={loading}>
-          {loading ? "Please wait..." : mode === "login" ? "Sign in" : "Register"}
+        <button type="submit" className="login-submit" disabled={loading}>
+          {loading ? "Please wait\u2026" : mode === "login" ? "Sign in" : "Register"}
         </button>
       </form>
 
-      <div className="text-center my-2 text-muted">or</div>
+      <div className="login-divider"><span>or</span></div>
 
-      <ul className="list-unstyled mb-0">
-        <li>
-          <AuthButton name="Continue with Google" call={() => loginWith("Google")} />
-        </li>
-        <li>
-          <AuthButton name="Continue with GitHub" call={() => loginWith("Github")} />
-        </li>
-        <li>
-          <AuthButton name="Continue with Facebook" call={() => loginWith("Facebook")} />
-        </li>
-        <li>
-          <AuthButton name="Continue with VK" call={() => loginWith("Vk")} />
-        </li>
-      </ul>
+      <div className="oauth-list">
+        {PROVIDERS.map((p) => (
+          <AuthButton key={p.key} name={p.label} icon={p.icon} call={() => loginWith(p.key)} />
+        ))}
+      </div>
 
-      <div className="text-center mt-3">
+      <div className="login-switch">
         {mode === "login" ? (
-          <button type="button" className="btn btn-link p-0" onClick={() => switchMode("register")}>
-            Need an account? Register
+          <button type="button" className="login-link" onClick={() => switchMode("register")}>
+            Need an account? <strong>Register</strong>
           </button>
         ) : (
-          <button type="button" className="btn btn-link p-0" onClick={() => switchMode("login")}>
-            Have an account? Sign in
+          <button type="button" className="login-link" onClick={() => switchMode("login")}>
+            Have an account? <strong>Sign in</strong>
           </button>
         )}
       </div>
@@ -127,3 +131,4 @@ const Login: React.FC<LoginProps> = () => {
 };
 
 export default Login;
+

@@ -13,7 +13,7 @@ const ImageList: React.FC<ImageListProps> = ({ value }) => {
     return (
         <div className="d-flex align-items-center" style={{ gap: 4 }}>
             <img
-                src={imageUrl(refs[0].id)}
+                src={imageUrl(refs[0])}
                 alt={refs[0].filename || String(refs[0].id)}
                 style={{ width: 40, height: 40, objectFit: "cover", border: "1px solid #ddd" }}
             />

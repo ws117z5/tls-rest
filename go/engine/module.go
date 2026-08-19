@@ -441,6 +441,15 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	ModuleLogger.Printf("Registering module globally: %s", m.ID)
 	RegisteredModules[m.ID] = m
 
+	// Advertise the module's CRUD root (/<id>) as a data endpoint so the
+	// middleware can tell it from an SPA page without a hardcoded list.
+	RegisterEndpointPrefix("/" + m.ID)
+	for _, rt := range m.CustomRoutes {
+		if rt.Absolute {
+			RegisterEndpointPrefix(rt.Path)
+		}
+	}
+
 	// Register default permission for rights system. Only promote an unset
 	// default to READ; a module that explicitly declared 0 (DENY) — an admin-only
 	// module — keeps it.

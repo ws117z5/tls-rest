@@ -1,14 +1,15 @@
 import React, { Component, ChangeEvent } from "react";
 import { MD_TOOLS, wrapSelection } from "@controllers/markdown";
+import { processImage } from "@controllers/images";
 import MarkdownRender from "./MarkdownRender";
 
-// A markdown text editor: toolbar + textarea with a live-preview toggle. Image
-// handling is NOT done here — images belong to a dedicated Image field on the
-// module. Uploaded images can still be embedded by id in markdown image syntax
-// (![alt](<id>)); the renderer resolves the id to its API URL.
+// A markdown text editor: toolbar + textarea with a live-preview toggle. The
+// image button uploads a file and inserts image markdown (![name](guid.ext)) at
+// the caret; the renderer resolves the guid to its access-controlled /image URL.
 
 interface MarkdownEditProps {
     id?: string;
+    module?: string;    // owning module (for the image upload's module/field context)
     label?: string;
     value?: string;
     width?: string | number;
@@ -20,16 +21,19 @@ interface MarkdownEditProps {
 interface MarkdownEditState {
     value: string;
     showPreview: boolean;
+    uploading: boolean;
 }
 
 class MarkdownEdit extends Component<MarkdownEditProps, MarkdownEditState> {
     private textarea = React.createRef<HTMLTextAreaElement>();
+    private fileInput = React.createRef<HTMLInputElement>();
 
     constructor(props: MarkdownEditProps) {
         super(props);
         this.state = {
             value: props.value || "",
             showPreview: false,
+            uploading: false,
         };
     }
 
@@ -66,9 +70,52 @@ class MarkdownEdit extends Component<MarkdownEditProps, MarkdownEditState> {
         });
     };
 
+    // Insert a string at the current caret (replacing any selection) and place
+    // the caret just after it.
+    private insertAtCaret(snippet: string) {
+        const el = this.textarea.current;
+        const value = this.state.value;
+        const start = el ? el.selectionStart : value.length;
+        const end = el ? el.selectionEnd : value.length;
+        const next = value.slice(0, start) + snippet + value.slice(end);
+        this.emit(next);
+        const caret = start + snippet.length;
+        requestAnimationFrame(() => {
+            if (!el) return;
+            el.focus();
+            el.setSelectionRange(caret, caret);
+        });
+    }
+
+    // Image button → open the file picker.
+    private pickImage = () => this.fileInput.current?.click();
+
+    private handleImageFile = async (e: ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            this.setState({ uploading: true });
+            try {
+                const ref = await processImage(file, this.props.module || "", this.props.id || "");
+                const alt = (ref.filename || "image").replace(/[\[\]]/g, "");
+                const target = ref.uuid ? ref.uuid : String(ref.id);
+                const ext =
+                    ref.filename && ref.filename.includes(".")
+                        ? "." + ref.filename.split(".").pop()
+                        : "";
+                // Reference by guid.ext; the renderer resolves it to /image/<guid>.
+                this.insertAtCaret(`![${alt}](${target}${ext})`);
+            } catch (err) {
+                console.error("Image upload failed:", err);
+            } finally {
+                this.setState({ uploading: false });
+                if (this.fileInput.current) this.fileInput.current.value = "";
+            }
+        }
+    };
+
     render() {
         const { width = "600px", height = "300px", disabled } = this.props;
-        const { value, showPreview } = this.state;
+        const { value, showPreview, uploading } = this.state;
 
         return (
             <div className="markdown-edit">
@@ -88,10 +135,26 @@ class MarkdownEdit extends Component<MarkdownEditProps, MarkdownEditState> {
                     <button
                         type="button"
                         className="btn btn-sm btn-outline-secondary"
+                        title="Insert image at cursor"
+                        disabled={disabled || uploading}
+                        onClick={this.pickImage}
+                    >
+                        {uploading ? "…" : "🖼"}
+                    </button>
+                    <button
+                        type="button"
+                        className="btn btn-sm btn-outline-secondary"
                         onClick={() => this.setState((s) => ({ showPreview: !s.showPreview }))}
                     >
                         {showPreview ? "Edit" : "Preview"}
                     </button>
+                    <input
+                        ref={this.fileInput}
+                        type="file"
+                        accept="image/*"
+                        hidden
+                        onChange={this.handleImageFile}
+                    />
                 </div>
 
                 {showPreview ? (
