@@ -15,3 +15,8 @@ services:
       - /opt/workstation/certs/cert.pem:/app/.private/cert.pem:ro
       - /opt/workstation/certs/key.pem:/app/.private/key.pem:ro
       - /opt/workstation/app.env:/app/.private/.env:ro
+
+networks:
+  infra_net:
+    name: workstation_infra_net
+    external: true
