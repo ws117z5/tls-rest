@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile
     container_name: tls-rest
     restart: always
+    stdin_open: true
+    tty: true
     ports:
       - "8443:8443"
     extra_hosts:
