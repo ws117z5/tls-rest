@@ -126,19 +126,48 @@ export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, mo
     if (module) {
       fetchFieldset();
     }
-  }, [module, mode, inlineFieldset]);
+  }, [module, inlineFieldset]);
 
   const fetchFieldset = async () => {
+    // One cached fieldset per module (mode is filtered client-side, not fetched).
+    const cacheKey = `fieldset:${module}`;
+    let cached: { hash?: string; data?: FieldsetData } | null = null;
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) cached = JSON.parse(raw);
+    } catch {
+      cached = null;
+    }
+
     try {
       setLoading(true);
       setError(null);
-      
-      // Request fieldset configuration from backend
-      const response = await axios.get(`/api/modules/${module}/fieldset`, {
-        params: { mode }
+
+      // POST; hash (if any) rides as a query param so the server can answer 304.
+      const url = `/api/modules/${module}/fieldset`;
+      const response = await axios.post(url, null, {
+        params: cached?.hash ? { hash: cached.hash } : {},
+        validateStatus: (s: number) => s === 304 || (s >= 200 && s < 300),
       });
-      
-      setFieldset(response.data);
+
+      if (response.status === 304) {
+        if (cached?.data) {
+          setFieldset(cached.data);
+        } else {
+          // Cold cache but server said 304 (shouldn't normally happen) — refetch
+          // without the hash to get the full fieldset.
+          const full = await axios.post(url, null);
+          setFieldset(full.data);
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({ hash: full.data?.hash, data: full.data }));
+          } catch {}
+        }
+      } else {
+        setFieldset(response.data);
+        try {
+          localStorage.setItem(cacheKey, JSON.stringify({ hash: response.data?.hash, data: response.data }));
+        } catch {}
+      }
     } catch (err: unknown) {
       if (err instanceof Error) {
         console.error('Failed to fetch fieldset:', err);
@@ -146,7 +175,6 @@ export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, mo
       } else {
         console.error('An unexpected error occurred:', err);
       }
-      
     } finally {
       setLoading(false);
     }

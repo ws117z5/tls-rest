@@ -13,6 +13,15 @@ import (
 // exists, what it is, and the router endpoint it is exposed on.
 type ConfigType struct {
 	Modules []ModuleParams `json:"modules"`
+	Log     LogParams      `json:"log"`
+}
+
+// LogParams configures the structured event logger (go/lib/log), mirroring the
+// two sinks: writeToFile persists JSONL under ./logs, writeToDb inserts into the
+// logs table (see the logs module). Applied at startup in main.
+type LogParams struct {
+	WriteToFile bool `json:"writeToFile"`
+	WriteToDb   bool `json:"writeToDb"`
 }
 
 // AdditionalRights self explanitory
@@ -38,7 +47,7 @@ var (
 	//JsHeaderAttr = [][]string{"/js/dist/platform.js"}
 
 	//JsFooter js footer array todo
-	JsFooter = []string{"/js/dist/main.js", "/js/static/gl-matrix-min.js"}
+	JsFooter = []string{"/js/dist/main.js", "/js/dist/gl-matrix-min.js"}
 
 	//Css styles array
 	Css = []string{"/css/bootstrap.min.css", "/css/index.css", "/css/index-cv.css", "/css/menu.css"}
@@ -70,8 +79,7 @@ var (
 
 	//RDb TODO move
 	RDb = Db{
-		Addr:     Env("REDIS_ADDR", "localhost:6379"),
-		Password: Env("REDIS_PASS", ""),
+		Addr: Env("REDIS_ADDR", "localhost:6379"),
 	}
 
 	// ---- Secrets / environment-specific config ----

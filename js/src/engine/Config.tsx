@@ -1,139 +1,164 @@
-import Auth from "@controllers/auth";
+import Auth, { MenuEntry, isModuleEntry, BackendPage } from "@controllers/auth";
 
-// Two kinds of navigable things:
-//
-//  * Backend modules — declared in go.config.json, governed by the rights
-//    system, and reported (already access-filtered, with per-mode rights) by
-//    GET /api/modules. Each is rendered by the generic ModulePage (or a
-//    registered custom view) with per-mode routes.
-//
-//  * Custom pages — frontend-only React pages (graphs, tools, login, …) that
-//    are not backend modules. Discovered by scanning components/pages and
-//    gated by their own requiresAuth/requiresAdmin flags.
-
-export interface BackendModuleEntry {
-    name: string;
+// A resolved, renderable menu item. Modules route to the generic ModulePage;
+// pages route to their barrel component. `path` is the full route/link path.
+export interface MenuItem {
+    kind: "module" | "page";
+    key: string;        // module name or page id
+    name: string;       // = key (app.tsx module route reads .name)
     title: string;
-    href: string;       // path segment, no leading slash (e.g. "posts")
-    description: string;
-    modes: string[];    // modes this user may perform
+    href: string;       // path segment, no leading slash
+    path: string;       // full path, e.g. "/posts" or "/pages/netmapper"
+    modes: string[];    // modules only
+    icon?: string;      // menu icon URL
+    isPage: boolean;    // pages: from barrel isPageComponent; modules: false
+    component?: any;     // pages only
+    props?: Record<string, any>;
+    extraRoutes?: Array<{ href: string; component: any }>;
 }
 
-export interface CustomPage {
-    href: string;
-    name: string;
-    title: string;
-    uuid: string;
-    isPage: boolean;
-    requiresAuth: boolean;
-    requiresAdmin: boolean;
-    component: any;
-    props: Record<string, any>;
-    extraRoutes: Array<{ href: string; component: any }>;
-    condition?: (state: any) => boolean;
-}
+type BarrelEntry = { component: any; title: string; isPage: boolean; submenu: string };
 
 export default class Config {
-    private static backendModules: BackendModuleEntry[] = [];
-    private static customPages: CustomPage[] = [];
+    private static head: MenuItem[] = [];
+    private static submenus: Record<string, MenuItem[]> = {};
+    private static modules: MenuItem[] = [];  // flattened, for routing
+    private static pages: MenuItem[] = [];    // flattened (with component), for routing
     private static initPromise: Promise<void> | null = null;
     public static serverURL = window.location.origin + "/";
 
     static init(): Promise<void> {
-        // Idempotent: React 18 StrictMode (and remounts) call init() more than
-        // once; without this guard each call would duplicate the module lists.
-        if (Config.initPromise) {
-            return Config.initPromise;
-        }
+        // Idempotent: StrictMode / remounts call init() more than once.
+        if (Config.initPromise) return Config.initPromise;
 
         Config.initPromise = (async () => {
-            // 1) Backend modules + this user's rights, from the server.
-            await Auth.loadModules();
-            Config.backendModules = Auth.getModules().map((m) => ({
-                name: m.name,
-                title: m.description || m.name,
-                href: (m.endpoint || "/" + m.name).replace(/^\//, ""),
-                description: m.description,
-                modes: m.modes || [],
-            }));
-            const backendHrefs = new Set(Config.backendModules.map((m) => m.href));
+            // 1) The complete, privilege-filtered menu from the server.
+            await Auth.loadMenu();
 
-            // 2) Frontend-only custom pages, from the static page scans. Both
-            //    the app pages and the engine (framework) pages are scanned; each
-            //    barrel only exports files within its own folder. Skip any whose
-            //    href a backend module owns, and any the user may not access.
-            const [appPages, enginePages] = await Promise.all([
-                import("../components/pages"),
-                import("@engine/pages"),
-            ]);
-            Config.customPages = [];
+            // 2) Barrel of page components, keyed by href (provides the React
+            //    component to render each page; the server only sends metadata).
+            const barrel = await Config.loadBarrel();
 
-            const scan = (loaded: Record<string, any>) => {
-                Object.keys(loaded).forEach((key) => {
-                    const Cls = (loaded as any)[key];
-                    if (!Cls || !("guid" in Cls)) return;
+            const covered = new Set<string>();
 
-                    const meta = new Cls({});
-                    const href: string = meta.getHref();
-
-                    // A backend module owns this route; don't double-register.
-                    if (backendHrefs.has(href)) return;
-                    // Already registered (defensive against duplicate keys).
-                    if (Config.customPages.some((p) => p.href === href)) return;
-
-                    const page: CustomPage = {
+            const toItem = (entry: MenuEntry): MenuItem => {
+                if (isModuleEntry(entry)) {
+                    const href = (entry.endpoint || "/" + entry.name).replace(/^\//, "");
+                    covered.add(href);
+                    return {
+                        kind: "module",
+                        key: entry.name,
+                        name: entry.name,
+                        title: entry.description || entry.name,
                         href,
-                        name: key,
-                        uuid: meta.getUUID(),
-                        title: meta.getTitle(),
-                        isPage: meta.isPageComponent(),
-                        requiresAuth:
-                            typeof meta.requiresAuthentication === "function"
-                                ? meta.requiresAuthentication()
-                                : false,
-                        requiresAdmin:
-                            typeof meta.requiresAdministration === "function"
-                                ? meta.requiresAdministration()
-                                : false,
-                        component: Cls,
-                        props: Cls.props || {},
-                        extraRoutes: Cls.extraRoutes || [],
-                        condition: typeof Cls.condition === "function" ? Cls.condition : undefined,
+                        path: "/" + href,
+                        modes: entry.modes || [],
+                        icon: entry.icon,
+                        isPage: false,
                     };
-
-                    if (!Auth.canAccessModule(page)) return;
-                    Config.customPages.push(page);
-                });
+                }
+                const p = entry as BackendPage;
+                const href = (p.endpoint || "/" + p.id).replace(/^\//, "");
+                covered.add(href);
+                const b = barrel[href] || barrel[p.id];
+                const isPage = b ? b.isPage : true;
+                return {
+                    kind: "page",
+                    key: p.id,
+                    name: p.id,
+                    title: p.name,
+                    href,
+                    path: "/" + (isPage ? "pages/" : "") + href,
+                    modes: [],
+                    icon: p.icon,
+                    isPage,
+                    component: b?.component,
+                    props: b?.component?.props || {},
+                    extraRoutes: b?.component?.extraRoutes || [],
+                };
             };
 
-            scan(appPages as Record<string, any>);
-            scan(enginePages as Record<string, any>);
+            Config.head = Auth.getHead().map(toItem);
+            Config.submenus = {};
+            const subs = Auth.getSubmenus();
+            Object.keys(subs).forEach((title) => {
+                Config.submenus[title] = subs[title].map(toItem);
+            });
+
+            // 3) Pure-frontend pages: in the barrel but not named by the server
+            //    (public tools with no backend page). Keep them reachable —
+            //    grouped by the component's own submenu, or head if none.
+            Object.keys(barrel).forEach((href) => {
+                if (covered.has(href)) return;
+                const b = barrel[href];
+                if (!b.isPage) return;
+                const item: MenuItem = {
+                    kind: "page",
+                    key: href,
+                    name: href,
+                    title: b.title,
+                    href,
+                    path: "/pages/" + href,
+                    modes: [],
+                    isPage: true,
+                    component: b.component,
+                    props: b.component?.props || {},
+                    extraRoutes: b.component?.extraRoutes || [],
+                };
+                if (b.submenu) {
+                    (Config.submenus[b.submenu] = Config.submenus[b.submenu] || []).push(item);
+                } else {
+                    Config.head.push(item);
+                }
+            });
+
+            // 4) Flatten for routing.
+            const all = [...Config.head, ...Object.values(Config.submenus).flat()];
+            Config.modules = all.filter((i) => i.kind === "module");
+            Config.pages = all.filter((i) => i.kind === "page" && i.component);
         })();
 
         return Config.initPromise;
     }
 
-    /** Backend modules (rights-managed) the current user may access. */
-    public static getModules(): BackendModuleEntry[] {
-        return Config.backendModules;
+    private static async loadBarrel(): Promise<Record<string, BarrelEntry>> {
+        const [appPages, enginePages] = await Promise.all([
+            import("../components/pages"),
+            import("@engine/pages"),
+        ]);
+        const map: Record<string, BarrelEntry> = {};
+        const scan = (loaded: Record<string, any>) => {
+            Object.keys(loaded).forEach((key) => {
+                const Cls = (loaded as any)[key];
+                if (!Cls || !("guid" in Cls)) return;
+                const meta = new Cls({});
+                const href: string = meta.getHref();
+                if (map[href]) return;
+                map[href] = {
+                    component: Cls,
+                    title: meta.getTitle(),
+                    isPage: typeof meta.isPageComponent === "function" ? meta.isPageComponent() : true,
+                    submenu: typeof meta.getSubmenu === "function" ? meta.getSubmenu() : "",
+                };
+            });
+        };
+        scan(appPages as Record<string, any>);
+        scan(enginePages as Record<string, any>);
+        return map;
     }
 
-    public static getModule(name: string): BackendModuleEntry | undefined {
-        return Config.backendModules.find((m) => m.name === name);
-    }
+    // --- accessors ---
+    /** Top-level menu items (modules + pages with no submenu). */
+    public static getHead(): MenuItem[] { return Config.head; }
+    /** Submenu groups, keyed by title. */
+    public static getSubmenus(): Record<string, MenuItem[]> { return Config.submenus; }
 
-    /** Frontend-only custom pages the current user may access. */
-    public static getCustomPages(): CustomPage[] {
-        return Config.customPages;
+    /** Module items (for ModulePage routing). app.tsx reads href/name/title/modes. */
+    public static getModules(): MenuItem[] { return Config.modules; }
+    public static getModule(name: string): MenuItem | undefined {
+        return Config.modules.find((m) => m.key === name);
     }
-
-    /** Custom pages shown in the "Pages" dropdown. */
-    public static getPages(): CustomPage[] {
-        return Config.customPages.filter((p) => p.isPage);
-    }
-
-    /** Custom pages shown as top-level nav items. */
-    public static getNavPages(): CustomPage[] {
-        return Config.customPages.filter((p) => !p.isPage);
-    }
+    /** Page items with a component (for page routing). app.tsx reads href/isPage/component/extraRoutes. */
+    public static getCustomPages(): MenuItem[] { return Config.pages; }
+    public static getPages(): MenuItem[] { return Config.pages; }
 }

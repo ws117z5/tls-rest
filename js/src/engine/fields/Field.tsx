@@ -7,7 +7,7 @@ import {
   FloatEdit, FloatView, FloatList,
   DateEdit, DateView, DateList,
   SelectEdit, SelectView, SelectList,
-  CheckboxList,
+  CheckboxEdit, CheckboxList,
   ImageEdit, ImageView, ImageList,
   MarkdownEdit, MarkdownView, MarkdownList,
   ButtonView
@@ -96,12 +96,12 @@ const FIELD_COMPONENTS = {
     [MODES.LIST]: SelectList,
   },
   [FIELD_TYPES.CHECKBOX]: {
-    [MODES.EDIT]: CheckboxList,
+    [MODES.EDIT]: CheckboxEdit,
     [MODES.VIEW]: CheckboxList,
     [MODES.LIST]: CheckboxList,
   },
   [FIELD_TYPES.CHECKBOX_SET]: {
-    [MODES.EDIT]: CheckboxList,
+    [MODES.EDIT]: CheckboxEdit,
     [MODES.VIEW]: CheckboxList,
     [MODES.LIST]: CheckboxList,
   },

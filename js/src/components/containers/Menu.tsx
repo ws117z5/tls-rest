@@ -11,70 +11,84 @@ import {
   UncontrolledDropdown,
 } from "reactstrap";
 import "./menu.css";
-import Config from "@engine/Config";
+import Config, { MenuItem } from "@engine/Config";
+import Auth from "@controllers/auth";
 
-interface MenuState {
-  someVariable: boolean;
-  money: boolean;
-  auth: boolean;
+const iconStyle: React.CSSProperties = { height: "1.2em", verticalAlign: "middle", marginRight: 4 };
+const avatarStyle: React.CSSProperties = { height: 32, width: 32, borderRadius: "50%", objectFit: "cover" };
+
+// Render an item's label: "icon name", or just name, or just icon.
+function label(item: MenuItem): React.ReactNode {
+  const icon = item.icon ? <img src={item.icon} alt="" className="menu-icon" style={iconStyle} /> : null;
+  if (icon && item.title) return (<>{icon}{item.title}</>);
+  if (icon) return icon;
+  return item.title;
 }
 
-class Menu extends Component<{}, MenuState> {
-  constructor(props: {}) {
-    super(props);
-    this.state = {
-      someVariable: true,
-      money: true,
-      auth: false,
-    };
-  }
-
+// The menu is server-driven: Config.getHead() are the top-level entries and
+// Config.getSubmenus() the dropdown groups, both already privilege-filtered.
+class Menu extends Component<{}, {}> {
   render() {
-    // Backend modules are already access-filtered by the server; custom pages
-    // were filtered by Config at load time. So the menu just renders what's there.
-    const modules = Config.getModules();
-    const navPages = Config.getNavPages();
-    const pages = Config.getPages();
+    const head = Config.getHead();
+    const submenus = Config.getSubmenus();
+    const authed = Auth.isAuthenticated();
+    const avatar = Auth.getAvatar();
+
+    const renderHeadItem = (item: MenuItem, idx: number): React.ReactNode => {
+      // The login item becomes a Logout button for authenticated users.
+      if (item.key === "login" && authed) {
+        return (
+          <NavItem key="logout">
+            <NavLink
+              href="#"
+              onClick={(e: React.MouseEvent) => {
+                e.preventDefault();
+                Auth.logout();
+              }}
+            >
+              Logout
+            </NavLink>
+          </NavItem>
+        );
+      }
+      return (
+        <NavItem key={"h" + idx}>
+          <NavLink tag={RouterNavLink} to={item.path}>
+            {label(item)}
+          </NavLink>
+        </NavItem>
+      );
+    };
 
     return (
       <div className="main-menu" style={menuDiv}>
         <Navbar color="dark" dark expand="md">
           <Nav className="ml-auto" navbar>
-            {modules.map((module, idx) => (
-              <NavItem key={"m" + idx}>
-                <NavLink tag={RouterNavLink} to={"/" + module.href}>
-                  {module.title}
-                </NavLink>
-              </NavItem>
-            ))}
+            {head.map(renderHeadItem)}
 
-            {navPages.map((page, idx) => {
-              const visible =
-                typeof page.condition === "undefined" ||
-                page.condition(this.state);
-              if (!visible) return null;
+            {Object.keys(submenus).map((title) => {
+              const items = submenus[title];
+              if (!items || items.length === 0) return null;
               return (
-                <NavItem key={"p" + idx}>
-                  <NavLink tag={RouterNavLink} to={"/" + page.href}>
-                    {page.title}
-                  </NavLink>
-                </NavItem>
+                <UncontrolledDropdown key={"s" + title} setActiveFromChild>
+                  <DropdownToggle tag="a" className="nav-link" caret>
+                    {title}
+                  </DropdownToggle>
+                  <DropdownMenu>
+                    {items.map((item, key) => (
+                      <DropdownItem key={key} tag={RouterNavLink} to={item.path}>
+                        {label(item)}
+                      </DropdownItem>
+                    ))}
+                  </DropdownMenu>
+                </UncontrolledDropdown>
               );
             })}
 
-            {pages.length > 0 && (
-              <UncontrolledDropdown setActiveFromChild>
-                <DropdownToggle tag="a" className="nav-link" caret>
-                  Pages
-                </DropdownToggle>
-                <DropdownMenu>
-                  {pages.map((page, key) => (
-                    <DropdownItem key={key} tag={RouterNavLink} to={"/pages/" + page.href}>
-                      {page.title}
-                    </DropdownItem>
-                  ))}
-                </DropdownMenu>
-              </UncontrolledDropdown>
+            {authed && avatar && (
+              <NavItem>
+                <img src={avatar} alt="avatar" className="menu-avatar" style={avatarStyle} />
+              </NavItem>
             )}
           </Nav>
         </Navbar>

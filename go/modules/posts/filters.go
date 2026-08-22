@@ -1,7 +1,7 @@
 package posts
 
 import (
-	module "tls-rest/go/engine"
+	. "tls-rest/go/engine/controllers/field"
 )
 
 // filters declares the filters accepted by GET /posts (list mode).
@@ -19,15 +19,15 @@ import (
 //	GET /posts?created_to=2024-12-31   -> WHERE created <= '2024-12-31'
 //
 // Filters combine with AND, and with the built-in search/sort/pagination params.
-func (p *Posts) filters() *module.Filedset {
-	return module.NewFieldset(
+func (p *Posts) filters() *Filedset {
+	return NewFieldset(
 		// Case-insensitive substring match on the title column.
-		module.NewFilter("title", module.TYPE_STRING).
+		NewFilter("title", TYPE_STRING).
 			WithLabel("Title").
 			Contains(),
 
 		// Exact boolean match on the public flag.
-		module.NewFilter("public", module.TYPE_CHECKBOX).
+		NewFilter("public", TYPE_CHECKBOX).
 			WithLabel("Public").
 			Equals(),
 
@@ -35,12 +35,12 @@ func (p *Posts) filters() *module.Filedset {
 		// (created_from / created_to) differ from the column (created), which is
 		// set with WithSQL; the ::timestamptz cast lets a plain date string bind
 		// against the timestamp column.
-		module.NewFilter("created_from", module.TYPE_DATE).
+		NewFilter("created_from", TYPE_DATE).
 			WithLabel("Created from").
 			WithSQL("created").
 			WithSQLWhere("created >= %s::timestamptz"),
 
-		module.NewFilter("created_to", module.TYPE_DATE).
+		NewFilter("created_to", TYPE_DATE).
 			WithLabel("Created to").
 			WithSQL("created").
 			WithSQLWhere("created <= %s::timestamptz"),

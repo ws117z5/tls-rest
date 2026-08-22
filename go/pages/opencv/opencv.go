@@ -15,7 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"tls-rest/go/features/opencv/signal"
+	"tls-rest/go/engine/controllers/module"
+	"tls-rest/go/pages/opencv/signal"
 
 	"github.com/pion/rtcp"
 	"github.com/pion/webrtc/v4"
@@ -23,8 +24,6 @@ import (
 	"github.com/pion/webrtc/v4/pkg/media/ivfreader"
 	"github.com/pion/webrtc/v4/pkg/media/ivfwriter"
 	"gocv.io/x/gocv"
-
-	features "tls-rest/go/features/opencv"
 )
 
 const (
@@ -132,7 +131,7 @@ func generateStreamID() string {
 // WEBRTC & OPENCV PIPELINE INIT
 // ------------------------------------------------------------------
 
-func Init(w http.ResponseWriter, r *http.Request) {
+func Start(w http.ResponseWriter, r *http.Request) {
 	os.Setenv("OPENCV_OPENCL_DEVICE", "GPU")
 
 	var payload Payload
@@ -166,7 +165,7 @@ func Init(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[INIT][%s] Initializing Hardware Stream-In -> Stream-Out Pipeline...", streamID)
 
-	hwProfile := features.DetectHardware()
+	hwProfile := DetectHardware()
 	log.Printf("[INIT][%s] Detected Hardware Profile: %s", streamID, hwProfile.Name)
 
 	// 1. INPUT FFMPEG (WebRTC VP8/IVF -> Raw BGR Frames)
@@ -544,4 +543,25 @@ func isVP8Keyframe(payload []byte) bool {
 	isKeyFrame := (payload[offset] & 0x01) == 0
 
 	return isStartOfFrame && isKeyFrame
+}
+
+// Page self-registers the admin-only scan endpoint through the shared
+// route-registrar seam. RequiresAdmin documents intent; the actual enforcement
+// for the custom route is adminGuard below (PageAbstract only auto-enforces
+// RequiresAdmin on its fieldset GET/PUT handlers, which this page doesn't use).
+var Page = &module.PageAbstract{
+	ID:            "opencv",
+	Name:          "OpenCV ",
+	Submenu:       "pages",
+	RequiresAuth:  true,
+	RequiresAdmin: true,
+	Routes: []module.PageRoute{
+		{Path: "/opencv", Methods: []string{http.MethodPost, http.MethodOptions}, Handler: Start},
+		{Path: "/opencv/filters", Methods: []string{http.MethodGet, http.MethodPost, http.MethodOptions}, Handler: GetFiltersHandler},
+		{Path: "/opencv/filter", Methods: []string{http.MethodPost, http.MethodOptions}, Handler: ChangeFilterHandler},
+	},
+}
+
+func Init() {
+	Page.Initialize()
 }

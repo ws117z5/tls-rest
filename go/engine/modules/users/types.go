@@ -5,7 +5,7 @@ import (
 
 	"github.com/go-pg/urlstruct"
 
-	. "tls-rest/go/engine"
+	. "tls-rest/go/engine/controllers/module"
 )
 
 // GUser is a retrieved and authentiacted user.
@@ -99,24 +99,4 @@ type Data struct {
 // Users module following CInvoice paradigm
 type Users struct {
 	*ModuleAbstract[interface{}]
-}
-
-// NewUsers creates a new Users module instance
-func NewUsers() *Users {
-	module := &Users{
-		ModuleAbstract: &ModuleAbstract[interface{}]{
-			ID:     "users",
-			Name:   "Users Management",
-			Rights: make(map[int]int),
-			// Administration module: no access unless explicitly granted (or admin).
-			DefaultPermission:    0, // PERMISSION_DENY
-			DefaultPermissionSet: true,
-		},
-	}
-
-	// Build the field set. Default system fields are added automatically by
-	// Initialize().
-	module.Fields = module.fieldset()
-
-	return module
 }

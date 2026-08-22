@@ -29,6 +29,9 @@ S = PageComponentState
   protected requiresAuth: boolean = false;
   protected title: string = "";
   protected href: string = "";
+  // Menu submenu title; empty = top level. For pure-frontend pages this is the
+  // grouping source; backend-registered pages are grouped by the server value.
+  protected submenu: string = "";
   // Frontend-only pages have an href for routing/menu but no backend endpoint.
   // The base data fetch is therefore opt-in: a page that actually has a
   // GET /{href} -> {Data, Fieldset} endpoint sets loadsData = true. Off by
@@ -84,6 +87,10 @@ S = PageComponentState
 
   public getHref(): string {
     return this.href;
+  }
+
+  public getSubmenu(): string {
+    return this.submenu;
   }
 
   public getUUID(): string {

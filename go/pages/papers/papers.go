@@ -9,14 +9,13 @@ import (
 	"net/http"
 	"time"
 
-	"tls-rest/go/lib"
+	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/controllers/module"
 
-	"tls-rest/go/lib/db/pgdb"
+	"tls-rest/go/engine/controllers/db/pgdb"
 
 	"github.com/go-pg/urlstruct"
 	"github.com/gorilla/mux"
-
-	. "tls-rest/go/features/papers"
 )
 
 // proomColumns is the SELECT list for the paper-room table(s).
@@ -36,10 +35,6 @@ func rowToProom(row map[string]interface{}) Proom {
 }
 
 var neg *Negotiatior
-
-func init() {
-	neg = NewNegotiator()
-}
 
 func ExitRoom(w http.ResponseWriter, r *http.Request) {
 
@@ -71,7 +66,7 @@ func List(w http.ResponseWriter, r *http.Request) {
 
 	//todo clean inactive rooms
 
-	lib.SendJSONResponse(w, Data{lib.GetFields(Proom{}), rooms})
+	functions.SendJSONResponse(w, Data{functions.GetFields(Proom{}), rooms})
 }
 
 func ViewRoom(w http.ResponseWriter, r *http.Request) {
@@ -257,4 +252,26 @@ func ViewRoomUsers(w http.ResponseWriter, r *http.Request) {
 
 	w.Write(jsonUsers)
 	//fmt.Fprintln(w, string(jsonUsers))
+}
+
+var Page = &module.PageAbstract{
+	ID:            "papers",
+	Name:          "Papers Game ",
+	Submenu:       "pages",
+	RequiresAuth:  true,
+	RequiresAdmin: true,
+	Routes: []module.PageRoute{
+		{Path: "/papers", Methods: []string{http.MethodGet}, Handler: List},
+		{Path: "/papers/create", Methods: []string{http.MethodPost}, Handler: CreateRoom},
+		{Path: "/papers/{roomId}", Methods: []string{http.MethodPost}, Handler: AddRoomUser},
+		{Path: "/papers/{roomId}", Methods: []string{http.MethodGet}, Handler: ViewRoomUsers},
+		{Path: "/papers/{roomId}/report", Methods: []string{http.MethodPost}, Handler: ReportLink},
+		{Path: "/papers/{roomId}/plan", Methods: []string{http.MethodGet}, Handler: GetPlan},
+		{Path: "/papers/{roomId}/{userId}", Methods: []string{http.MethodGet}, Handler: RegisterUser},
+	},
+}
+
+func Init() {
+	neg = NewNegotiator()
+	Page.Initialize()
 }

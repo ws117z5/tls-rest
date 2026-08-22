@@ -4,7 +4,8 @@ import (
 	"net/http"
 	"time"
 
-	. "tls-rest/go/engine"
+	. "tls-rest/go/engine/controllers/field"
+	. "tls-rest/go/engine/controllers/module"
 )
 
 type UserGroup struct {
@@ -21,8 +22,9 @@ type UserGroup struct {
 
 // Initialize the user group module with fieldset configuration
 var Module = &ModuleAbstract[interface{}]{
-	ID:   "user_groups",
-	Name: "User Groups",
+	ID:      "user_groups",
+	Name:    "User Groups",
+	Submenu: "engine",
 	Fields: []Field{
 		NewField("name", TYPE_STRING, true).
 			WithLabel("Group Name").
@@ -56,7 +58,7 @@ var Module = &ModuleAbstract[interface{}]{
 	Rights:               make(map[int]int),
 }
 
-func init() {
+func Init() {
 	// Initialize the module - this creates the controller and registers with fieldset handler
 	Module.Initialize("user_groups")
 }

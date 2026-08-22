@@ -1,28 +1,48 @@
-// Client-side view of authentication + authorization state.
+// Client-side view of the menu + per-module rights.
 //
-// The server still injects basic session status into the page shell:
-//   window.__AUTH__  - boolean, is there an authenticated session
-//   window.__ADMIN__ - boolean, is the user an administrator
+// GET /api/modules now returns the complete, already-privilege-filtered menu:
 //
-// The module list and this user's per-module rights come from GET /api/modules
-// (rights-aware; see controllers.ModulesAPI). That response only contains the
-// modules the user may access, each with the modes they may perform, so the
-// frontend renders menu items and gates modes directly from it.
+//   { head: [ ...entries... ], submenus: { "<title>": [ ...entries... ] } }
+//
+// Each entry is either a MODULE (has `modes`) or a PAGE (has `id`). The server
+// has already filtered by the user's privileges, so there is no isAdmin / per-
+// entry requiresAuth/requiresAdmin in the response and the client does not gate.
+//
+// window.__AUTH__ / window.__ADMIN__ are still injected in the page shell and
+// used only as a coarse fallback for direct-URL access decisions.
 
 import axios from "axios";
 
-export interface AccessibleModule {
-    href?: string;
-    requiresAuth?: boolean;
-    requiresAdmin?: boolean;
+// A module entry from the menu.
+export interface BackendModule {
+    name: string;        // module key (rights/routing)
+    description: string; // human label
+    endpoint: string;    // e.g. "/posts"
+    modes: string[];     // subset of ["list","view","create","edit","delete"]
+    icon?: string;       // menu icon URL (e.g. /image/<uuid>)
 }
 
-// One backend module as reported by /api/modules.
-export interface BackendModule {
+// A page entry from the menu.
+export interface BackendPage {
+    id: string;
     name: string;
-    description: string;
-    endpoint: string;   // e.g. "/posts"
-    modes: string[];    // subset of ["list","view","create","edit","delete"]
+    endpoint: string;    // e.g. "/netmapper"
+    icon?: string;       // menu icon URL
+}
+
+// Identity for the menu (login/logout swap + avatar).
+export interface MenuUser {
+    authenticated: boolean;
+    avatar?: string;
+}
+
+export type MenuEntry = BackendModule | BackendPage;
+
+export function isModuleEntry(e: MenuEntry): e is BackendModule {
+    return Array.isArray((e as BackendModule).modes);
+}
+export function isPageEntry(e: MenuEntry): e is BackendPage {
+    return typeof (e as BackendPage).id === "string" && !isModuleEntry(e);
 }
 
 declare global {
@@ -33,39 +53,61 @@ declare global {
 }
 
 export default class Auth {
-    private static modules: BackendModule[] = [];
-    private static admin: boolean = false;
+    private static head: MenuEntry[] = [];
+    private static submenus: Record<string, MenuEntry[]> = {};
+    private static user: MenuUser = { authenticated: false };
     private static loaded: boolean = false;
 
     /**
-     * Fetch the current user's accessible modules + rights from the backend.
-     * Called once during Config.init(). Failures degrade to "no modules".
+     * Fetch the current user's menu from the backend. Called once during
+     * Config.init(). Failures degrade to an empty menu.
      */
-    static async loadModules(): Promise<void> {
+    static async loadMenu(): Promise<void> {
         try {
             const res = await axios.get("/api/modules");
-            Auth.modules = Array.isArray(res.data?.modules) ? res.data.modules : [];
-            Auth.admin = res.data?.isAdmin === true;
+            Auth.head = Array.isArray(res.data?.head) ? res.data.head : [];
+            Auth.submenus =
+                res.data?.submenus && typeof res.data.submenus === "object"
+                    ? res.data.submenus
+                    : {};
+            Auth.user =
+                res.data?.user && typeof res.data.user === "object"
+                    ? { authenticated: res.data.user.authenticated === true, avatar: res.data.user.avatar }
+                    : { authenticated: false };
         } catch (err) {
-            console.error("Failed to load modules:", err);
-            Auth.modules = [];
-            Auth.admin = false;
+            console.error("Failed to load menu:", err);
+            Auth.head = [];
+            Auth.submenus = {};
+            Auth.user = { authenticated: false };
         } finally {
             Auth.loaded = true;
         }
     }
 
-    static modulesLoaded(): boolean {
+    static menuLoaded(): boolean {
         return Auth.loaded;
     }
 
-    /** All backend modules the current user may access. */
+    static getHead(): MenuEntry[] {
+        return Auth.head;
+    }
+    static getSubmenus(): Record<string, MenuEntry[]> {
+        return Auth.submenus;
+    }
+
+    /** Every entry (head + all submenus), flattened. */
+    static allEntries(): MenuEntry[] {
+        const subs = Object.values(Auth.submenus).flat();
+        return [...Auth.head, ...subs];
+    }
+
+    /** All module entries the user may access, flattened across the menu. */
     static getModules(): BackendModule[] {
-        return Auth.modules;
+        return Auth.allEntries().filter(isModuleEntry);
     }
 
     static getModule(name: string): BackendModule | undefined {
-        return Auth.modules.find((m) => m.name === name);
+        return Auth.getModules().find((m) => m.name === name);
     }
 
     /** Modes the current user may perform on a module (empty if none/unknown). */
@@ -78,25 +120,25 @@ export default class Auth {
         return Auth.moduleModes(name).indexOf(mode) !== -1;
     }
 
-    /** True when the current visitor has an authenticated session. */
+    // Identity comes from the server menu response (see /api/modules "user").
     static isAuthenticated(): boolean {
-        return typeof window !== "undefined" && window.__AUTH__ === true;
+        return Auth.user.authenticated === true;
     }
-
-    /** True when the current visitor is an administrator. */
+    /** Avatar URL when the user has one, else "" (used in the menu). */
+    static getAvatar(): string {
+        return Auth.user.avatar || "";
+    }
     static isAdmin(): boolean {
-        if (Auth.admin) return true;
         return typeof window !== "undefined" && window.__ADMIN__ === true;
     }
 
-    /**
-     * Access check for frontend-only custom pages (which are not backend
-     * modules and therefore not in /api/modules). Backend modules are already
-     * filtered by the server, so their presence in getModules() is the check.
-     */
-    static canAccessModule(module: AccessibleModule): boolean {
-        if (module.requiresAdmin && !Auth.isAdmin()) return false;
-        if (module.requiresAuth && !Auth.isAuthenticated()) return false;
-        return true;
+    /** Clear the session server-side, then reload to reset the SPA. */
+    static async logout(): Promise<void> {
+        try {
+            await axios.post("/api/logout");
+        } catch (err) {
+            console.error("Logout failed:", err);
+        }
+        window.location.href = "/";
     }
 }

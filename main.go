@@ -13,12 +13,16 @@ import (
 	//pgdb "tls-rest/go/lib/db/pgdb"
 
 	constants "tls-rest/go/constants"
-	engine "tls-rest/go/engine"
-	"tls-rest/go/lib/httpx"
-	input "tls-rest/go/lib/subroutine/input"
-	server "tls-rest/go/lib/subroutine/server"
+	"tls-rest/go/engine/controllers/db/pgdb"
+	"tls-rest/go/engine/controllers/module"
 
-	"tls-rest/go/lib/log"
+	registry "tls-rest/go"
+	"tls-rest/go/engine/controllers/httpx"
+	input "tls-rest/go/engine/controllers/subroutine/input"
+	server "tls-rest/go/engine/controllers/subroutine/server"
+
+	"tls-rest/go/engine/controllers/accesslog"
+	"tls-rest/go/engine/controllers/log"
 
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -56,17 +60,28 @@ func main() {
 		os.Exit(1)
 	}
 
+	registry.InitAll()
 	// Install the trusted-host allowlist used to derive absolute URLs
 	// (OAuth redirects, CORS) per request. APP_HOSTS is a comma-separated list
 	// of every hostname the app is served on; the first is canonical. Example:
 	//   APP_HOSTS=localhost,192.168.1.50,example.com
 	httpx.SetTrustedHosts(strings.Split(constants.Env("APP_HOSTS", "localhost"), ","))
 
+	accesslog.Init()
+
+	var logDB log.DB
+	if database, dberr := pgdb.GetInstance(); dberr == nil {
+		logDB = database
+	} else {
+		fmt.Fprintln(os.Stderr, "logging: database unavailable:", dberr)
+	}
+	log.Init(logDB)
+
 	// Validate go.config.json against the modules the engine actually registered:
 	// every declared module must have a Go definition and an endpoint. Logged
 	// (not fatal) so a misconfiguration is visible without taking the app down.
-	registered := make(map[string]bool, len(engine.RegisteredModules))
-	for name := range engine.RegisteredModules {
+	registered := make(map[string]bool, len(module.RegisteredModules))
+	for name := range module.RegisteredModules {
 		registered[name] = true
 	}
 	for _, cerr := range constants.Config.Validate(registered) {

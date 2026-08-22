@@ -65,6 +65,11 @@ const ModulePage: React.FC<ModulePageProps> = ({
     const [draftFilters, setDraftFilters] = useState<Record<string, any>>({});
     const [appliedFilters, setAppliedFilters] = useState<Record<string, any>>({});
 
+    // List pagination. `page` is the requested page; `pageInfo` is what the
+    // server reported with the last list response (drives the pager UI).
+    const [page, setPage] = useState(1);
+    const [pageInfo, setPageInfo] = useState<{ page: number; limit: number; total: number } | null>(null);
+
     const go = useCallback(
         (to: string) => {
             if (navigate) navigate(to);
@@ -82,7 +87,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
             if (mode === "list") {
                 // Only send non-empty filter values, as plain query params
                 // (the backend accepts ?name=value for declared filters).
-                const activeParams: Record<string, any> = {};
+                const activeParams: Record<string, any> = { page };
                 Object.keys(appliedFilters).forEach((k) => {
                     const v = appliedFilters[k];
                     if (v !== "" && v !== undefined && v !== null) activeParams[k] = v;
@@ -90,6 +95,16 @@ const ModulePage: React.FC<ModulePageProps> = ({
                 const res = await axios.get(base, { params: activeParams });
                 setData(res.data?.Data || []);
                 setFiltersMeta(res.data?.Filters || []);
+                // Capture server-reported pagination so FieldsetList can render the pager.
+                if (res.data?.Total !== undefined) {
+                    setPageInfo({
+                        page: res.data?.Page ?? page,
+                        limit: res.data?.Limit ?? (res.data?.Data?.length || 0),
+                        total: res.data?.Total ?? 0,
+                    });
+                } else {
+                    setPageInfo(null);
+                }
             } else if ((mode === "view" || mode === "edit") && id) {
                 const res = await axios.get(`${base}/${id}`);
                 const d = res.data?.Data;
@@ -103,7 +118,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
         } finally {
             setLoading(false);
         }
-    }, [base, mode, id, appliedFilters]);
+    }, [base, mode, id, appliedFilters, page]);
 
     useEffect(() => {
         load();
@@ -150,8 +165,12 @@ const ModulePage: React.FC<ModulePageProps> = ({
     const onFilterChange = useCallback((name: string, value: any) => {
         setDraftFilters((prev) => ({ ...prev, [name]: value }));
     }, []);
-    const applyFilters = useCallback(() => setAppliedFilters(draftFilters), [draftFilters]);
+    const applyFilters = useCallback(() => {
+        setPage(1);
+        setAppliedFilters(draftFilters);
+    }, [draftFilters]);
     const resetFilters = useCallback(() => {
+        setPage(1);
         setDraftFilters({});
         setAppliedFilters({});
     }, []);
@@ -224,6 +243,11 @@ const ModulePage: React.FC<ModulePageProps> = ({
                         onEdit={can("edit") ? (row: any) => go(`${base}/${row.id}/edit`) : undefined}
                         onDelete={can("delete") ? remove : undefined}
                         onBulkDelete={can("delete") ? bulkRemove : undefined}
+                        pagination={
+                            pageInfo
+                                ? { ...pageInfo, onPageChange: (p: number) => setPage(p) }
+                                : undefined
+                        }
                     />
                 </FieldsetProvider>
             </div>

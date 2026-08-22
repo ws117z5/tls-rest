@@ -5,49 +5,52 @@
 package profile
 
 import (
-	engine "tls-rest/go/engine"
-	"tls-rest/go/lib/db/cache"
-	pgdb "tls-rest/go/lib/db/pgdb"
+	"errors"
+	"tls-rest/go/engine/controllers/db/cache"
+	"tls-rest/go/engine/controllers/db/pgdb"
+	"tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/module"
 )
 
 // Page defines its own fields, independent of the admin-only users module, so a
 // normal user can view/edit their own basic details. Privilege fields
 // (user_group / access / system columns) are deliberately excluded.
-var Page = &engine.PageAbstract{
+var Page = &module.PageAbstract{
 	ID:           "profile",
 	Name:         "Profile",
 	Endpoint:     "/api/profile",
 	Editable:     true,
 	RequiresAuth: true,
-	Fields: []engine.Field{
-		engine.NewField("user_name", engine.TYPE_STRING, true).
-			WithLabel("Username").WithMode(engine.MODE_LIST | engine.MODE_VIEW | engine.MODE_EDIT),
-		engine.NewField("first_name", engine.TYPE_STRING, false).
-			WithLabel("First name").WithMode(engine.MODE_LIST | engine.MODE_VIEW | engine.MODE_EDIT),
-		engine.NewField("last_name", engine.TYPE_STRING, false).
-			WithLabel("Last name").WithMode(engine.MODE_LIST | engine.MODE_VIEW | engine.MODE_EDIT),
-		engine.NewField("email", engine.TYPE_STRING, true).
-			WithLabel("Email").WithMode(engine.MODE_LIST | engine.MODE_VIEW | engine.MODE_EDIT),
-		engine.NewField("image", engine.TYPE_STRING, false).
-			WithLabel("Avatar URL").WithMode(engine.MODE_LIST | engine.MODE_VIEW | engine.MODE_EDIT),
+	Fields: []field.Field{
+		field.NewField("user_name", field.TYPE_STRING, true).
+			WithLabel("Username").WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
+		field.NewField("first_name", field.TYPE_STRING, false).
+			WithLabel("First name").WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
+		field.NewField("last_name", field.TYPE_STRING, false).
+			WithLabel("Last name").WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
+		field.NewField("email", field.TYPE_STRING, true).
+			WithLabel("Email").WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
+		field.NewField("image", field.TYPE_IMAGE, false).
+			WithLabel("Avatar URL").WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
 	},
 
 	Load: func(s *cache.Session) (map[string]interface{}, error) {
+
 		db, err := pgdb.GetInstance()
 		if err != nil {
 			return nil, err
 		}
-		rows, err := db.RQuery(
+		row, err := db.GetOne(
 			`SELECT id, user_name, first_name, last_name, email, image FROM users WHERE id = $1`,
 			s.UserID,
 		)
 		if err != nil {
 			return nil, err
 		}
-		if len(rows) == 0 {
-			return map[string]interface{}{}, nil
+		if len(row) == 0 {
+			return nil, errors.New("No enrty found")
 		}
-		return rows[0], nil
+		return row, nil
 	},
 
 	Save: func(s *cache.Session, data map[string]interface{}) error {
@@ -63,6 +66,6 @@ var Page = &engine.PageAbstract{
 	},
 }
 
-func init() {
+func Init() {
 	Page.Initialize()
 }

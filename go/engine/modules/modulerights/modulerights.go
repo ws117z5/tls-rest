@@ -2,8 +2,9 @@ package modulerights
 
 import (
 	config "tls-rest/go/constants"
-	. "tls-rest/go/engine"
-	"tls-rest/go/lib/auth"
+	"tls-rest/go/engine/controllers/auth"
+	. "tls-rest/go/engine/controllers/field"
+	. "tls-rest/go/engine/controllers/module"
 )
 
 // This package registers the two rights-administration modules that back the
@@ -69,8 +70,9 @@ func moduleField() Field {
 // GroupRightsModule: per-group module rights. Stored group_id as an integer FK
 // (INTEGER column) so it joins cleanly to users.user_group; rendered as a select.
 var GroupRightsModule = &ModuleAbstract[interface{}]{
-	ID:   "user_group_rights",
-	Name: "Group Rights",
+	ID:      "user_group_rights",
+	Name:    "Group Rights",
+	Submenu: "engine",
 	Fields: []Field{
 		NewField("group_id", TYPE_INT, true).
 			WithLabel("User Group").
@@ -91,8 +93,9 @@ var GroupRightsModule = &ModuleAbstract[interface{}]{
 // UserRightsModule: extra per-user module rights, additive on top of the user's
 // group rights.
 var UserRightsModule = &ModuleAbstract[interface{}]{
-	ID:   "user_rights",
-	Name: "User Rights",
+	ID:      "user_rights",
+	Name:    "User Rights",
+	Submenu: "engine",
 	Fields: []Field{
 		NewField("user_id", TYPE_INT, true).
 			WithLabel("User").
@@ -110,7 +113,7 @@ var UserRightsModule = &ModuleAbstract[interface{}]{
 	Rights:               make(map[int]int),
 }
 
-func init() {
+func Init() {
 	GroupRightsModule.Initialize("user_group_rights")
 	UserRightsModule.Initialize("user_rights")
 }

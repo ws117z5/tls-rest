@@ -18,9 +18,9 @@ import (
 	"sync"
 	"time"
 
-	engine "tls-rest/go/engine"
-	"tls-rest/go/lib/db/cache"
-	applog "tls-rest/go/lib/log"
+	"tls-rest/go/engine/controllers/db/cache"
+	"tls-rest/go/engine/controllers/log"
+	"tls-rest/go/engine/controllers/module"
 	"tls-rest/go/pages/netmapper/resolver"
 	"tls-rest/go/pages/netmapper/scanner"
 	. "tls-rest/go/pages/netmapper/types"
@@ -33,24 +33,6 @@ const (
 	defaultIface  = "en0"
 	defaultModem  = "192.168.100.1"
 )
-
-// Page self-registers the admin-only scan endpoint through the shared
-// route-registrar seam. RequiresAdmin documents intent; the actual enforcement
-// for the custom route is adminGuard below (PageAbstract only auto-enforces
-// RequiresAdmin on its fieldset GET/PUT handlers, which this page doesn't use).
-var Page = &engine.PageAbstract{
-	ID:            "netmapper",
-	Name:          "Network Mapper",
-	RequiresAuth:  true,
-	RequiresAdmin: true,
-	Routes: []engine.PageRoute{
-		{Path: "/api/netmap/events", Methods: []string{"GET"}, Handler: adminGuard(streamScan)},
-	},
-}
-
-func init() {
-	Page.Initialize()
-}
 
 // adminGuard wraps a handler so only an authenticated administrator may reach
 // it. The middleware attaches the session to the request context; a non-admin
@@ -100,7 +82,7 @@ func streamScan(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	applog.LogSystemEvent("Network Mapper scan started", applog.LogLevelInfo, map[string]interface{}{
+	log.LogSystemEvent("Network Mapper scan started", log.LogLevelInfo, map[string]interface{}{
 		"subnet": subnet, "target": target, "iface": iface,
 	})
 
@@ -202,7 +184,7 @@ func streamScan(w http.ResponseWriter, r *http.Request) {
 	sendEvent("status", "Network Mesh Mapping Complete.")
 	sendEvent("complete", true)
 
-	applog.LogSystemEvent("Network Mapper scan complete", applog.LogLevelInfo, map[string]interface{}{
+	log.LogSystemEvent("Network Mapper scan complete", log.LogLevelInfo, map[string]interface{}{
 		"devices": len(lanDevices), "hops": len(traceHops),
 	})
 }
@@ -239,4 +221,23 @@ func queryOr(r *http.Request, key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// Page self-registers the admin-only scan endpoint through the shared
+// route-registrar seam. RequiresAdmin documents intent; the actual enforcement
+// for the custom route is adminGuard below (PageAbstract only auto-enforces
+// RequiresAdmin on its fieldset GET/PUT handlers, which this page doesn't use).
+var Page = &module.PageAbstract{
+	ID:            "netmapper",
+	Name:          "Network Mapper",
+	Submenu:       "pages",
+	RequiresAuth:  true,
+	RequiresAdmin: true,
+	Routes: []module.PageRoute{
+		{Path: "/api/netmap/events", Methods: []string{"GET"}, Handler: streamScan},
+	},
+}
+
+func Init() {
+	Page.Initialize()
 }

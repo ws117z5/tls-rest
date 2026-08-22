@@ -3,7 +3,7 @@ package users
 import (
 	"strings"
 
-	pgdb "tls-rest/go/lib/db/pgdb"
+	"tls-rest/go/engine/controllers/db/pgdb"
 )
 
 // OAuthAccount is the provider-agnostic result of an OAuth sign-in, normalized

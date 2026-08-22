@@ -10,31 +10,13 @@ import (
 	"net/http"
 	"strings"
 
-	engine "tls-rest/go/engine"
-	"tls-rest/go/lib"
-	"tls-rest/go/lib/auth"
-	pgdb "tls-rest/go/lib/db/pgdb"
+	"tls-rest/go/engine/controllers/auth"
+	"tls-rest/go/engine/controllers/db/pgdb"
+	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/controllers/module"
 
 	"golang.org/x/crypto/bcrypt"
 )
-
-// Page self-registers the auth endpoints through the shared route-registrar seam
-// so route.go no longer hardcodes them. Login is a custom (non-fieldset) page:
-// it owns its handlers rather than a fieldset. OAuth (/users/Auth/...) is handled
-// separately by lib/auth.
-var Page = &engine.PageAbstract{
-	ID:   "login",
-	Name: "Login",
-	Routes: []engine.PageRoute{
-		{Path: "/api/login", Methods: []string{"POST"}, Handler: Login},
-		{Path: "/api/logout", Methods: []string{"POST"}, Handler: Logout},
-		{Path: "/api/register", Methods: []string{"POST"}, Handler: Register},
-	},
-}
-
-func init() {
-	Page.Initialize()
-}
 
 type credentials struct {
 	Email     string `json:"email"`
@@ -49,18 +31,18 @@ type credentials struct {
 func Login(w http.ResponseWriter, r *http.Request) {
 	var c credentials
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-		lib.JSONError(w, http.StatusBadRequest, "invalid request")
+		functions.JSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 	c.Email = strings.TrimSpace(strings.ToLower(c.Email))
 	if c.Email == "" || c.Password == "" {
-		lib.JSONError(w, http.StatusBadRequest, "email and password are required")
+		functions.JSONError(w, http.StatusBadRequest, "email and password are required")
 		return
 	}
 
 	db, err := pgdb.GetInstance()
 	if err != nil {
-		lib.JSONError(w, http.StatusInternalServerError, "database unavailable")
+		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
 	}
 
@@ -68,18 +50,18 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		`SELECT id, user_name, password_hash FROM users WHERE lower(email) = $1 LIMIT 1`, c.Email,
 	)
 	if err != nil {
-		lib.JSONError(w, http.StatusInternalServerError, err.Error())
+		functions.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	// Uniform message so we don't reveal whether the email exists.
 	if row == nil {
-		lib.JSONError(w, http.StatusUnauthorized, "invalid email or password")
+		functions.JSONError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
 
 	hash := pgdb.Coerce[string](row["password_hash"])
 	if hash == "" || bcrypt.CompareHashAndPassword([]byte(hash), []byte(c.Password)) != nil {
-		lib.JSONError(w, http.StatusUnauthorized, "invalid email or password")
+		functions.JSONError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
 
@@ -87,7 +69,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	username := pgdb.Coerce[string](row["user_name"])
 	auth.Login(w, r, id, username)
 
-	lib.WriteJSON(w, http.StatusOK, map[string]interface{}{
+	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":   true,
 		"user": map[string]interface{}{"id": id, "user_name": username},
 	})
@@ -96,7 +78,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 // Logout handles POST /api/logout, dropping the session back to anonymous.
 func Logout(w http.ResponseWriter, r *http.Request) {
 	auth.Logout(w, r)
-	lib.WriteJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
 }
 
 // Register handles POST /api/register {email, password, user_name?, first_name?,
@@ -104,29 +86,29 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 func Register(w http.ResponseWriter, r *http.Request) {
 	var c credentials
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
-		lib.JSONError(w, http.StatusBadRequest, "invalid request")
+		functions.JSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
 	c.Email = strings.TrimSpace(strings.ToLower(c.Email))
 	if c.Email == "" || len(c.Password) < 6 {
-		lib.JSONError(w, http.StatusBadRequest, "email and a password (min 6 chars) are required")
+		functions.JSONError(w, http.StatusBadRequest, "email and a password (min 6 chars) are required")
 		return
 	}
 
 	db, err := pgdb.GetInstance()
 	if err != nil {
-		lib.JSONError(w, http.StatusInternalServerError, "database unavailable")
+		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
 	}
 
 	if row, e := db.GetOne(`SELECT id FROM users WHERE lower(email) = $1 LIMIT 1`, c.Email); e == nil && row != nil {
-		lib.JSONError(w, http.StatusConflict, "an account with this email already exists")
+		functions.JSONError(w, http.StatusConflict, "an account with this email already exists")
 		return
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(c.Password), bcrypt.DefaultCost)
 	if err != nil {
-		lib.JSONError(w, http.StatusInternalServerError, "could not hash password")
+		functions.JSONError(w, http.StatusInternalServerError, "could not hash password")
 		return
 	}
 
@@ -153,14 +135,32 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		"password_hash": string(hash),
 	})
 	if err != nil {
-		lib.JSONError(w, http.StatusInternalServerError, err.Error())
+		functions.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	auth.Login(w, r, int(id), userName)
 
-	lib.WriteJSON(w, http.StatusOK, map[string]interface{}{
+	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"ok":   true,
 		"user": map[string]interface{}{"id": id, "user_name": userName},
 	})
+}
+
+// Page self-registers the auth endpoints through the shared route-registrar seam
+// so route.go no longer hardcodes them. Login is a custom (non-fieldset) page:
+// it owns its handlers rather than a fieldset. OAuth (/users/Auth/...) is handled
+// separately by lib/auth.
+var Page = &module.PageAbstract{
+	ID:   "login",
+	Name: "Login",
+	Routes: []module.PageRoute{
+		{Path: "/api/login", Methods: []string{"POST"}, Handler: Login},
+		{Path: "/api/logout", Methods: []string{"POST"}, Handler: Logout},
+		{Path: "/api/register", Methods: []string{"POST"}, Handler: Register},
+	},
+}
+
+func Init() {
+	Page.Initialize()
 }

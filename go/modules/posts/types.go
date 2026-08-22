@@ -3,7 +3,7 @@ package posts
 import (
 	"time"
 
-	. "tls-rest/go/engine"
+	. "tls-rest/go/engine/controllers/module"
 )
 
 // PostObj represents the data structure for posts
@@ -26,26 +26,4 @@ func (PostObj) TableName() string {
 // Posts module following CInvoice paradigm
 type Posts struct {
 	*ModuleAbstract[interface{}]
-}
-
-// NewPosts creates a new Posts module instance
-func NewPosts() *Posts {
-	moduleInstance := &Posts{
-		ModuleAbstract: &ModuleAbstract[interface{}]{
-			ID:     "posts",
-			Name:   "Posts",
-			Rights: make(map[int]int),
-			// Public module: everyone may read (list/view); writes require rights.
-			DefaultPermission:    1, // PERMISSION_READ
-			DefaultPermissionSet: true,
-		},
-	}
-
-	// Build the field and filter sets. fieldset() defines the columns/form
-	// fields; filters() (in filters.go) defines the list-mode filters. Default
-	// system fields are added automatically by Initialize().
-	moduleInstance.ModuleAbstract.Fields = moduleInstance.fieldset()
-	moduleInstance.ModuleAbstract.Filters = moduleInstance.filters()
-
-	return moduleInstance
 }

@@ -33,10 +33,11 @@ import (
 	"strings"
 	"time"
 
-	module "tls-rest/go/engine"
-	"tls-rest/go/lib"
-	"tls-rest/go/lib/db/cache"
-	"tls-rest/go/lib/db/pgdb"
+	"tls-rest/go/engine/controllers/db/cache"
+	"tls-rest/go/engine/controllers/db/pgdb"
+	. "tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/controllers/module"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -70,18 +71,14 @@ func NewImages() *Images {
 
 // fieldset defines the image metadata columns. id, uuid, access and created are
 // system fields added automatically by Initialize().
-func (m *Images) fieldset() []module.Field {
-	return []module.Field{
-		module.NewField("module", module.TYPE_STRING, false).WithLabel("Module"),
-		module.NewField("field", module.TYPE_STRING, false).WithLabel("Field"),
-		module.NewField("record_id", module.TYPE_INT, false).WithLabel("Record"),
-		module.NewField("filename", module.TYPE_STRING, false).WithLabel("Filename"),
-		module.NewField("mime_type", module.TYPE_STRING, false).WithLabel("Type"),
+func (m *Images) fieldset() []Field {
+	return []Field{
+		NewField("module", TYPE_STRING, false).WithLabel("Module"),
+		NewField("field", TYPE_STRING, false).WithLabel("Field"),
+		NewField("record_id", TYPE_INT, false).WithLabel("Record"),
+		NewField("filename", TYPE_STRING, false).WithLabel("Filename"),
+		NewField("mime_type", TYPE_STRING, false).WithLabel("Type"),
 	}
-}
-
-func init() {
-	NewImages().Initialize("images")
 }
 
 // --- binary upload / serve ---------------------------------------------------
@@ -192,20 +189,20 @@ func loadImage(ref string) (cachedImage, error) {
 // Process handles POST /api/images/process: upload + preprocess + store.
 func Process(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(maxUpload); err != nil {
-		lib.JSONError(w, http.StatusBadRequest, "invalid multipart form: "+err.Error())
+		functions.JSONError(w, http.StatusBadRequest, "invalid multipart form: "+err.Error())
 		return
 	}
 
 	file, header, err := r.FormFile("image")
 	if err != nil {
-		lib.JSONError(w, http.StatusBadRequest, "missing 'image' file: "+err.Error())
+		functions.JSONError(w, http.StatusBadRequest, "missing 'image' file: "+err.Error())
 		return
 	}
 	defer file.Close()
 
 	raw, err := io.ReadAll(io.LimitReader(file, maxUpload))
 	if err != nil {
-		lib.JSONError(w, http.StatusInternalServerError, "failed to read upload: "+err.Error())
+		functions.JSONError(w, http.StatusInternalServerError, "failed to read upload: "+err.Error())
 		return
 	}
 
@@ -235,7 +232,7 @@ func Process(w http.ResponseWriter, r *http.Request) {
 
 	data, mimeType, err := processorFor(moduleName, field)(moduleName, field, raw, mimeType)
 	if err != nil {
-		lib.JSONError(w, http.StatusBadRequest, "image processing failed: "+err.Error())
+		functions.JSONError(w, http.StatusBadRequest, "image processing failed: "+err.Error())
 		return
 	}
 
@@ -243,7 +240,7 @@ func Process(w http.ResponseWriter, r *http.Request) {
 
 	db, err := pgdb.GetInstance()
 	if err != nil {
-		lib.JSONError(w, http.StatusInternalServerError, "database unavailable")
+		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
 	}
 	id, err := db.InsertRow("images", map[string]interface{}{
@@ -257,7 +254,7 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		"data":      data,
 	})
 	if err != nil {
-		lib.JSONError(w, http.StatusInternalServerError, err.Error())
+		functions.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
@@ -268,7 +265,7 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		name = guid + "." + ext
 	}
 
-	lib.WriteJSON(w, http.StatusOK, map[string]interface{}{
+	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"id":        id,
 		"uuid":      guid,
 		"module":    moduleName,

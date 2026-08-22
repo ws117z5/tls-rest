@@ -1,9 +1,10 @@
 package users
 
 import (
-	"tls-rest/go/lib/db/pgdb"
+	"tls-rest/go/engine/controllers/db/pgdb"
+	"tls-rest/go/engine/controllers/module"
 
-	. "tls-rest/go/engine"
+	. "tls-rest/go/engine/controllers/field"
 )
 
 // fieldset defines the module's fields (default system fields are added
@@ -90,7 +91,28 @@ func FindOrCreateGoogleUser(s *GoogleAccount) (int64, string, error) {
 	return id, username, nil
 }
 
-func init() {
+// NewUsers creates a new Users module instance
+func NewUsers() *Users {
+	module := &Users{
+		ModuleAbstract: &module.ModuleAbstract[interface{}]{
+			ID:      "users",
+			Name:    "Users Management",
+			Submenu: "engine",
+			Rights:  make(map[int]int),
+			// Administration module: no access unless explicitly granted (or admin).
+			DefaultPermission:    0, // PERMISSION_DENY
+			DefaultPermissionSet: true,
+		},
+	}
+
+	// Build the field set. Default system fields are added automatically by
+	// Initialize().
+	module.Fields = module.fieldset()
+
+	return module
+}
+
+func Init() {
 	// Create module instance
 	UserModule = NewUsers()
 
