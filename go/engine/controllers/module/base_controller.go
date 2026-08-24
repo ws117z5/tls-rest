@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/httpx"
+	"tls-rest/go/engine/controllers/log"
 
 	"github.com/gorilla/mux"
 )
@@ -33,7 +35,7 @@ func NewBaseController(module *ModuleAbstract[interface{}], tableName string) *B
 // to the fields the requesting user may see (system fields are admin-only;
 // access-gated fields are hidden from lower levels).
 func (bc *BaseController) createFieldsetMap(r *http.Request) map[string]interface{} {
-	v := viewerFromRequest(r)
+	v := viewerForModule(r, bc.Module.ID)
 	fieldset := make(map[string]interface{})
 
 	for _, field := range bc.Module.Fields {
@@ -70,7 +72,7 @@ func (bc *BaseController) createFiltersMap(r *http.Request) []map[string]interfa
 		return filters
 	}
 
-	v := viewerFromRequest(r)
+	v := viewerForModule(r, bc.Module.ID)
 	for _, field := range bc.Module.Filters.Fields {
 		if !v.fieldVisibleInSchema(field) {
 			continue
@@ -85,6 +87,36 @@ func (bc *BaseController) createFiltersMap(r *http.Request) []map[string]interfa
 	}
 
 	return filters
+}
+
+// respondError writes a uniform JSON error body:
+//
+//	{ "status": <code>, "message": <text>, "log_id": <id> }
+//
+// Server-side (5xx) errors are logged to the event logger and the returned
+// log_id lets a user find the full detail in the logs module. Client errors
+// (4xx) are returned as-is with an empty log_id (nothing to look up).
+func (bc *BaseController) respondError(w http.ResponseWriter, status int, message string, err error) {
+	logID := ""
+	if status >= 500 {
+		errStr := ""
+		if err != nil {
+			errStr = err.Error()
+		}
+		modID := ""
+		if bc.Module != nil {
+			modID = bc.Module.ID
+		}
+		logID = log.LogErrorWithID(message, modID, errStr)
+		ModuleLogger.Printf("%s [log_id=%s]: %v", message, logID, err)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  status,
+		"message": message,
+		"log_id":  logID,
+	})
 }
 
 // List handles GET requests for listing records with pagination and filtering
@@ -104,8 +136,7 @@ func (bc *BaseController) List(w http.ResponseWriter, r *http.Request) {
 
 	result, err := bc.Engine.ExecuteQuery(MODE_LIST)
 	if err != nil {
-		ModuleLogger.Printf("list records failed: %v", err)
-		http.Error(w, "Failed to fetch records", http.StatusInternalServerError)
+		bc.respondError(w, http.StatusInternalServerError, "Failed to fetch records", err)
 		return
 	}
 
@@ -163,8 +194,7 @@ func (bc *BaseController) View(w http.ResponseWriter, r *http.Request) {
 
 	result, err := engine.ExecuteQuery(MODE_VIEW)
 	if err != nil {
-		ModuleLogger.Printf("fetch record failed: %v", err)
-		http.Error(w, "Failed to fetch record", http.StatusInternalServerError)
+		bc.respondError(w, http.StatusInternalServerError, "Failed to fetch record", err)
 		return
 	}
 
@@ -191,7 +221,7 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Validate required fields
 	if err := bc.validateRequiredFields(data, MODE_EDIT); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		bc.respondError(w, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 
@@ -201,8 +231,7 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 	// Insert record
 	id, err := bc.insertRecord(filteredData)
 	if err != nil {
-		ModuleLogger.Printf("create record failed: %v", err)
-		http.Error(w, "Failed to create record", http.StatusInternalServerError)
+		bc.respondError(w, http.StatusInternalServerError, "Failed to create record", err)
 		return
 	}
 
@@ -240,8 +269,7 @@ func (bc *BaseController) Edit(w http.ResponseWriter, r *http.Request) {
 	// Update record
 	err := bc.updateRecord(id, filteredData)
 	if err != nil {
-		ModuleLogger.Printf("update record failed: %v", err)
-		http.Error(w, "Failed to update record", http.StatusInternalServerError)
+		bc.respondError(w, http.StatusInternalServerError, "Failed to update record", err)
 		return
 	}
 
@@ -266,8 +294,7 @@ func (bc *BaseController) Delete(w http.ResponseWriter, r *http.Request) {
 
 	err := bc.deleteRecord(id)
 	if err != nil {
-		ModuleLogger.Printf("delete record failed: %v", err)
-		http.Error(w, "Failed to delete record", http.StatusInternalServerError)
+		bc.respondError(w, http.StatusInternalServerError, "Failed to delete record", err)
 		return
 	}
 
@@ -300,7 +327,7 @@ func (bc *BaseController) validateRequiredFields(data map[string]interface{}, mo
 
 func (bc *BaseController) filterValidFields(r *http.Request, data map[string]interface{}, mode int) map[string]interface{} {
 	filtered := make(map[string]interface{})
-	v := viewerFromRequest(r)
+	v := viewerForModule(r, bc.Module.ID)
 
 	for _, field := range bc.Module.Fields {
 		// Skip virtual fields, read-only fields, and fields not in current mode.
@@ -315,11 +342,43 @@ func (bc *BaseController) filterValidFields(r *http.Request, data map[string]int
 		}
 
 		if value, exists := data[field.Name]; exists {
-			filtered[field.Name] = value
+			// TYPE_TABLE with a submit hook: fold the submitted rows into the
+			// stored value (e.g. checkbox rows -> {"field":["view","edit"]}).
+			if field.TableSubmitFunc != nil {
+				filtered[field.Name] = field.TableSubmitFunc(tableRows(value))
+			} else {
+				filtered[field.Name] = value
+			}
 		}
 	}
 
 	return filtered
+}
+
+// tableRows normalizes a submitted TYPE_TABLE value (a JSON string, []byte, or
+// already-decoded slice) into a slice of row maps for TableSubmitFunc.
+func tableRows(value interface{}) []map[string]interface{} {
+	var raw []interface{}
+	switch t := value.(type) {
+	case string:
+		if strings.TrimSpace(t) == "" {
+			return nil
+		}
+		_ = json.Unmarshal([]byte(t), &raw)
+	case []byte:
+		_ = json.Unmarshal(t, &raw)
+	case []interface{}:
+		raw = t
+	case []map[string]interface{}:
+		return t
+	}
+	rows := make([]map[string]interface{}, 0, len(raw))
+	for _, r := range raw {
+		if m, ok := r.(map[string]interface{}); ok {
+			rows = append(rows, m)
+		}
+	}
+	return rows
 }
 
 func (bc *BaseController) insertRecord(data map[string]interface{}) (int64, error) {

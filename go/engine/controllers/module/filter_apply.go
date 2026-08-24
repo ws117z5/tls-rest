@@ -11,7 +11,7 @@ func (fe *FieldsetEngine) buildDeclaredFilterConditions(argIndex *int, args *[]i
 	if fe.Module == nil || fe.Module.Filters == nil || fe.Request == nil {
 		return nil
 	}
-	v := viewerFromRequest(fe.Request)
+	v := viewerForModule(fe.Request, fe.Module.ID)
 	return field.BuildFilterConditions(
 		fe.Module.Filters.Fields,
 		fe.Request.URL.Query(),

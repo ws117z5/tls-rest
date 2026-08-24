@@ -1,15 +1,17 @@
 import React from "react";
-import MarkdownRender from "./MarkdownRender";
+import { stripMarkdown } from "./controllers/markdown";
 
-interface MarkdownViewProps {
+interface MarkdownListProps {
     value?: string;
     className?: string;
 }
 
-// Renders a markdown string. Rendering goes through react-markdown, which does
-// not emit raw HTML from the source, so this is safe against markup injection.
-const MarkdownView: React.FC<MarkdownViewProps> = ({ value, className }) => (
-    <MarkdownRender value={value || ""} className={`markdown-view ${className || ""}`} />
+// List cells show a short plain-text preview rather than rendered markdown, to
+// keep table rows compact. stripMarkdown removes syntax and truncates.
+const MarkdownList: React.FC<MarkdownListProps> = ({ value, className }) => (
+    <span className={`markdown-list text-muted ${className || ""}`}>
+        {stripMarkdown(value || "")}
+    </span>
 );
 
-export default MarkdownView;
+export default MarkdownList;

@@ -257,7 +257,7 @@ func ViewRoomUsers(w http.ResponseWriter, r *http.Request) {
 var Page = &module.PageAbstract{
 	ID:            "papers",
 	Name:          "Papers Game ",
-	Submenu:       "pages",
+	Submenu:       "games",
 	RequiresAuth:  true,
 	RequiresAdmin: true,
 	Routes: []module.PageRoute{

@@ -3,12 +3,14 @@ import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Route, Routes, Navigate } from "react-router";
 import axios from 'axios';
 
-import { AbstractComponent } from '@controllers/AbstractComponent';
-import Menu from "@containers/Menu";
-import IndexPage from "@pages/IndexPage";
+import { AbstractComponent } from '@engine/containers/AbstractComponent';
+import Menu from "@engine/containers/Menu";
+import {Home} from "@engine/pages";
 import Config from '@engine/Config';
-import ModulePage, { ModeName } from '@engine/ModulePage';
-import { ErrorBoundary } from "@pages/ErrorBoundary";
+import ModulePage, { ModeName } from '@engine/containers/ModulePage';
+import ErrorBoundary from "@engine/pages/ErrorBoundary";
+import Toasts from "@engine/containers/Toasts";
+import { installHttpErrorToasts } from "@engine/controllers/httpSetup";
 
 // Per-mode routes to register for a backend module. Only the modes the user is
 // allowed (reported by /api/modules) get a route; the rest simply don't exist
@@ -25,6 +27,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     axios.defaults.headers.common['X-Request-Type'] = 'api';
+    installHttpErrorToasts(); // global error -> toast (reads {status,message,log_id})
     Config.init().then(() => {
       setLoaded(true);
     });
@@ -36,10 +39,11 @@ const App: React.FC = () => {
 
   return (
     <div>
+      <Toasts />
       <Menu />
       <ErrorBoundary>
         <Routes>
-          <Route path='/' element={<IndexPage />} />
+          <Route path='/' element={<Home />} />
 
           {/* Backend modules: one route per permitted mode, all rendered by the
               generic ModulePage (or a registered custom view). */}

@@ -1,5 +1,2 @@
-import {default as Request} from "./request"
-import {default as Log} from "./log"
-import {default as Functional} from "./functional"
-import {default as AbstractComponent} from "./AbstractComponent"
-import {default as PageComponent} from "./PageComponent"
+import {default as Request} from "../engine/controllers/request"
+import {default as Log} from "../engine/controllers/log"

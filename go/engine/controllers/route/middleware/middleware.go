@@ -268,6 +268,13 @@ func authorizeAPIRequest(ci *cache.Session, r *http.Request) (allowed bool, modu
 			mid = strings.Trim(mid, "/")
 			return HasMode(ci.ModuleModes, mid, MODE_VIEW, ci.IsAdmin), mid, "fieldset"
 		}
+		// Table-data for a field: /api/modules/{id}/table/{field} — needs VIEW on {id}.
+		if strings.HasPrefix(path, "/api/modules/") && strings.Contains(path, "/table/") {
+			mid := strings.TrimPrefix(path, "/api/modules/")
+			mid = strings.SplitN(mid, "/table/", 2)[0]
+			mid = strings.Trim(mid, "/")
+			return HasMode(ci.ModuleModes, mid, MODE_VIEW, ci.IsAdmin), mid, "table"
+		}
 		// The module list endpoint filters itself per user.
 		if path == "/api/modules" {
 			return true, "modules", "list"

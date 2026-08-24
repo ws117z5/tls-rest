@@ -58,8 +58,8 @@ type User struct {
 	Lastname  string    `json:"last_name" pg:"last_name"`
 	Email     string    `json:"-"`
 	Image     string    `json:"image" pg:"image"`
-	CreatedAt time.Time `pg:"created_at,default:now()" json:"created_at"`
-	UpdatedAt time.Time `pg:"updated_at,default:now()" json:"updated_at"`
+	Created   time.Time `pg:"created,default:now()" json:"created"`
+	Updated   time.Time `pg:"updated,default:now()" json:"updated"`
 }
 
 type UserExtended struct {

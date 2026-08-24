@@ -1,5 +1,5 @@
-import Log from "@controllers/log";
-import Request from "@controllers/request";
+import Log from "@engine/controllers/log";
+import Request from "@engine/controllers/request";
 
 class WebRtc {
     static iceServers: RTCIceServer[] = [

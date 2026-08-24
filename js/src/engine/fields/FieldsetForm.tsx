@@ -219,6 +219,9 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
       mode: mode || MODES.EDIT,
       disabled: disabled || field.readonly,
       module: this.props.fieldsetContext?.module,
+      // All sibling values, so dependent fields (e.g. a TABLE whose rows come
+      // from another field's selected module) can react to them.
+      formValues: formData,
       className: touched[field.name] && errors[field.name] ? 'is-invalid' : '',
       // The description column owns the label, so suppress the field's own.
       label: '',

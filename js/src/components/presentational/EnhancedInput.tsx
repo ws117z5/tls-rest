@@ -1,10 +1,15 @@
 import React from "react";
 import PropTypes from "prop-types";
-import { BaseFieldProps } from "../containers/Fields/Field";
+import { BaseFieldProps } from "@engine/fields/Field";
 
 // Enhanced Input component that works with fieldset system
 interface EnhancedInputProps extends BaseFieldProps {
+  field: any;
+  value: string;
   type?: string;
+  onChange?: (value:string) => {};
+  disabled: boolean;
+  className: string;
   placeholder?: string;
   autoComplete?: string;
   maxLength?: number;

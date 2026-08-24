@@ -68,6 +68,11 @@ type Session struct {
 	// (mode gating) and the fieldset engine (request-time row/field filtering).
 	ModuleModes map[string]int
 	AccessLevel int
+	// FieldRights restricts, per module, which non-system fields the user may
+	// see/write. A module ABSENT from the map is unrestricted (all fields). A
+	// module PRESENT maps to the exact allowed field set (system fields like id
+	// are always kept). Built by auth.ResolveModuleFieldRights.
+	FieldRights map[string]map[string]int
 
 	// Fieldset caches, per module, the hashsum of the fieldset last computed and
 	// served to this session (authority-scoped). GetFieldset compares an incoming

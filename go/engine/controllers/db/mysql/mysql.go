@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"tls-rest/go/lib/log"
+	"tls-rest/go/engine/controllers/log"
 )
 
 type Db struct {

@@ -1,5 +1,9 @@
 import React from 'react';
 import { FIELD_TYPES, MODES } from './FieldsetProvider';
+import TableEdit from './Table/Edit';
+import TableView from './Table/View';
+import BitmaskEdit from './Bitmask/Edit';
+import BitmaskView from './Bitmask/View';
 
 // Import all field components
 import { 
@@ -21,6 +25,7 @@ export interface BaseFieldProps {
     label: string;
     required?: boolean;
     description?: string;
+    placeholder?: string;
     validation?: { [key: string]: any };
     options?: { [key: string]: any };
     readonly?: boolean;
@@ -32,6 +37,9 @@ export interface BaseFieldProps {
   disabled?: boolean;
   className?: string;
   module?: string; // owning module name (for fields that call module-scoped endpoints, e.g. Image)
+  // All sibling form values, so dependent fields (e.g. a TABLE whose rows come
+  // from another field's selected module) can react to them.
+  formValues?: { [key: string]: any };
   // Optional label override. When provided (including ""), it replaces field.label
   // — the two-column form passes "" so the field renders no internal label and
   // the description column is the single source of the label.
@@ -40,6 +48,16 @@ export interface BaseFieldProps {
 
 // Field type mapping
 const FIELD_COMPONENTS = {
+  [FIELD_TYPES.BITMASK_SELECT]: {
+    [MODES.EDIT]: BitmaskEdit,
+    [MODES.VIEW]: BitmaskView,
+    [MODES.LIST]: BitmaskView,
+  },
+  [FIELD_TYPES.TABLE]: {
+    [MODES.EDIT]: TableEdit,
+    [MODES.VIEW]: TableView,
+    [MODES.LIST]: TableView,
+  },
   [FIELD_TYPES.STRING]: {
     [MODES.EDIT]: TextEdit,
     [MODES.VIEW]: TextView,
@@ -174,9 +192,17 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
     ...props,
     id: field.name,
     label: props.label !== undefined ? props.label : field.label,
-    placeholder: field.description || field.label,
+    // Explicit placeholder from the fieldset (field.placeholder) wins; falls
+    // back to description/label. Used in edit/create and filter inputs.
+    placeholder: field.placeholder || field.description || field.label,
     required: field.required,
     disabled: field.readonly || props.disabled,
+    // Text-family widget: only multi-line types render a <textarea>; STRING and
+    // autocomplete render a single-line <input>. Overridable via field.options.
+    type:
+      field.type === FIELD_TYPES.TEXT || field.type === FIELD_TYPES.HTML
+        ? "text"
+        : "varchar",
     // Pass field-specific options
     ...(field.options || {}),
   };

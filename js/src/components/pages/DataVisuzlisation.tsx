@@ -2,8 +2,8 @@ import React, { useRef, useState, ComponentProps } from "react";
 import { Canvas, useFrame, ThreeElements } from "@react-three/fiber";
 import { Mesh } from "three";
 
-import PageComponent from "@engine/PageComponent";
-import OpenCV from "@containers/OpenCV/OpenCV";
+import PageComponent from "@engine/containers/PageComponent";
+import OpenCV from "../../pages/opencv/containers/OpenCV";
 
 interface CubeProps {
   position: [number, number, number];

@@ -44,7 +44,7 @@ func FlushRouteRegistrars(router *mux.Router) {
 // --- PageAbstract ------------------------------------------------------------
 //
 // A Page is a standalone, non-module screen: one representation, no modes, fields
-// gated by rights. It is the backend twin of the frontend FieldsetPage. Unlike a
+// gated by rights. It is the backend twin of the frontend Fieldset page. Unlike a
 // module it has no CRUD/list/table and creates no DB table — it reads/writes a
 // single record through Load/Save (e.g. profile == the current user's row).
 //

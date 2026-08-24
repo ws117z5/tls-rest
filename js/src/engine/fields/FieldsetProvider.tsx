@@ -7,7 +7,7 @@ import Auth from '@controllers/auth';
 // list/view/edit to administrators. The backend is authoritative — it filters
 // these from schema and data — this set keeps the client in agreement.
 const SYSTEM_FIELDS = new Set([
-  'id', 'uuid', 'created', 'updated', 'created_by', 'created_at', 'updated_at', 'access',
+  'id', 'uuid', 'created', 'updated', 'created_by', 'access',
 ]);
 
 // Field type constants matching backend
@@ -20,6 +20,8 @@ export const FIELD_TYPES = {
   AUTOCOMPLETE: 'Autocomplete',
   TEXT: 'Text',
   JSON: 'Json',
+  TABLE: 'Table',
+  BITMASK_SELECT: 'BitmaskSelect',
   AUTOCOMPLETE_TEXT: 'AutocompleteText',
   DATE: 'Date',
   DATE_TIME: 'DateTime',

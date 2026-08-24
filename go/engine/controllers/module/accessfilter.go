@@ -5,7 +5,7 @@ import (
 
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
-	"tls-rest/go/engine/controllers/field"
+	. "tls-rest/go/engine/controllers/field"
 )
 
 // This file centralises request-time access filtering for the fieldset engine.
@@ -54,12 +54,22 @@ var adminOnlyData = map[string]bool{
 type viewer struct {
 	isAdmin bool
 	level   int
+	// moduleID + fieldRights implement per-module field-level rights. When
+	// moduleID is set and fieldRights restricts it, only the listed non-system
+	// fields are visible/readable. Empty moduleID = no field restriction.
+	moduleID    string
+	fieldRights map[string]map[string]int
 }
 
-// viewerFromRequest derives the viewer from the session on the request context.
-// A missing session (nil request or unauthenticated internal call) is treated
-// as the most restrictive anonymous viewer.
+// viewerFromRequest derives the viewer without a module context (no field-level
+// restriction) — used by record-level checks.
 func viewerFromRequest(r *http.Request) viewer {
+	return viewerForModule(r, "")
+}
+
+// viewerForModule derives the viewer for a specific module, enabling per-field
+// rights for that module.
+func viewerForModule(r *http.Request, moduleID string) viewer {
 	if r == nil {
 		return viewer{}
 	}
@@ -67,7 +77,39 @@ func viewerFromRequest(r *http.Request) viewer {
 	if s == nil {
 		return viewer{}
 	}
-	return viewer{isAdmin: s.IsAdmin, level: s.AccessLevel}
+	return viewer{
+		isAdmin:     s.IsAdmin,
+		level:       s.AccessLevel,
+		moduleID:    moduleID,
+		fieldRights: s.FieldRights,
+	}
+}
+
+// fieldAllowed reports whether per-field rights permit this field for the
+// current module. Unrestricted when there's no module context, no field-rights
+// map, or no restriction recorded for the module. System fields are always
+// allowed (the client needs id/uuid to identify and act on records).
+func (v viewer) fieldAllowed(name string) bool {
+	return v.fieldModeMask(name) != 0
+}
+
+// fieldModeMask returns the allowed-mode bitmask for a field under per-field
+// rights, or -1 (all bits) when there's no restriction. A field that IS governed
+// but not listed returns 0 (denied in every mode). System fields are never
+// restricted. GetFieldset AND-s this into each field's Mode so a field only
+// appears in the modes it's granted (e.g. view but not edit).
+func (v viewer) fieldModeMask(name string) int {
+	if v.moduleID == "" || v.fieldRights == nil {
+		return -1
+	}
+	set, restricted := v.fieldRights[v.moduleID]
+	if !restricted {
+		return -1
+	}
+	if IsSystemField(name) {
+		return -1
+	}
+	return set[name]
 }
 
 // CanViewRecord reports whether the request's viewer may read a specific record
@@ -103,7 +145,7 @@ func CanViewRecord(r *http.Request, tableName string, id int64) (bool, error) {
 // fieldVisibleInSchema reports whether a field should be described to the user
 // (i.e. appear as a column/form field). System fields are admin-only; access-
 // gated fields are hidden from lower-level users.
-func (v viewer) fieldVisibleInSchema(f field.Field) bool {
+func (v viewer) fieldVisibleInSchema(f Field) bool {
 	if v.isAdmin {
 		return true
 	}
@@ -113,14 +155,17 @@ func (v viewer) fieldVisibleInSchema(f field.Field) bool {
 	if f.Access > v.level {
 		return false
 	}
+	if !v.fieldAllowed(f.Name) {
+		return false // restricted by per-module field rights
+	}
 	return true
 }
 
-// FieldReadableInData reports whether a field's value may be returned in data.
+// fieldReadableInData reports whether a field's value may be returned in data.
 // System fields are generally readable (the client needs them), except those in
 // adminOnlyData (e.g. uuid) which are withheld from non-admins entirely; other
 // non-system access-gated fields are withheld from users below the required level.
-func (v viewer) FieldReadableInData(f field.Field) bool {
+func (v viewer) fieldReadableInData(f Field) bool {
 	if v.isAdmin {
 		return true
 	}
@@ -129,6 +174,9 @@ func (v viewer) FieldReadableInData(f field.Field) bool {
 	}
 	if IsSystemField(f.Name) {
 		return true
+	}
+	if !v.fieldAllowed(f.Name) {
+		return false // restricted by per-module field rights
 	}
 	return f.Access <= v.level
 }

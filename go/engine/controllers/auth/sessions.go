@@ -25,6 +25,7 @@ var SESSION_KEY = cache.SessionKey
 // Anonymous sessions (UserID <= 0) get module defaults and are never admin.
 func fillSessionRights(s *cache.Session) {
 	s.ModuleModes = ResolveModuleModeRights(s.UserID)
+	s.FieldRights = ResolveModuleFieldRights(s.UserID)
 	s.AccessLevel = ResolveUserAccessLevel(s.UserID)
 	s.IsAdmin = ResolveIsAdmin(s.UserID)
 }

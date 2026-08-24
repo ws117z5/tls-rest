@@ -1,6 +1,6 @@
 import React from "react";
 import { FIELD_TYPES } from "./FieldsetProvider";
-import type { ModuleFilterMeta, ModuleFiltersProps } from "@modules/registry";
+import type { ModuleFilterMeta, ModuleFiltersProps } from "@engine/controllers/registry";
 
 // FieldsetFilters is the standard list filter bar. It renders one input per
 // filter declared by the backend (the "Filters" array returned by GET /<module>,

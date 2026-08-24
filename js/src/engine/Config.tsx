@@ -17,7 +17,7 @@ export interface MenuItem {
     extraRoutes?: Array<{ href: string; component: any }>;
 }
 
-type BarrelEntry = { component: any; title: string; isPage: boolean; submenu: string };
+type BarrelEntry = { component: any; title: string; isPage: boolean; submenu: string; requiresAuth: boolean; requiresAdmin: boolean };
 
 export default class Config {
     private static head: MenuItem[] = [];
@@ -92,6 +92,11 @@ export default class Config {
                 if (covered.has(href)) return;
                 const b = barrel[href];
                 if (!b.isPage) return;
+                // Gate by the component's own auth requirements. This prevents a
+                // backend page the server hid for this user (e.g. an auth-only
+                // page for a guest) from reappearing here and 401-ing on click.
+                if (b.requiresAdmin && !Auth.isAdmin()) return;
+                if (b.requiresAuth && !Auth.isAuthenticated()) return;
                 const item: MenuItem = {
                     kind: "page",
                     key: href,
@@ -139,6 +144,8 @@ export default class Config {
                     title: meta.getTitle(),
                     isPage: typeof meta.isPageComponent === "function" ? meta.isPageComponent() : true,
                     submenu: typeof meta.getSubmenu === "function" ? meta.getSubmenu() : "",
+                    requiresAuth: typeof meta.requiresAuthentication === "function" ? meta.requiresAuthentication() : false,
+                    requiresAdmin: typeof meta.requiresAdministration === "function" ? meta.requiresAdministration() : false,
                 };
             });
         };

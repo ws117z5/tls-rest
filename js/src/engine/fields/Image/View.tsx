@@ -1,7 +1,8 @@
 import React from "react";
-import { imageUrl, normalizeRefs } from "@controllers/images";
+import { normalizeRefs } from "@engine/modules/images/controllers/images";
+import Thumb from "./Thumb";
 
-// Read-only display of an image field's stored reference(s).
+// Read-only display of an image field's stored reference(s); each expands on click.
 interface ImageViewProps {
     value?: any;
 }
@@ -13,12 +14,7 @@ const ImageView: React.FC<ImageViewProps> = ({ value }) => {
     return (
         <div className="d-flex flex-wrap" style={{ gap: 8 }}>
             {refs.map((img, i) => (
-                <img
-                    key={img.id ?? i}
-                    src={imageUrl(img)}
-                    alt={img.filename || String(img.id)}
-                    style={{ maxWidth: 200, maxHeight: 200, objectFit: "contain", border: "1px solid #eee" }}
-                />
+                <Thumb key={img.id ?? i} refItem={img} size={120} fit="contain" />
             ))}
         </div>
     );

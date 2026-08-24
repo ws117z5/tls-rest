@@ -1,7 +1,8 @@
 import React from "react";
-import { imageUrl, normalizeRefs } from "@controllers/images";
+import { normalizeRefs } from "@engine/modules/images/controllers/images";
+import Thumb from "./Thumb";
 
-// Compact list-cell rendering: the first thumbnail plus a "+N" badge.
+// Compact list-cell rendering: the first thumbnail (click to expand) + a "+N" badge.
 interface ImageListProps {
     value?: any;
 }
@@ -12,11 +13,7 @@ const ImageList: React.FC<ImageListProps> = ({ value }) => {
 
     return (
         <div className="d-flex align-items-center" style={{ gap: 4 }}>
-            <img
-                src={imageUrl(refs[0])}
-                alt={refs[0].filename || String(refs[0].id)}
-                style={{ width: 40, height: 40, objectFit: "cover", border: "1px solid #ddd" }}
-            />
+            <Thumb refItem={refs[0]} size={40} fit="cover" />
             {refs.length > 1 && <span className="badge bg-secondary">+{refs.length - 1}</span>}
         </div>
     );

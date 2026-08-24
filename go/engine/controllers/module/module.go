@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
-
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/log"
 
@@ -85,7 +84,12 @@ type ModuleAbstract[T any] struct {
 	Submenu  string
 	Icon     string
 	ReadOnly bool
-	Fields   []Field
+	Hidden   bool
+	// HiddenModes removes specific modes (e.g. "edit") from the menu without
+	// making the module fully read-only — the buttons disappear but other modes
+	// (like create) remain. Enforcement of the mode itself is via Overrides.
+	HiddenModes []string
+	Fields      []Field
 	// Filters declares the list-mode filters this module accepts, as an ordinary
 	// fieldset (conventionally defined in <module>/filters.go). When set, the
 	// fieldset engine turns matching query parameters into SQL WHERE clauses for
@@ -125,6 +129,19 @@ func (m *ModuleAbstract[T]) GetID() string {
 	return m.ID
 }
 
+// IsHidden / IsReadOnly are read from the always-populated RegisteredModules
+// registry (see ModulesAPI), so they work regardless of whether the menu writer
+// is wired.
+func (m *ModuleAbstract[T]) IsHidden() bool {
+	return m.Hidden
+}
+func (m *ModuleAbstract[T]) IsReadOnly() bool {
+	return m.ReadOnly
+}
+func (m *ModuleAbstract[T]) GetHiddenModes() []string {
+	return m.HiddenModes
+}
+
 // GetCustomRoutes exposes the module's extra routes (satisfies CustomRouter).
 func (m *ModuleAbstract[T]) GetCustomRoutes() []CustomRoute {
 	return m.CustomRoutes
@@ -152,6 +169,9 @@ type ModuleInterface interface {
 	GetID() string
 	GetName() string
 	GetFields() []Field
+	IsHidden() bool
+	IsReadOnly() bool
+	GetHiddenModes() []string
 	List(w http.ResponseWriter, r *http.Request)
 	View(w http.ResponseWriter, r *http.Request)
 	Create(w http.ResponseWriter, r *http.Request)
@@ -470,7 +490,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	RegisteredModules[m.ID] = m
 
 	// Publish menu metadata so /api/modules can list it (no go.config.json).
-	registerModuleMenu(ModuleMenuMeta{ID: m.ID, Name: m.Name, Description: m.Description, Order: m.Order, Submenu: m.Submenu, Icon: m.Icon, ReadOnly: m.ReadOnly})
+	registerModuleMenu(ModuleMenuMeta{ID: m.ID, Name: m.Name, Description: m.Description, Order: m.Order, Submenu: m.Submenu, Icon: m.Icon, ReadOnly: m.ReadOnly, Hidden: m.Hidden})
 
 	// Advertise the module's CRUD root (/<id>) as a data endpoint so the
 	// middleware can tell it from an SPA page without a hardcoded list.
@@ -699,6 +719,38 @@ func (m *ModuleAbstract[T]) SetRight(userGroupID, moduleID, right int) {
 }
 
 // getDB returns a database instance
+// addMissingColumns brings an existing table up to date with the fieldset by
+// adding any missing stored column. It never drops or alters existing columns.
+// Virtual and SQL-computed fields (e.g. an IMAGE preview aliased to another
+// column) are skipped since they aren't real columns.
+func (m *ModuleAbstract[T]) addMissingColumns(db *pgdb.Db) error {
+	rows, err := db.RQuery(
+		`SELECT column_name FROM information_schema.columns WHERE table_name = $1`, m.ID)
+	if err != nil {
+		return err
+	}
+	existing := map[string]bool{}
+	for _, r := range rows {
+		if c, ok := r["column_name"].(string); ok {
+			existing[strings.ToLower(c)] = true
+		}
+	}
+	for _, field := range m.Fields {
+		if field.Virtual || field.SQL != "" {
+			continue // not a real stored column
+		}
+		if existing[strings.ToLower(field.Name)] {
+			continue
+		}
+		sqlType := m.fieldTypeToSQL(field)
+		alter := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s", m.ID, field.Name, sqlType)
+		if _, err := db.Query(alter); err != nil {
+			return fmt.Errorf("add column %s.%s: %w", m.ID, field.Name, err)
+		}
+	}
+	return nil
+}
+
 func (m *ModuleAbstract[T]) getDB() (*pgdb.Db, error) {
 	return pgdb.GetInstance()
 }
@@ -784,7 +836,7 @@ func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 	var sqlType string
 
 	switch field.Type {
-	case TYPE_INT:
+	case TYPE_INT, TYPE_BITMASK_SELECT:
 		sqlType = "INTEGER"
 	case TYPE_FLOAT:
 		sqlType = "NUMERIC"
@@ -885,6 +937,13 @@ func (m *ModuleAbstract[T]) EnsureTableExists() error {
 	}
 
 	if exists {
+		// Table exists — bring it up to date with the fieldset by adding any
+		// newly-declared columns (never drops/alters existing ones). This means a
+		// module can gain a field without a manual migration, e.g. the rights
+		// modules' "fields" column that activates field-level rights.
+		if err := m.addMissingColumns(db); err != nil {
+			ModuleLogger.Printf("reconcile columns for %s: %v", m.ID, err)
+		}
 		event.Details = "Table already exists"
 		return nil // Table already exists
 	}
@@ -1152,8 +1211,4 @@ func GetRegisteredModuleIDs() []string {
 		ids = append(ids, id)
 	}
 	return ids
-}
-
-func ReadOnly(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "logs is read-only", http.StatusMethodNotAllowed)
 }

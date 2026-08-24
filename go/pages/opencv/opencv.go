@@ -552,7 +552,7 @@ func isVP8Keyframe(payload []byte) bool {
 var Page = &module.PageAbstract{
 	ID:            "opencv",
 	Name:          "OpenCV ",
-	Submenu:       "pages",
+	Submenu:       "tools",
 	RequiresAuth:  true,
 	RequiresAdmin: true,
 	Routes: []module.PageRoute{

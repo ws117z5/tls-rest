@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
-	"tls-rest/go/engine/controllers/field"
+	. "tls-rest/go/engine/controllers/field"
 
 	"github.com/go-pg/urlstruct"
 )
@@ -35,7 +36,7 @@ type QueryResult struct {
 type FieldsetEngine struct {
 	Module    *ModuleAbstract[interface{}]
 	TableName string
-	Fields    []field.Field
+	Fields    []Field
 	Context   context.Context
 	Request   *http.Request
 }
@@ -88,22 +89,63 @@ func (fe *FieldsetEngine) ParseQueryParams() (*QueryParams, error) {
 }
 
 // BuildSelectQuery constructs a SELECT query based on fieldset configuration and parameters
+// tableColsCache memoizes each table's real column set (schema is fixed after
+// startup module registration, so caching is safe). Failed/empty lookups are
+// not cached, so they retry.
+var tableColsCache sync.Map // tableName -> map[string]bool (lowercased names)
+
+// tableColumnsCached returns the set of column names (lowercased) that actually
+// exist on the table, or an empty map if the table is missing or the lookup
+// fails (callers treat empty as "don't filter").
+func tableColumnsCached(table string) map[string]bool {
+	if v, ok := tableColsCache.Load(table); ok {
+		return v.(map[string]bool)
+	}
+	cols := map[string]bool{}
+	if db, err := pgdb.GetInstance(); err == nil {
+		if rows, err := db.RQuery(
+			`SELECT column_name FROM information_schema.columns WHERE table_name = $1`,
+			table,
+		); err == nil {
+			for _, r := range rows {
+				if c, ok := r["column_name"].(string); ok {
+					cols[strings.ToLower(c)] = true
+				}
+			}
+		}
+	}
+	if len(cols) > 0 {
+		tableColsCache.Store(table, cols)
+	}
+	return cols
+}
+
 func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (string, []interface{}, error) {
 	var selectFields []string
 	var whereConditions []string
 	var args []interface{}
 	argIndex := 1
 
-	v := viewerFromRequest(fe.Request)
+	v := viewerForModule(fe.Request, fe.Module.ID)
 
 	// Build SELECT fields based on mode, withholding access-restricted columns
 	// from users who may not read them (system fields are always kept — the
 	// client needs id/uuid to route and act).
+	// Actual columns of the table, used to skip any fieldset field whose column
+	// doesn't exist (fieldset/table drift — e.g. a system field like "updated"
+	// that a module omitted but that is still in some fieldset copy). This makes
+	// the query resilient instead of failing with "column X does not exist".
+	// Empty (table missing / lookup failed) means "don't filter".
+	cols := tableColumnsCached(fe.TableName)
+
 	for _, field := range fe.Fields {
-		if fe.shouldIncludeField(field, mode) && v.FieldReadableInData(field) {
+		if fe.shouldIncludeField(field, mode) && v.fieldReadableInData(field) {
 			if field.SQL != "" {
 				selectFields = append(selectFields, field.SQL+" AS "+field.Name)
 			} else {
+				if len(cols) > 0 && !cols[strings.ToLower(field.Name)] {
+					continue // column not in the table; don't select it
+				}
 				selectFields = append(selectFields, field.Name)
 			}
 		}
@@ -267,20 +309,20 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 
 // Helper methods
 
-func (fe *FieldsetEngine) shouldIncludeField(f field.Field, mode int) bool {
+func (fe *FieldsetEngine) shouldIncludeField(field Field, mode int) bool {
 	// Exclude TYPE_TABLE fields from main SELECT - they have their own queries
-	if f.Type == field.TYPE_TABLE {
+	if field.Type == TYPE_TABLE {
 		return false
 	}
 
 	// Include field based on mode (LIST, VIEW, EDIT, etc.)
 	// This can be enhanced to check field-specific mode flags
-	return !f.Virtual || (mode&field.MODE_EDIT != 0)
+	return !field.Virtual || (mode&MODE_EDIT != 0)
 }
 
 func (fe *FieldsetEngine) hasSearchableFields() bool {
-	for _, f := range fe.Fields {
-		if f.Type == field.TYPE_STRING || f.Type == field.TYPE_TEXT || f.Type == field.TYPE_AUTOCOMPLETE {
+	for _, field := range fe.Fields {
+		if field.Type == TYPE_STRING || field.Type == TYPE_TEXT || field.Type == TYPE_AUTOCOMPLETE {
 			return true
 		}
 	}
@@ -290,9 +332,9 @@ func (fe *FieldsetEngine) hasSearchableFields() bool {
 func (fe *FieldsetEngine) buildSearchConditions(search string, argIndex *int, args *[]interface{}) []string {
 	var conditions []string
 
-	for _, f := range fe.Fields {
-		if f.Type == field.TYPE_STRING || f.Type == field.TYPE_TEXT || f.Type == field.TYPE_AUTOCOMPLETE {
-			conditions = append(conditions, fmt.Sprintf("%s ILIKE $%d", f.Name, *argIndex))
+	for _, field := range fe.Fields {
+		if field.Type == TYPE_STRING || field.Type == TYPE_TEXT || field.Type == TYPE_AUTOCOMPLETE {
+			conditions = append(conditions, fmt.Sprintf("%s ILIKE $%d", field.Name, *argIndex))
 			*args = append(*args, "%"+search+"%")
 			*argIndex++
 		}
@@ -358,7 +400,7 @@ func (fe *FieldsetEngine) getDefaultSortField() string {
 	return "id"
 }
 
-func (fe *FieldsetEngine) getFieldByName(name string) *field.Field {
+func (fe *FieldsetEngine) getFieldByName(name string) *Field {
 	for _, field := range fe.Fields {
 		if field.Name == name {
 			return &field
@@ -378,30 +420,30 @@ func (fe *FieldsetEngine) hasField(name string) bool {
 }
 
 // FetchTableFieldData fetches data for a TABLE field from database
-func (fe *FieldsetEngine) FetchTableFieldData(f field.Field, parentRecordID interface{}) (interface{}, error) {
-	if f.Type != field.TYPE_TABLE || f.Options == nil {
-		return nil, fmt.Errorf("field %s is not a valid table field", f.Name)
+func (fe *FieldsetEngine) FetchTableFieldData(field Field, parentRecordID interface{}) (interface{}, error) {
+	if field.Type != TYPE_TABLE || field.Options == nil {
+		return nil, fmt.Errorf("field %s is not a valid table field", field.Name)
 	}
 
-	dataSource, ok := f.Options["dataSource"].(string)
+	dataSource, ok := field.Options["dataSource"].(string)
 	if !ok {
 		dataSource = "static"
 	}
 
 	switch dataSource {
 	case "database":
-		return fe.fetchFromDatabaseTable(f, parentRecordID)
+		return fe.fetchFromDatabaseTable(field, parentRecordID)
 	case "query":
-		return fe.fetchFromCustomQuery(f, parentRecordID)
+		return fe.fetchFromCustomQuery(field, parentRecordID)
 	case "static":
-		return f.Options["data"], nil
+		return field.Options["data"], nil
 	default:
 		return nil, fmt.Errorf("unknown data source: %s", dataSource)
 	}
 }
 
 // fetchFromDatabaseTable fetches data from a referenced database table
-func (fe *FieldsetEngine) fetchFromDatabaseTable(field field.Field, parentRecordID interface{}) (interface{}, error) {
+func (fe *FieldsetEngine) fetchFromDatabaseTable(field Field, parentRecordID interface{}) (interface{}, error) {
 	db, err := pgdb.GetInstance()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database connection: %w", err)
@@ -457,7 +499,7 @@ func (fe *FieldsetEngine) fetchFromDatabaseTable(field field.Field, parentRecord
 }
 
 // fetchFromCustomQuery fetches data using a custom SQL query
-func (fe *FieldsetEngine) fetchFromCustomQuery(field field.Field, parentRecordID interface{}) (interface{}, error) {
+func (fe *FieldsetEngine) fetchFromCustomQuery(field Field, parentRecordID interface{}) (interface{}, error) {
 	db, err := pgdb.GetInstance()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database connection: %w", err)
@@ -494,8 +536,8 @@ func (fe *FieldsetEngine) fetchFromCustomQuery(field field.Field, parentRecordID
 
 // ProcessTableFieldsInResult processes table fields in query results to fetch their data
 func (fe *FieldsetEngine) ProcessTableFieldsInResult(result map[string]interface{}) error {
-	for _, f := range fe.Fields {
-		if f.Type == field.TYPE_TABLE {
+	for _, field := range fe.Fields {
+		if field.Type == TYPE_TABLE {
 			// Get the parent record ID for foreign key relationships
 			var parentID interface{}
 			if id, exists := result["id"]; exists {
@@ -505,13 +547,13 @@ func (fe *FieldsetEngine) ProcessTableFieldsInResult(result map[string]interface
 			}
 
 			// Fetch table field data
-			tableData, err := fe.FetchTableFieldData(f, parentID)
+			tableData, err := fe.FetchTableFieldData(field, parentID)
 			if err != nil {
 				// Log error but don't fail the entire result
-				fmt.Printf("Warning: Failed to fetch table field data for %s: %v\n", f.Name, err)
-				result[f.Name] = []interface{}{} // Empty array as fallback
+				fmt.Printf("Warning: Failed to fetch table field data for %s: %v\n", field.Name, err)
+				result[field.Name] = []interface{}{} // Empty array as fallback
 			} else {
-				result[f.Name] = tableData
+				result[field.Name] = tableData
 			}
 		}
 	}

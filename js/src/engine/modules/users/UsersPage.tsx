@@ -1,5 +1,5 @@
 import React from "react";
-import PageComponent from "@engine/PageComponent";
+import PageComponent from "@engine/containers/PageComponent";
 import { FieldsetProvider, FieldsetList, MODES } from "@engine/fields";
 
 class UsersPage extends PageComponent {

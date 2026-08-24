@@ -1,6 +1,6 @@
 import { Component } from "react";
 import StateList from "./States/List";
-import { DefaultListProps } from "@engine/PageComponent";
+import { DefaultListProps } from "@engine/containers/PageComponent";
 
 
 class UserList extends Component<DefaultListProps> {

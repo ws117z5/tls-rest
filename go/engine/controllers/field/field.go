@@ -48,6 +48,11 @@ const TYPE_YES_NO = "YesNo"
 const TYPE_MONTH = "Month"
 const TYPE_TABLE = "Table"
 
+// TYPE_BITMASK_SELECT renders a checkbox-per-option editor whose value is the
+// integer OR of the selected option values (a bitmask). Options come from a
+// WithOptions(func) provider.
+const TYPE_BITMASK_SELECT = "BitmaskSelect"
+
 // Field represents a field in a module.
 type Field struct {
 	Name         string                 `json:"name"`
@@ -66,7 +71,21 @@ type Field struct {
 	Mode         int                    `json:"mode"`          // Bit flags for which modes this field appears in
 	Label        string                 `json:"label"`         // Display label
 	Description  string                 `json:"description"`   // Field description
+	Placeholder  string                 `json:"placeholder"`   // Input placeholder (edit/create/filters)
 	Access       int                    `json:"access"`        // Minimum access level required to see this field (0 = everyone)
+
+	// TYPE_TABLE configuration (clean API — see TableFieldset/TableSource/
+	// TableData/TableOnSubmit builders). The fieldset (columns) is serialized to
+	// the client; the data/submit hooks are server-side only.
+	TableColumns    []Field                                                   `json:"tableFieldset,omitempty"` // column definitions (each a Field)
+	TableSourceName string                                                    `json:"tableSource,omitempty"`   // DB table with module_id,row_id to load rows from
+	TableDataFunc   func(ctx map[string]interface{}) []map[string]interface{} `json:"-"`                       // manual row provider (wins over TableSource)
+	TableSubmitFunc func(data []map[string]interface{}) interface{}           `json:"-"`                       // process submitted rows before storing
+
+	// OptionsFunc supplies the field's options at request time (like the legacy
+	// framework's dynamic 'options'). Its result is resolved into Options["options"]
+	// when the fieldset is served. Set via WithOptions.
+	OptionsFunc func() []map[string]interface{} `json:"-"`
 }
 
 func NewField(name, fieldType string, required bool) Field {
@@ -104,6 +123,68 @@ func (f Field) WithLabel(label string) Field {
 
 func (f Field) WithDescription(desc string) Field {
 	f.Description = desc
+	return f
+}
+
+// WithPlaceholder sets the input placeholder shown in edit/create forms and
+// filter inputs for text-like fields.
+func (f Field) WithPlaceholder(p string) Field {
+	f.Placeholder = p
+	return f
+}
+
+// WithOptions sets a provider for the field's options, resolved at request time
+// (mirrors the legacy framework's dynamic 'options'). Cleaner than stashing a
+// static list under Options["bits"]/["options"]. Used by TYPE_BITMASK_SELECT and
+// any select-style field:
+//
+//	NewField("modes", TYPE_BITMASK_SELECT, true).WithOptions(modeBitOptions)
+func (f Field) WithOptions(fn func() []map[string]interface{}) Field {
+	f.OptionsFunc = fn
+	return f
+}
+
+// --- TYPE_TABLE clean configuration API -------------------------------------
+//
+// A table field is configured like a mini-module:
+//
+//	NewField("fields", TYPE_TABLE, false).
+//	    TableFieldset([]Field{                       // the columns
+//	        NewField("field", TYPE_STRING, false).AsReadOnly(),
+//	        NewField("view", TYPE_CHECKBOX, false),
+//	        NewField("edit", TYPE_CHECKBOX, false),
+//	    }).
+//	    TableSource("module_field_rights").          // OR
+//	    TableData(func(ctx map[string]interface{}) []map[string]interface{} { ... }).
+//	    TableOnSubmit(func(rows []map[string]interface{}) interface{} { ... })
+
+// TableFieldset sets the table's columns as a fieldset, so each column is a real
+// Field (checkbox, read-only string, etc.) that the client renders and the
+// server can process — just like a module.
+func (f Field) TableFieldset(columns []Field) Field {
+	f.TableColumns = columns
+	return f
+}
+
+// TableSource names a database table (expected to carry module_id and row_id
+// columns) that rows are loaded from when no TableData func is set.
+func (f Field) TableSource(table string) Field {
+	f.TableSourceName = table
+	return f
+}
+
+// TableData sets a manual row provider. It receives the current record's values
+// as context (e.g. the sibling "module" select) and returns the rows. It takes
+// priority over TableSource.
+func (f Field) TableData(fn func(ctx map[string]interface{}) []map[string]interface{}) Field {
+	f.TableDataFunc = fn
+	return f
+}
+
+// TableOnSubmit sets a hook that processes the submitted rows before they're
+// stored into the module. Its return value becomes the stored column value.
+func (f Field) TableOnSubmit(fn func(rows []map[string]interface{}) interface{}) Field {
+	f.TableSubmitFunc = fn
 	return f
 }
 

@@ -225,6 +225,9 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(ids)
 	for _, id := range ids {
+		if m, ok := module.RegisteredModules[id]; ok && m.IsHidden() {
+			continue // API-only module: no menu / no web route
+		}
 		mask := auth.AllowedModes(rights, id, isAdmin)
 		if mask == 0 {
 			continue // no access
@@ -233,6 +236,9 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 		submenu := ""
 		icon := ""
 		readOnly := false
+		if m, ok := module.RegisteredModules[id]; ok {
+			readOnly = m.IsReadOnly() // reliable, independent of the menu writer
+		}
 		if meta, ok := menuByID[id]; ok {
 			if meta.Description != "" {
 				desc = meta.Description
@@ -241,11 +247,15 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 			}
 			submenu = meta.Submenu
 			icon = meta.Icon
-			readOnly = meta.ReadOnly
 		}
 		modeNames := auth.ModeNames(mask)
 		if readOnly {
 			modeNames = intersectModes(modeNames, []string{"list", "view"})
+		}
+		if m, ok := module.RegisteredModules[id]; ok {
+			if hidden := m.GetHiddenModes(); len(hidden) > 0 {
+				modeNames = removeModes(modeNames, hidden)
+			}
 		}
 		add(submenu, moduleEntry{
 			Name:        id,
@@ -297,6 +307,21 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 		"head":     head,
 		"submenus": submenus,
 	})
+}
+
+// removeModes returns `have` without any mode present in `drop`.
+func removeModes(have, drop []string) []string {
+	dropped := map[string]bool{}
+	for _, d := range drop {
+		dropped[d] = true
+	}
+	out := make([]string, 0, len(have))
+	for _, m := range have {
+		if !dropped[m] {
+			out = append(out, m)
+		}
+	}
+	return out
 }
 
 // intersectModes returns the mode names present in both lists, preserving the

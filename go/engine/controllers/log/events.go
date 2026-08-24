@@ -92,6 +92,26 @@ func (el *EventLogger) initLogFile() {
 	el.logFile = file
 }
 
+// LogErrorWithID logs an error event and returns its event ID, so callers can
+// surface it to clients (e.g. in an error response's log_id) for later lookup in
+// the logs module. Safe before the logger is initialized.
+func LogErrorWithID(message, module, errStr string) string {
+	id := generateEventID()
+	if GlobalEventLogger == nil {
+		return id
+	}
+	GlobalEventLogger.writeEvent(EventLog{
+		ID:        id,
+		Timestamp: time.Now(),
+		Type:      EventTypeError,
+		Level:     LogLevelError,
+		Message:   message,
+		Module:    module,
+		Error:     errStr,
+	})
+	return id
+}
+
 // LogEvent logs an event with the specified parameters
 func LogEvent(eventType EventType, level LogLevel, message string, data map[string]interface{}) {
 	GlobalEventLogger.LogEvent(eventType, level, message, data)

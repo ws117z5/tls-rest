@@ -311,6 +311,28 @@ func isValidIdent(s string) bool {
 	return true
 }
 
+// thumbCache holds generated 80x80 preview JPEGs, keyed by the same ref. Its
+// getter builds the thumbnail from the full image (imageCache) on a miss. On an
+// undecodable source (e.g. HEIC) it stores an empty entry so ServeByRef falls
+// back to the original bytes without retrying every request.
+var thumbCache = cache.NewCache[cachedImage](loadThumbnail, nil).
+	WithTTL(imageCacheTTL).
+	WithMaxBytes(imageCacheMaxBytes, func(ci cachedImage) int64 { return int64(len(ci.Data)) })
+
+func loadThumbnail(ref string) (cachedImage, error) {
+	full, err := imageCache.Get(ref)
+	if err != nil || full == nil || len(full.Data) == 0 {
+		return cachedImage{}, err
+	}
+	data, mime, terr := makeThumbnail(full.Data, previewSize)
+	if terr != nil {
+		// Undecodable source: cache an empty thumb so we don't retry; caller
+		// serves the original bytes instead.
+		return cachedImage{Id: full.Id}, nil
+	}
+	return cachedImage{Id: full.Id, Data: data, MimeType: mime}, nil
+}
+
 // --- module definition -------------------------------------------------------
 
 type Images struct {
@@ -321,12 +343,19 @@ type Images struct {
 // system fields added automatically by Initialize().
 func (m *Images) fieldset() []Field {
 	return []Field{
+		// Thumbnail: the image is served at /image/<uuid>, so a read-only IMAGE
+		// field aliased to the uuid column renders the picture in list/view.
+		NewField("preview", TYPE_IMAGE, false).WithLabel("Preview").WithSQL("uuid").AsReadOnly().NonSortable(),
 		NewField("module", TYPE_STRING, false).WithLabel("Module"),
 		NewField("field", TYPE_STRING, false).WithLabel("Field"),
 		NewField("record_id", TYPE_INT, false).WithLabel("Record"),
 		NewField("filename", TYPE_STRING, false).WithLabel("Filename"),
 		NewField("mime_type", TYPE_STRING, false).WithLabel("Type"),
 	}
+}
+
+func readOnly(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "access_log is read-only", http.StatusMethodNotAllowed)
 }
 
 func NewImages() *Images {
@@ -339,8 +368,9 @@ func NewImages() *Images {
 			DefaultPermission:    PERMISSION_READ,
 			DefaultPermissionSet: true,
 			OmitSystemFields:     []string{"updated"},
+			HiddenModes:          []string{"edit"}, // no edit button; create (upload) stays
 			Overrides: HandlerOverrides{
-				Edit: ReadOnly,
+				Edit: readOnly,
 			},
 		},
 	}

@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { renderBBCode } from "@controllers/bbcode";
+import { renderBBCode } from "@engine/fields/BBCode/controllers/bbcode";
 
 interface BBCodeViewProps {
     value?: string;

@@ -1,6 +1,9 @@
 package auth
 
 import (
+	"encoding/json"
+	"strings"
+
 	"tls-rest/go/engine/controllers/db/pgdb"
 )
 
@@ -50,6 +53,156 @@ func defaultModesFor(perm int) int {
 	default:
 		return 0
 	}
+}
+
+// ResolveModuleFieldRights builds the per-module allowed-field set for a user.
+// A module ABSENT from the result is unrestricted (all fields — current
+// behavior); a module PRESENT maps to the exact set of non-system fields the
+// user may access. Rights are additive: an empty `fields` value on ANY
+// applicable rights row means "all fields" and leaves the module unrestricted;
+// otherwise the allowed set is the union of listed fields across the user's
+// group rights and their own user rights.
+//
+// If the `fields` column doesn't exist yet (rights tables predating this
+// feature), the queries error and the result is empty — i.e. unrestricted,
+// preserving existing behavior until the column is added.
+func ResolveModuleFieldRights(userID int) map[string]map[string]int {
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		return map[string]map[string]int{}
+	}
+
+	// module -> field -> allowed-mode bitmask (union across the user's rows).
+	acc := map[string]map[string]int{}
+	unrestricted := map[string]bool{} // module -> saw an "all fields" (empty) row
+
+	consume := func(rows []map[string]interface{}) {
+		for _, row := range rows {
+			m, _ := row["module"].(string)
+			if m == "" {
+				continue
+			}
+			perField, empty := fieldRightsFromValue(row["fields"])
+			if empty || len(perField) == 0 {
+				unrestricted[m] = true // empty / unparseable = all fields
+				continue
+			}
+			if acc[m] == nil {
+				acc[m] = map[string]int{}
+			}
+			for field, mask := range perField {
+				acc[m][field] |= mask
+			}
+		}
+	}
+
+	if rows, e := db.RQuery(`
+		SELECT ugr.module AS module, ugr.fields AS fields
+		FROM users u
+		JOIN user_group_rights ugr ON ugr.group_id = u.user_group
+		WHERE u.id = $1
+	`, userID); e == nil {
+		consume(rows)
+	}
+	if rows, e := db.RQuery(`
+		SELECT module, fields FROM user_rights WHERE user_id = $1
+	`, userID); e == nil {
+		consume(rows)
+	}
+
+	result := map[string]map[string]int{}
+	for m, fields := range acc {
+		if !unrestricted[m] { // an "all fields" row anywhere wins
+			result[m] = fields
+		}
+	}
+	return result
+}
+
+// fieldRightsFromValue normalizes a stored "fields" value — which may arrive as
+// a string/[]byte (TEXT column) or an already-parsed map (JSONB column) — into
+// field -> mode-bitmask. The second return is true when the value is empty
+// (meaning "all fields", unrestricted).
+func fieldRightsFromValue(v interface{}) (map[string]int, bool) {
+	switch t := v.(type) {
+	case nil:
+		return nil, true
+	case string:
+		if strings.TrimSpace(t) == "" {
+			return nil, true
+		}
+		return parseFieldRights(t), false
+	case []byte:
+		if strings.TrimSpace(string(t)) == "" {
+			return nil, true
+		}
+		return parseFieldRights(string(t)), false
+	case map[string]interface{}:
+		if len(t) == 0 {
+			return nil, true
+		}
+		out := map[string]int{}
+		for field, modes := range t {
+			mask := 0
+			if arr, ok := modes.([]interface{}); ok {
+				for _, name := range arr {
+					if s, ok := name.(string); ok {
+						mask |= modeBit(s)
+					}
+				}
+			}
+			out[field] = mask
+		}
+		return out, false
+	default:
+		return nil, true
+	}
+}
+
+// parseFieldRights parses a stored "fields" value into field -> mode-bitmask.
+// Accepts the JSON table format {"title":["view","edit"]} and, for backward
+// compatibility, a legacy CSV of field names (each granted all modes).
+func parseFieldRights(raw string) map[string]int {
+	out := map[string]int{}
+	if strings.HasPrefix(strings.TrimSpace(raw), "{") {
+		var m map[string][]string
+		if err := json.Unmarshal([]byte(raw), &m); err == nil {
+			for field, modes := range m {
+				mask := 0
+				for _, name := range modes {
+					mask |= modeBit(name)
+				}
+				out[field] = mask
+			}
+			return out
+		}
+	}
+	for _, f := range strings.Split(raw, ",") {
+		if f = strings.TrimSpace(f); f != "" {
+			out[f] = allModesMask()
+		}
+	}
+	return out
+}
+
+// modeBit maps a mode name to its bit using the canonical table in access.go.
+func modeBit(name string) int {
+	name = strings.ToLower(strings.TrimSpace(name))
+	for _, m := range modeNameTable {
+		if m.name == name {
+			return int(m.bit)
+		}
+	}
+	return 0
+}
+
+// allModesMask is the OR of every named mode bit.
+func allModesMask() int {
+	mask := 0
+	for _, m := range modeNameTable {
+		mask |= int(m.bit)
+	}
+	return mask
 }
 
 // ResolveModuleModeRights builds the per-module allowed-mode bitmask for a user.

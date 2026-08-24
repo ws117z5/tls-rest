@@ -4,6 +4,7 @@ import (
 	// Engine modules
 	accesslog "tls-rest/go/engine/modules/accesslog"
 	accessrules "tls-rest/go/engine/modules/accessrules"
+	images "tls-rest/go/engine/modules/images"
 	modulerights "tls-rest/go/engine/modules/modulerights"
 	usergroups "tls-rest/go/engine/modules/usergroups"
 	users "tls-rest/go/engine/modules/users"
@@ -20,7 +21,6 @@ import (
 
 	// Features that own arbitrary route trees with unexported handlers — their
 	// registration lives behind an exported Register() in the package.
-	imagesfeature "tls-rest/go/engine/features/images"
 	opencv "tls-rest/go/pages/opencv"
 	papers "tls-rest/go/pages/papers"
 )
@@ -35,6 +35,7 @@ func InitAll() {
 	modulerights.Init()
 	accesslog.Init()
 	accessrules.Init()
+	images.Init()
 
 	// --- Pages ---
 	login.Init()
@@ -42,7 +43,6 @@ func InitAll() {
 	netmapper.Init()
 
 	// --- Features (own route trees; unexported handlers) ---
-	imagesfeature.Init()
 	papers.Init()
 	opencv.Init()
 }

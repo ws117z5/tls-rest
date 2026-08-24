@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import Config from "../engine/Config";
-import Functional from "../controllers/functional";
+import Functional from "../engine/controllers/functional";
 
 export interface PageComponentState<T = any> {
     Name: string;

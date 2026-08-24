@@ -24,6 +24,7 @@ type ModuleMenuMeta struct {
 	// ReadOnly modules expose only list/view in the menu (no create/edit/delete),
 	// matching modules whose write handlers are overridden to 405.
 	ReadOnly bool
+	Hidden   bool
 }
 
 // PageMenuMeta is the menu-facing description of a registered page.

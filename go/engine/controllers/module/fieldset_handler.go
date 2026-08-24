@@ -6,10 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
-	"tls-rest/go/engine/controllers/field"
+	. "tls-rest/go/engine/controllers/field"
 
 	"github.com/gorilla/mux"
 )
@@ -51,6 +52,49 @@ func (fh *FieldsetHandler) RegisterModule(module *ModuleAbstract[interface{}]) {
 // GetFieldset handles POST /api/modules/{moduleId}/fieldset. It returns the full
 // authority-visible fieldset (all modes); the client filters by mode. mode is no
 // longer a parameter, so the fieldset is cached once per module.
+// GetTableData handles POST /api/modules/{moduleId}/table/{field}. It runs the
+// named TYPE_TABLE field's TableData hook with the posted record values as
+// context (e.g. the sibling "module" select) and returns the resulting rows.
+func (fh *FieldsetHandler) GetTableData(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	moduleId := vars["moduleId"]
+	fieldName := vars["field"]
+	if moduleId == "" || fieldName == "" {
+		http.Error(w, "module and field are required", http.StatusBadRequest)
+		return
+	}
+	module, exists := fh.modules[moduleId]
+	if !exists {
+		http.Error(w, "Module not found", http.StatusNotFound)
+		return
+	}
+
+	var ctx map[string]interface{}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&ctx)
+	}
+	if ctx == nil {
+		ctx = map[string]interface{}{}
+	}
+
+	var target *Field
+	for i := range module.Fields {
+		if module.Fields[i].Name == fieldName {
+			target = &module.Fields[i]
+			break
+		}
+	}
+	rows := []map[string]interface{}{}
+	if target != nil && target.TableDataFunc != nil {
+		if got := target.TableDataFunc(ctx); got != nil {
+			rows = got
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"rows": rows})
+}
+
 func (fh *FieldsetHandler) GetFieldset(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	moduleId := vars["moduleId"]
@@ -66,33 +110,44 @@ func (fh *FieldsetHandler) GetFieldset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fast path (see Session.Fieldset): if the client sends the hashsum it already
-	// has and it matches what we last served this session for this module, the
-	// fieldset is unchanged — answer 304 without recomputing or re-sending it.
+	// The client may send the hashsum it already has; we answer 304 only when it
+	// matches the FRESHLY-computed hash below (not a stale session-stored one),
+	// so a rebuild that changes the fieldset always invalidates old client caches.
 	clientHash := r.URL.Query().Get("hash")
 	session := cache.SessionFromContext(r.Context())
-	if clientHash != "" && session != nil && session.Fieldset != nil &&
-		session.Fieldset[moduleId] == clientHash {
-		w.WriteHeader(http.StatusNotModified)
-		return
-	}
 
 	// The full fieldset is returned (every field the viewer may see); the client
 	// filters by mode using each field's own Mode bitmask. That means one cached
 	// fieldset per module (not per module+mode). System fields are admin-only;
 	// access-gated fields are hidden from lower levels.
-	v := viewerFromRequest(r)
-	var visibleFields []field.Field
+	v := viewerForModule(r, module.ID)
+	var visibleFields []Field
 	for _, field := range module.Fields {
-		if v.fieldVisibleInSchema(field) {
-			visibleFields = append(visibleFields, resolveFieldOptions(field))
+		if !v.fieldVisibleInSchema(field) {
+			continue
 		}
+		// Per-field rights: restrict the field to only its granted modes, so it
+		// appears in (say) view but not edit. mask -1 means "no restriction".
+		if mask := v.fieldModeMask(field.Name); mask != -1 {
+			field.Mode &= mask
+			if field.Mode == 0 {
+				continue // not granted in any mode -> omit entirely
+			}
+		}
+		visibleFields = append(visibleFields, resolveFieldOptions(field))
 	}
 
 	// Hashsum of the authority-scoped fieldset. Returned to the client (stored in
 	// localStorage) and remembered on the session so the fast path can
 	// short-circuit subsequent requests.
 	hash := hashFieldset(visibleFields)
+
+	// 304 only when the client already has this exact (current) fieldset.
+	if clientHash != "" && clientHash == hash {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
 	if session != nil {
 		if session.Fieldset == nil {
 			session.Fieldset = map[string]string{}
@@ -105,13 +160,6 @@ func (fh *FieldsetHandler) GetFieldset(w http.ResponseWriter, r *http.Request) {
 				cache.SessionCacheInstance.Set(c.Value, *session)
 			}
 		}
-	}
-
-	// The client may have sent a hash that matches the freshly computed one
-	// (e.g. its session cache was cold but its localStorage is current) — still 304.
-	if clientHash != "" && clientHash == hash {
-		w.WriteHeader(http.StatusNotModified)
-		return
 	}
 
 	// Prepare response
@@ -129,7 +177,7 @@ func (fh *FieldsetHandler) GetFieldset(w http.ResponseWriter, r *http.Request) {
 // hashFieldset returns a stable hex SHA-256 of the visible fields. Go's
 // json.Marshal sorts map keys, so the encoding (and thus the hash) is
 // deterministic for a given fieldset and viewer authority.
-func hashFieldset(fields []field.Field) string {
+func hashFieldset(fields []Field) string {
 	b, err := json.Marshal(fields)
 	if err != nil {
 		return ""
@@ -162,15 +210,81 @@ func (fh *FieldsetHandler) GetModules(w http.ResponseWriter, r *http.Request) {
 // table is taken from sourceTable, or from dataSource when that names a table
 // (i.e. it isn't one of the reserved static/database/query keywords). The value
 // and label columns default to id/name. Non-select fields are returned as-is.
-func resolveFieldOptions(f field.Field) field.Field {
-	opts := f.Options
+// registeredModuleOptions builds select options {value:id, name:label} from the
+// registered modules (menu registry). Called at request time so the registry is
+// populated. Falls back to the module id when no label is registered.
+// registeredModuleOptions builds select options {value:id, name:label} from the
+// registered modules. The list comes from RegisteredModules, which is populated
+// unconditionally for every module during Initialize (so it is never empty when
+// modules exist) — unlike RegisteredModuleMenu, which is only populated when the
+// menu writer is wired. Nicer labels are taken from the menu registry when
+// present, falling back to the module id.
+func registeredModuleOptions() []map[string]interface{} {
+	labels := map[string]string{}
+	for _, m := range RegisteredModuleMenu() {
+		name := m.Description
+		if name == "" {
+			name = m.Name
+		}
+		if name != "" {
+			labels[m.ID] = name
+		}
+	}
+
+	ids := make([]string, 0, len(RegisteredModules))
+	for id := range RegisteredModules {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+
+	opts := make([]map[string]interface{}, 0, len(ids))
+	for _, id := range ids {
+		name := labels[id]
+		if name == "" {
+			name = id
+		}
+		opts = append(opts, map[string]interface{}{"value": id, "name": name})
+	}
+	return opts
+}
+
+func resolveFieldOptions(field Field) Field {
+	// A field may supply its options via a provider func (WithOptions), resolved
+	// here at request time. This handles TYPE_BITMASK_SELECT and any select-style
+	// field, and takes priority over static options.
+	if field.OptionsFunc != nil {
+		out := field
+		newOpts := make(map[string]interface{}, len(field.Options)+1)
+		for k, v := range field.Options {
+			newOpts[k] = v
+		}
+		newOpts["options"] = field.OptionsFunc()
+		out.Options = newOpts
+		return out
+	}
+
+	opts := field.Options
 	if opts == nil {
-		return f
+		return field
 	}
 
 	widget, _ := opts["widget"].(string)
-	if f.Type != field.TYPE_SELECT && f.Type != field.TYPE_SELECT_ADDNEW && widget != "select" {
-		return f
+	if field.Type != TYPE_SELECT && field.Type != TYPE_SELECT_ADDNEW && widget != "select" {
+		return field
+	}
+
+	// Lazy source: the set of registered modules (resolved now, at request time,
+	// so the registry is fully populated — unlike package-init). Used by the
+	// rights modules' "module" select.
+	if src, _ := opts["optionsSource"].(string); src == "modules" {
+		out := field
+		newOpts := make(map[string]interface{}, len(opts)+1)
+		for k, v := range opts {
+			newOpts[k] = v
+		}
+		newOpts["options"] = registeredModuleOptions()
+		out.Options = newOpts
+		return out
 	}
 
 	table, _ := opts["sourceTable"].(string)
@@ -180,7 +294,7 @@ func resolveFieldOptions(f field.Field) field.Field {
 		}
 	}
 	if table == "" {
-		return f // options already provided statically, or nothing to resolve
+		return field // options already provided statically, or nothing to resolve
 	}
 
 	valueField, _ := opts["valueField"].(string)
@@ -192,12 +306,12 @@ func resolveFieldOptions(f field.Field) field.Field {
 		displayField = "name"
 	}
 	if !validIdent(table) || !validIdent(valueField) || !validIdent(displayField) {
-		return f
+		return field
 	}
 
 	options := selectOptionsFromTable(table, valueField, displayField)
 	if options == nil {
-		return f
+		return field
 	}
 
 	// Copy the options map so we never mutate the shared module definition.
@@ -206,8 +320,8 @@ func resolveFieldOptions(f field.Field) field.Field {
 		newOpts[k] = val
 	}
 	newOpts["options"] = options
-	f.Options = newOpts
-	return f
+	field.Options = newOpts
+	return field
 }
 
 // selectOptionsFromTable reads {name, value} option rows for a select field.

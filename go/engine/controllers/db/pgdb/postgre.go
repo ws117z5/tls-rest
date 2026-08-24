@@ -82,10 +82,10 @@ func GetInstance() (*Db, error) {
 }
 
 type DefaultDb struct {
-	ID        int64  `db:"id"`
-	UUID      string `db:"uuid"`
-	CreatedAt string `db:"created_at"`
-	UpdatedAt string `db:"updated_at"`
+	ID      int64  `db:"id"`
+	UUID    string `db:"uuid"`
+	Created string `db:"created"`
+	Updated string `db:"updated"`
 }
 
 type Db struct {

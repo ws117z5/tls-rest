@@ -23,7 +23,8 @@
       "@containers/*": [  "./src/components/containers/*", "./src/engine/components/containers/*" ],
       "@pages/*": [ "./src/components/pages/*", "./src/engine/components/pages/*" ],
       "@components/*": [  "./src/components/*", "./src/engine/components/*" ],
-      "@fields/*": [  "./src/components/fields/*", "./src/engine/components/fields/*" ],
+      "@fields/*": ["./src/engine/fields/*" ],
+      "@css/*": [  "../css/*" ],
     }
 
   },

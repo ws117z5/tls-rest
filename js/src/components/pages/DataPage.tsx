@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import ReactDOM from "react-dom";
-import PageComponent from "@engine/PageComponent"
+import PageComponent from "@engine/containers/PageComponent"
 
 // Create a function to wrap up your component
 class DataPage extends PageComponent {
