@@ -77,6 +77,87 @@ export function normalizeRefs(value: any): ImageRef[] {
 }
 
 /**
+ * iPhones upload HEIC/HEIF, which browsers can't render (and the Go stdlib can't
+ * decode server-side), so the stored image would show blank. Convert those to
+ * JPEG in the browser before upload; every other format is passed through
+ * untouched. heic2any is loaded lazily so it only ships when actually needed.
+ */
+async function ensureBrowserImage(file: File): Promise<File> {
+    const name = (file.name || "").toLowerCase();
+    const looksHeic =
+        file.type === "image/heic" ||
+        file.type === "image/heif" ||
+        name.endsWith(".heic") ||
+        name.endsWith(".heif");
+    if (!looksHeic) return file; // fast path — no decoder needed for normal images
+
+    // heic-to bundles a current libheif (WASM), which decodes modern iPhone HEIC
+    // (incl. 10-bit/HDR) that the older heic2any build rejects with ERR_LIBHEIF.
+    const { heicTo } = await import("heic-to");
+    let blob: Blob;
+    try {
+        blob = await heicTo({ blob: file, type: "image/jpeg", quality: 0.9 });
+    } catch (e: any) {
+        const detail =
+            e && typeof e === "object" && (e.message || e.code)
+                ? `${e.code ?? ""} ${e.message ?? ""}`.trim()
+                : typeof e === "object"
+                ? JSON.stringify(e)
+                : String(e);
+        // eslint-disable-next-line no-console
+        console.error("heic-to error:", e);
+        throw new Error(
+            "This HEIC couldn't be converted (" +
+                detail +
+                "). On iPhone, set Settings → Camera → Formats → Most Compatible, " +
+                "or upload a JPEG/PNG."
+        );
+    }
+    if (!blob || blob.size === 0) {
+        throw new Error("HEIC conversion produced an empty image");
+    }
+    const jpgName = file.name.replace(/\.(heic|heif)$/i, "") + ".jpg";
+    return new File([blob], jpgName, { type: "image/jpeg" });
+}
+
+/**
+ * Read image metadata (EXIF: dimensions, orientation, camera, capture time, GPS)
+ * from the ORIGINAL file — before any HEIC->JPEG conversion, which strips EXIF.
+ * Best-effort: always returns at least the basic file facts. exifr is loaded
+ * lazily so it only ships when an image is uploaded.
+ */
+async function extractMetadata(file: File): Promise<Record<string, any>> {
+    const meta: Record<string, any> = {
+        original_filename: file.name || null,
+        original_mime: file.type || null,
+        size: typeof file.size === "number" ? file.size : null,
+        last_modified: file.lastModified ? new Date(file.lastModified).toISOString() : null,
+    };
+    try {
+        const exifr = (await import("exifr")).default as any;
+        const data = await exifr.parse(file, { gps: true, tiff: true, exif: true, ifd0: true }).catch(() => null);
+        if (data) {
+            meta.width = data.ImageWidth ?? data.ExifImageWidth ?? null;
+            meta.height = data.ImageHeight ?? data.ExifImageHeight ?? null;
+            meta.make = data.Make ?? null;
+            meta.model = data.Model ?? null;
+            meta.orientation = data.Orientation ?? null;
+            meta.taken_at =
+                data.DateTimeOriginal instanceof Date
+                    ? data.DateTimeOriginal.toISOString()
+                    : data.DateTimeOriginal ?? null;
+            if (typeof data.latitude === "number" && typeof data.longitude === "number") {
+                meta.gps = { lat: data.latitude, lng: data.longitude };
+            }
+        }
+    } catch {
+        // metadata is best-effort; ignore lookup failures
+    }
+    // Tidy: drop null/undefined entries.
+    return Object.fromEntries(Object.entries(meta).filter(([, v]) => v !== null && v !== undefined));
+}
+
+/**
  * Upload + preprocess one image for a given module/field. Optionally attach it
  * to a record (recordId) so it inherits that record's access, and/or set a
  * per-image access override. The backend runs the matching preprocessor, stores
@@ -88,10 +169,15 @@ export async function processImage(
     field: string,
     opts?: { recordId?: number | string; access?: number }
 ): Promise<ImageRef> {
+    // Capture metadata from the original file first, then convert if needed.
+    const metadata = await extractMetadata(file);
+    const uploadFile = await ensureBrowserImage(file);
+
     const form = new FormData();
-    form.append("image", file);
+    form.append("image", uploadFile);
     form.append("module", module);
     form.append("field", field);
+    form.append("metadata", JSON.stringify(metadata));
     if (opts?.recordId !== undefined && opts.recordId !== null) {
         form.append("record_id", String(opts.recordId));
     }

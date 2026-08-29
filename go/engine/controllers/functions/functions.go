@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,6 +27,25 @@ func GoID() int64 {
 	idField := bytes.Fields(buf[:n])[1]
 	id, _ := strconv.ParseInt(string(idField), 10, 64)
 	return id
+}
+
+func PostParam[T any](name string, r *http.Request) (T, error) {
+	var ret T
+	params, ok := r.Context().Value(http.MethodPost).(map[string]interface{})
+	if !ok {
+		return ret, errors.New("Post param wasn't found")
+	}
+	raw, exists := params[name]
+	if !exists || raw == nil {
+		// Missing or explicitly null (e.g. a fresh client sending no cached
+		// "hash"): return the zero value, never panic on a nil assertion.
+		return ret, errors.New("Post param wasn't found")
+	}
+	val, ok := raw.(T)
+	if !ok {
+		return ret, fmt.Errorf("post param %q has unexpected type", name)
+	}
+	return val, nil
 }
 
 // GetRandomHash
@@ -123,4 +143,14 @@ func WriteJSON(w http.ResponseWriter, status int, v interface{}) {
 // JSONError writes {"error": msg} with the given status code.
 func JSONError(w http.ResponseWriter, status int, msg string) {
 	WriteJSON(w, status, map[string]string{"error": msg})
+}
+
+// firstNonEmpty returns the first non-empty string, or "" if all are empty.
+func FirstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }

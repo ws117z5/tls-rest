@@ -21,6 +21,7 @@ import (
 
 	// Features that own arbitrary route trees with unexported handlers — their
 	// registration lives behind an exported Register() in the package.
+	words "tls-rest/go/modules/words"
 	opencv "tls-rest/go/pages/opencv"
 	papers "tls-rest/go/pages/papers"
 )
@@ -45,4 +46,7 @@ func InitAll() {
 	// --- Features (own route trees; unexported handlers) ---
 	papers.Init()
 	opencv.Init()
+
+	//external modules
+	words.Init()
 }

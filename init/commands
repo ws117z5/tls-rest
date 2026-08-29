@@ -1,0 +1,19 @@
+#right dir
+cd /opt/workstation
+
+#lunch infrastructure - portainer, jenkins, cloudflare
+docker compose -f docker-compose.infra.yml up -d
+
+#restart container
+docker restart {container_name}
+
+#check tailscale status
+sudo tailscale status
+
+#exec command inside docker
+docker exec -it {container} {command}
+
+
+#ssh got twisted (in ssh terminal)
+reset
+

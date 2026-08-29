@@ -54,6 +54,7 @@ var adminOnlyData = map[string]bool{
 type viewer struct {
 	isAdmin bool
 	level   int
+	userID  int // current user's id (0 = anonymous); used for owner scoping
 	// moduleID + fieldRights implement per-module field-level rights. When
 	// moduleID is set and fieldRights restricts it, only the listed non-system
 	// fields are visible/readable. Empty moduleID = no field restriction.
@@ -80,6 +81,7 @@ func viewerForModule(r *http.Request, moduleID string) viewer {
 	return viewer{
 		isAdmin:     s.IsAdmin,
 		level:       s.AccessLevel,
+		userID:      s.UserID,
 		moduleID:    moduleID,
 		fieldRights: s.FieldRights,
 	}

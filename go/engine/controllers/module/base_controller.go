@@ -220,13 +220,13 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Validate required fields
-	if err := bc.validateRequiredFields(data, MODE_EDIT); err != nil {
+	if err := bc.validateRequiredFields(data, MODE_SUBMIT); err != nil {
 		bc.respondError(w, http.StatusBadRequest, err.Error(), nil)
 		return
 	}
 
 	// Filter data to only include valid fields
-	filteredData := bc.filterValidFields(r, data, MODE_EDIT)
+	filteredData := bc.filterValidFields(r, data, MODE_SUBMIT)
 
 	// Insert record
 	id, err := bc.insertRecord(filteredData)
@@ -264,7 +264,7 @@ func (bc *BaseController) Edit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Filter data to only include valid fields (excluding read-only fields)
-	filteredData := bc.filterValidFields(r, data, MODE_EDIT)
+	filteredData := bc.filterValidFields(r, data, MODE_SUBMIT)
 
 	// Update record
 	err := bc.updateRecord(id, filteredData)

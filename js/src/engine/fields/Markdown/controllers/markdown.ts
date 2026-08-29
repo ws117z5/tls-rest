@@ -51,6 +51,7 @@ export const MD_TOOLS: MdTool[] = [
     // Inline / block LaTeX (rendered by KaTeX). $a^2+b^2$ and $$ … $$.
     { label: "∑", title: "Inline math", open: "$", close: "$" },
     { label: "∑∑", title: "Block math", open: "\n$$\n", close: "\n$$\n" },
+    { label: "Graph", title: "Graph component", open: "\n:::graph\n", close: "\n:::\n" },
     // Whitelisted component (see fields/Markdown/components). Renders the "note"
     // container directive; other allowed components follow the same :::name form.
     { label: "Note", title: "Note component", open: "\n:::note\n", close: "\n:::\n" },

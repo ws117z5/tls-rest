@@ -16,6 +16,7 @@ interface ImageEditProps {
 const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disabled, multiple }) => {
     const [refs, setRefs] = useState<ImageRef[]>(normalizeRefs(value));
     const [uploading, setUploading] = useState(false);
+    const [uploadError, setUploadError] = useState<string | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
 
     // Re-sync when the form resets/replaces the value (e.g. loading a record).
@@ -34,6 +35,7 @@ const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disa
     const handleFiles = async (e: ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
+        setUploadError(null);
         setUploading(true);
         try {
             const uploaded: ImageRef[] = [];
@@ -44,6 +46,7 @@ const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disa
             emit(next);
         } catch (err) {
             console.error("Image upload failed:", err);
+            setUploadError(err instanceof Error ? err.message : "Image upload failed");
         } finally {
             setUploading(false);
             if (inputRef.current) inputRef.current.value = "";
@@ -66,6 +69,10 @@ const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disa
                     onChange={handleFiles}
                 />
             </label>
+
+            {uploadError && (
+                <div className="text-danger small mb-2">{uploadError}</div>
+            )}
 
             {refs.length > 0 && (
                 <div className="d-flex flex-wrap" style={{ gap: 8 }}>

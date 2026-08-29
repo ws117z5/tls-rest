@@ -78,7 +78,8 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	authenticated := false
 	isAdmin := false
 	userID := 0
-	if session, ok := r.Context().Value(auth.SESSION_KEY).(*cache.Session); ok && session != nil && session.UserID > 0 {
+	session, ok := r.Context().Value(auth.SESSION_KEY).(*cache.Session)
+	if ok && session != nil && session.UserID > 0 {
 		authenticated = true
 		isAdmin = session.IsAdmin
 		userID = session.UserID

@@ -2,12 +2,14 @@ package images
 
 import (
 	"bytes"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/draw"
 	_ "image/gif" // register GIF decoder
 	"image/jpeg"  // JPEG encode (also registers JPEG decoder)
 	_ "image/png" // register PNG decoder
+	"strings"
 )
 
 // Thumbnail generation for post previews: an 80x80, content-aware square crop,
@@ -172,4 +174,27 @@ func downscaleAverage(src image.Image, rect image.Rectangle, size int) *image.RG
 		}
 	}
 	return dst
+}
+
+// buildMetadata merges client-supplied metadata (EXIF/dimensions/original name,
+// captured before any HEIC->JPEG conversion) with server-authoritative fields
+// and returns a JSON object string for the images.metadata (JSONB) column. It
+// always returns at least the server basics, even if the client sent nothing.
+func buildMetadata(clientJSON, storedFilename, storedMime string, sizeBytes int) string {
+	meta := map[string]interface{}{}
+	if s := strings.TrimSpace(clientJSON); s != "" {
+		var m map[string]interface{}
+		if err := json.Unmarshal([]byte(s), &m); err == nil {
+			meta = m
+		}
+	}
+	meta["bytes"] = sizeBytes
+	meta["stored_filename"] = storedFilename
+	meta["stored_mime"] = storedMime
+
+	b, err := json.Marshal(meta)
+	if err != nil {
+		return ""
+	}
+	return string(b)
 }

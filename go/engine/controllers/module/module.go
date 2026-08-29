@@ -123,6 +123,12 @@ type ModuleAbstract[T any] struct {
 	// upload/serve). Both are honoured automatically on route registration.
 	Overrides    HandlerOverrides
 	CustomRoutes []CustomRoute
+
+	// OwnerScoped restricts list/count results to rows the current user created:
+	// a non-admin only sees records whose created_by matches their user id.
+	// Requires a created_by column (present unless dropped via OmitSystemFields);
+	// admins are not scoped. Use for per-user data such as a personal word list.
+	OwnerScoped bool
 }
 
 func (m *ModuleAbstract[T]) GetID() string {

@@ -8,9 +8,11 @@ import (
 	"net/http"
 	"sort"
 
+	"strings"
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/functions"
 
 	"github.com/gorilla/mux"
 )
@@ -52,6 +54,102 @@ func (fh *FieldsetHandler) RegisterModule(module *ModuleAbstract[interface{}]) {
 // GetFieldset handles POST /api/modules/{moduleId}/fieldset. It returns the full
 // authority-visible fieldset (all modes); the client filters by mode. mode is no
 // longer a parameter, so the fieldset is cached once per module.
+// GetAutocomplete handles POST /api/modules/{moduleId}/autocomplete/{field}.
+// Body: {"input": "..."}. Resolves the field's autocomplete config (function,
+// sql, or source) and returns {"options": ["..."]}.
+func (fh *FieldsetHandler) GetAutocomplete(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	moduleId := vars["moduleId"]
+	fieldName := vars["field"]
+	if moduleId == "" || fieldName == "" {
+		http.Error(w, "module and field are required", http.StatusBadRequest)
+		return
+	}
+	module, exists := fh.modules[moduleId]
+	if !exists {
+		http.Error(w, "Module not found", http.StatusNotFound)
+		return
+	}
+
+	var body struct {
+		Input string `json:"input"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&body)
+	}
+	input := strings.TrimSpace(body.Input)
+
+	var target *Field
+	for i := range module.Fields {
+		if module.Fields[i].Name == fieldName {
+			target = &module.Fields[i]
+			break
+		}
+	}
+
+	options := []string{}
+	if target != nil {
+		options = resolveAutocomplete(target, input)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]interface{}{"options": options})
+}
+
+// resolveAutocomplete runs a field's autocomplete config against the input.
+func resolveAutocomplete(f *Field, input string) []string {
+	switch f.AutocompleteKind {
+	case "function":
+		if f.AutocompleteFunc != nil {
+			return f.AutocompleteFunc(input)
+		}
+	case "sql":
+		if f.AutocompleteSQL != "" {
+			return autocompleteQuery(f.AutocompleteSQL, "%"+input+"%")
+		}
+	case "source":
+		if len(f.AutocompleteSource) >= 2 && validIdent(f.AutocompleteSource[0]) && validIdent(f.AutocompleteSource[1]) {
+			table, col := f.AutocompleteSource[0], f.AutocompleteSource[1]
+			match := "full"
+			if len(f.AutocompleteSource) >= 3 {
+				match = f.AutocompleteSource[2]
+			}
+			pattern := input + "%"
+			switch match {
+			case "right":
+				pattern = "%" + input
+			case "full":
+				pattern = "%" + input + "%"
+			}
+			q := "SELECT DISTINCT " + col + " FROM " + table + " WHERE " + col + " LIKE $1 ORDER BY " + col + " LIMIT 20"
+			return autocompleteQuery(q, pattern)
+		}
+	}
+	return []string{}
+}
+
+// autocompleteQuery runs a single-column LIKE query and returns the values.
+func autocompleteQuery(query, pattern string) []string {
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		return []string{}
+	}
+	rows, err := db.RQuery(query, pattern)
+	if err != nil {
+		return []string{}
+	}
+	out := make([]string, 0, len(rows))
+	for _, r := range rows {
+		for _, v := range r { // single column
+			if s, ok := v.(string); ok && s != "" {
+				out = append(out, s)
+			}
+			break
+		}
+	}
+	return out
+}
+
 // GetTableData handles POST /api/modules/{moduleId}/table/{field}. It runs the
 // named TYPE_TABLE field's TableData hook with the posted record values as
 // context (e.g. the sibling "module" select) and returns the resulting rows.
@@ -95,7 +193,13 @@ func (fh *FieldsetHandler) GetTableData(w http.ResponseWriter, r *http.Request) 
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"rows": rows})
 }
 
+type FieldsetPayload struct {
+	Hash string `json:"hash"`
+}
+
 func (fh *FieldsetHandler) GetFieldset(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
 	vars := mux.Vars(r)
 	moduleId := vars["moduleId"]
 
@@ -113,8 +217,11 @@ func (fh *FieldsetHandler) GetFieldset(w http.ResponseWriter, r *http.Request) {
 	// The client may send the hashsum it already has; we answer 304 only when it
 	// matches the FRESHLY-computed hash below (not a stale session-stored one),
 	// so a rebuild that changes the fieldset always invalidates old client caches.
-	clientHash := r.URL.Query().Get("hash")
-	session := cache.SessionFromContext(r.Context())
+
+	clientHash, _ := functions.PostParam[string]("hash", r)
+
+	//clientHash := r.FormValue("hash")
+	session := cache.SessionFromContext(ctx)
 
 	// The full fieldset is returned (every field the viewer may see); the client
 	// filters by mode using each field's own Mode bitmask. That means one cached

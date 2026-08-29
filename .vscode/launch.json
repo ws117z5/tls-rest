@@ -10,8 +10,12 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}/main.go",
-            "env": {},
+            "env": {
+                "PKG_CONFIG_PATH": "/opt/homebrew/opt/opencv@4/lib/pkgconfig",
+                "DYLD_LIBRARY_PATH": "/opt/homebrew/opt/opencv@4/lib"
+            },
             "args": [],
+            
         }
     ]
 }

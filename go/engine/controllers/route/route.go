@@ -118,6 +118,7 @@ func RegisterCustomRoutes(router *mux.Router) {
 	router.HandleFunc("/api/modules", controllers.ModulesAPI).Methods("GET")
 	router.HandleFunc("/api/modules/{moduleId}/fieldset", module.GlobalFieldsetHandler.GetFieldset).Methods("POST")
 	router.HandleFunc("/api/modules/{moduleId}/table/{field}", module.GlobalFieldsetHandler.GetTableData).Methods("POST")
+	router.HandleFunc("/api/modules/{moduleId}/autocomplete/{field}", module.GlobalFieldsetHandler.GetAutocomplete).Methods("POST")
 	router.HandleFunc("/users/Auth/{authType}", auth.Auth).Methods("GET", "POST")
 }
 

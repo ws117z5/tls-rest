@@ -6,9 +6,15 @@ import Auth from '@controllers/auth';
 // editable (except access, which is admin-editable), and are only shown in
 // list/view/edit to administrators. The backend is authoritative — it filters
 // these from schema and data — this set keeps the client in agreement.
-const SYSTEM_FIELDS = new Set([
+export const SYSTEM_FIELDS = new Set([
   'id', 'uuid', 'created', 'updated', 'created_by', 'access',
 ]);
+
+// Identity/system fields are managed by the backend and must never be edited by
+// the user — with the sole exception of `access`, which admins may change. The
+// form uses this to force these inputs read-only regardless of the fieldset.
+export const isImmutableField = (name: string): boolean =>
+  SYSTEM_FIELDS.has(name) && name !== 'access';
 
 // Field type constants matching backend
 export const FIELD_TYPES = {
@@ -147,10 +153,10 @@ export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, mo
 
       // POST; hash (if any) rides as a query param so the server can answer 304.
       const url = `/api/modules/${module}/fieldset`;
-      const response = await axios.post(url, null, {
-        params: cached?.hash ? { hash: cached.hash } : {},
-        validateStatus: (s: number) => s === 304 || (s >= 200 && s < 300),
-      });
+      const response = await axios.post(url, 
+        cached?.hash ? { hash: cached.hash } : {}, // POST body
+        { validateStatus: (s: number) => s === 304 || (s >= 200 && s < 300), }
+      );
 
       if (response.status === 304) {
         if (cached?.data) {
@@ -198,11 +204,13 @@ export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, mo
     getFieldsForMode: () => {
       if (!fieldset || !fieldset.fields) return [];
       const admin = Auth.isAdmin();
-      return fieldset.fields.filter(field =>
-        (!field.mode || (field.mode & mode) !== 0) &&
-        // System fields (id/uuid/created/updated/created_by) are only shown to admins.
-        (!SYSTEM_FIELDS.has(field.name) || admin)
+      let filtered = fieldset.fields.filter(field => {
+          let modeCheck = (!field.mode || (field.mode & mode) !== 0)
+          let adminCheck = (!SYSTEM_FIELDS.has(field.name) || admin)
+          return modeCheck && adminCheck
+        }
       );
+      return filtered
     }
   };
 

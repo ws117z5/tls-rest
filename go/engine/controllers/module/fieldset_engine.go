@@ -184,6 +184,14 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 		argIndex++
 	}
 
+	// Owner scoping: a module flagged OwnerScoped shows a non-admin only the rows
+	// they created (personal data). Admins are not scoped.
+	if fe.Module != nil && fe.Module.OwnerScoped && !v.isAdmin && v.userID > 0 && fe.hasField("created_by") {
+		whereConditions = append(whereConditions, fmt.Sprintf("created_by = $%d", argIndex))
+		args = append(args, v.userID)
+		argIndex++
+	}
+
 	// Add WHERE clause if we have conditions
 	if len(whereConditions) > 0 {
 		query += " WHERE " + strings.Join(whereConditions, " AND ")
@@ -232,6 +240,13 @@ func (fe *FieldsetEngine) BuildCountQuery(params *QueryParams) (string, []interf
 	if !v.isAdmin && fe.hasField("access") {
 		whereConditions = append(whereConditions, fmt.Sprintf("access <= $%d", argIndex))
 		args = append(args, v.level)
+		argIndex++
+	}
+
+	// Owner scoping — same rule as the select query so the total matches.
+	if fe.Module != nil && fe.Module.OwnerScoped && !v.isAdmin && v.userID > 0 && fe.hasField("created_by") {
+		whereConditions = append(whereConditions, fmt.Sprintf("created_by = $%d", argIndex))
+		args = append(args, v.userID)
 		argIndex++
 	}
 

@@ -9,12 +9,21 @@ import (
 // filters() in filters.go: both build a set that the fieldset engine consumes.
 func (p *Posts) fieldset() []Field {
 	return []Field{
+
 		NewField("title", TYPE_STRING, true).
 			WithLabel("Title").
 			WithDescription("Post title").
 			WithValidation("minLength", 3).
 			WithValidation("maxLength", 200).
 			WithOption("width", "600px"),
+
+		NewField("author", TYPE_STRING, true).
+			WithLabel("Author").
+			WithValidation("minLength", 3).
+			WithValidation("maxLength", 200).
+			WithOption("width", "600px").
+			WithSQL("(SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE users.id = posts.created_by LIMIT 1)").
+			AsVirtual(),
 
 		NewField("images", TYPE_IMAGE, false).
 			WithLabel("Images").
@@ -23,7 +32,7 @@ func (p *Posts) fieldset() []Field {
 			NonSortable().
 			NonSearchable(),
 
-		NewField("content", TYPE_TEXT, true).
+		NewField("content", TYPE_MARKDOWN, true).
 			WithLabel("Content").
 			WithDescription("Post content").
 			WithValidation("minLength", 10).

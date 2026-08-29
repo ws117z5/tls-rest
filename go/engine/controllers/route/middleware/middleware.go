@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -166,6 +169,19 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 		})
 
 		if isAPICall(r) {
+			//Parse JSON body and pass json params into further handlers in the context
+			bodyBytes, err := io.ReadAll(r.Body)
+			if err == nil && len(bodyBytes) > 0 {
+				r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+				params := make(map[string]interface{})
+				if err := json.Unmarshal(bodyBytes, &params); err == nil {
+
+					// 3. Chain the JSON params into the exact same context
+					ctx = context.WithValue(ctx, http.MethodPost, params)
+				}
+			}
+
 			// --- Module rights check (per-mode, group-resolved) ---
 			allowed, moduleName, action := authorizeAPIRequest(ci, r)
 			recModule, recAction = moduleName, action
@@ -212,7 +228,7 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 
 		duration := time.Since(startTime).Seconds() * 1000
 		log.LogResponse(requestID, http.StatusOK, duration, userID)
-		controllers.Index(w, r)
+		controllers.Index(w, r.WithContext(ctx))
 	})
 }
 
@@ -260,6 +276,10 @@ func authorizeAPIRequest(ci *cache.Session, r *http.Request) (allowed bool, modu
 	if path == "/api/login" || path == "/api/logout" || path == "/api/register" {
 		return true, "auth", "login"
 	}
+	// Mobile bearer-token issue/revoke must be reachable while anonymous.
+	if path == "/api/auth/token" || path == "/api/auth/logout" {
+		return true, "auth", "login"
+	}
 
 	if strings.HasPrefix(path, "/api/") {
 		// Fieldset schema for a specific module: needs read (VIEW) on it.
@@ -274,6 +294,13 @@ func authorizeAPIRequest(ci *cache.Session, r *http.Request) (allowed bool, modu
 			mid = strings.SplitN(mid, "/table/", 2)[0]
 			mid = strings.Trim(mid, "/")
 			return HasMode(ci.ModuleModes, mid, MODE_VIEW, ci.IsAdmin), mid, "table"
+		}
+		// Autocomplete for a field: /api/modules/{id}/autocomplete/{field} — needs VIEW.
+		if strings.HasPrefix(path, "/api/modules/") && strings.Contains(path, "/autocomplete/") {
+			mid := strings.TrimPrefix(path, "/api/modules/")
+			mid = strings.SplitN(mid, "/autocomplete/", 2)[0]
+			mid = strings.Trim(mid, "/")
+			return HasMode(ci.ModuleModes, mid, MODE_VIEW, ci.IsAdmin), mid, "autocomplete"
 		}
 		// The module list endpoint filters itself per user.
 		if path == "/api/modules" {

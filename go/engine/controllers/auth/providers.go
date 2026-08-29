@@ -38,8 +38,10 @@ type providerDef struct {
 	fetch    func(ctx context.Context, cfg *oauth2.Config, tok *oauth2.Token) (*users.OAuthAccount, error)
 }
 
+type Providers map[string]*providerDef
+
 // providers is the registry, keyed by canonical (lower-case) name.
-var providers = map[string]*providerDef{
+var providers = Providers{
 	"google": {
 		name:     "google",
 		segment:  "Google",
@@ -76,6 +78,10 @@ var providers = map[string]*providerDef{
 		secret:   func() string { return config.VKSecKey },
 		fetch:    fetchVK,
 	},
+}
+
+func GetProviders() Providers {
+	return providers
 }
 
 // config builds the per-request OAuth2 config, deriving the redirect URI from
@@ -285,4 +291,41 @@ func splitName(full string) (first, last string) {
 		return full[:i], strings.TrimSpace(full[i+1:])
 	}
 	return full, ""
+}
+
+// ProviderLoginWithToken authenticates a non-web (mobile) client that already
+// holds a provider access token — obtained via a native provider SDK or a
+// browser PKCE flow on the device. It calls the provider's userinfo endpoint
+// with that token (the same fetch used by the web callback), upserts the local
+// user, and returns the local user id + username. It sets NO cookie: the caller
+// issues a bearer token (IssueToken) for the mobile session.
+//
+// emailOverride is used only when the provider doesn't return an email.
+func ProviderLoginWithToken(ctx context.Context, r *http.Request, providerName, accessToken, emailOverride string) (int, string, error) {
+	p := providers[strings.ToLower(strings.TrimSpace(providerName))]
+	if p == nil {
+		return 0, "", fmt.Errorf("unknown provider %q", providerName)
+	}
+	if !p.configured() {
+		return 0, "", fmt.Errorf("provider %q is not configured", providerName)
+	}
+	if strings.TrimSpace(accessToken) == "" {
+		return 0, "", fmt.Errorf("access_token is required")
+	}
+
+	cfg := p.config(r)
+	acc, err := p.fetch(ctx, cfg, &oauth2.Token{AccessToken: accessToken})
+	if err != nil {
+		return 0, "", err
+	}
+	acc.Provider = p.name
+	if acc.Email == "" && emailOverride != "" {
+		acc.Email = strings.TrimSpace(strings.ToLower(emailOverride))
+	}
+
+	uid, username, err := users.FindOrCreateOAuthUser(acc)
+	if err != nil {
+		return 0, "", err
+	}
+	return int(uid), username, nil
 }

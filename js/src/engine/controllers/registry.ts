@@ -60,6 +60,13 @@ export type ModuleViews = Partial<{
     filters: React.ComponentType<ModuleFiltersProps>;
 }>;
 
+const meta = import.meta as unknown as {
+    webpackContext: (
+        request: string,
+        options: { recursive: boolean; regExp: RegExp }
+    ) => __WebpackModuleApi.RequireContext;
+};
+
 // The override filenames we look for in each module directory. This must stay in
 // sync with the literal passed to import.meta.webpackContext below (webpack can
 // only statically analyse a literal RegExp there, not a variable).
@@ -68,28 +75,45 @@ const OVERRIDE_KEY = /^\.\/([^/]+)\/(list|view|edit|create|filters)\.tsx$/i;
 // module name -> discovered overrides. Built at build time from the filesystem.
 const registry: Record<string, ModuleViews> = {};
 
+
 // import.meta.webpackContext scans this directory (engine/modules) one level
 // deep for the override files above. It is resolved by webpack at build time —
 // matched files are bundled, unmatched module directories cost nothing.
-const context = import.meta.webpackContext(".", {
+const engineContext = import.meta.webpackContext("../modules", {
     recursive: true,
     regExp: /^\.\/[^/]+\/(list|view|edit|create|filters)\.tsx$/i,
 });
 
-context.keys().forEach((key: string) => {
-    const match = OVERRIDE_KEY.exec(key);
-    if (!match) return;
-
-    const moduleName = match[1];
-    const mode = match[2].toLowerCase() as keyof ModuleViews;
-
-    const mod = context(key);
-    const component = (mod && (mod.default || mod)) as ModuleViews[keyof ModuleViews];
-    if (!component) return;
-
-    if (!registry[moduleName]) registry[moduleName] = {};
-    (registry[moduleName] as any)[mode] = component;
+const userContext = import.meta.webpackContext("../../modules", {
+    recursive: true,
+    regExp: /^\.\/[^/]+\/(list|view|edit|create|filters)\.tsx$/i,
 });
+
+function loadRegistry(ctx: __WebpackModuleApi.RequireContext) {
+    ctx.keys().forEach((key: string) => {
+        const match = OVERRIDE_KEY.exec(key);
+        if (!match) return;
+
+        const moduleName = match[1];
+        const mode = match[2].toLowerCase() as keyof ModuleViews;
+
+        const mod = ctx(key);
+        const component = (mod && (mod.default || mod)) as ModuleViews[keyof ModuleViews];
+        if (!component) return;
+
+        if (!registry[moduleName]) registry[moduleName] = {};
+        (registry[moduleName] as Record<keyof ModuleViews, unknown>)[mode] = component;
+
+        // Fallback: Set 'create' to 'edit' if 'edit' exists and 'create' is undefined
+        if (mode === 'edit' && !registry[moduleName].create) {
+            registry[moduleName].create = component as React.ComponentType<ModuleViewProps>;
+        }
+    });
+}
+
+loadRegistry(engineContext);
+loadRegistry(userContext);
+
 
 // getModuleViews returns the overrides for a module, tolerating case differences
 // between the backend module name and its directory name.

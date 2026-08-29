@@ -179,24 +179,39 @@ func Process(w http.ResponseWriter, r *http.Request) {
 
 	guid := uuid.NewString()
 
+	// Record the uploader so images can be listed/filtered by user.
+	uploaderID := 0
+	if s := cache.SessionFromContext(r.Context()); s != nil {
+		uploaderID = s.UserID
+	}
+
 	db, err := pgdb.GetInstance()
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
 	}
 	id, err := db.InsertRow("images", map[string]interface{}{
-		"uuid":      guid,
-		"module":    moduleName,
-		"field":     field,
-		"record_id": recordID,
-		"filename":  header.Filename,
-		"mime_type": mimeType,
-		"access":    access,
-		"data":      data,
+		"uuid":       guid,
+		"module":     moduleName,
+		"field":      field,
+		"record_id":  recordID,
+		"filename":   header.Filename,
+		"mime_type":  mimeType,
+		"access":     access,
+		"data":       data,
+		"created_by": uploaderID,
 	})
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+
+	// Image metadata (EXIF/dimensions/original name captured client-side from the
+	// pre-conversion file) is stored as JSONB. We enrich it with the stored byte
+	// size and set it in a second statement so the text is cast to jsonb.
+	if meta := buildMetadata(r.FormValue("metadata"), header.Filename, mimeType, len(data)); meta != "" {
+		// Best-effort: the image is already stored; ignore a metadata failure.
+		_, _ = db.Exec("UPDATE images SET metadata = $1::jsonb WHERE id = $2", meta, id)
 	}
 
 	imageCache.Set(guid, cachedImage{Id: id, Data: data, MimeType: mimeType})
@@ -351,11 +366,32 @@ func (m *Images) fieldset() []Field {
 		NewField("record_id", TYPE_INT, false).WithLabel("Record"),
 		NewField("filename", TYPE_STRING, false).WithLabel("Filename"),
 		NewField("mime_type", TYPE_STRING, false).WithLabel("Type"),
+		// Uploader: virtual username resolved from the created_by user id.
+		NewField("uploaded_by", TYPE_STRING, false).
+			WithLabel("Uploaded by").
+			AsVirtual().AsReadOnly().NonSortable().
+			WithSQL("(SELECT user_name FROM users u WHERE u.id = images.created_by)"),
 	}
 }
 
 func readOnly(w http.ResponseWriter, r *http.Request) {
 	http.Error(w, "access_log is read-only", http.StatusMethodNotAllowed)
+}
+
+// filters declares the list-mode filter bar for the images module (admin area):
+// filter by filename, owning module/field, and mime type.
+func (m *Images) filters() *Filedset {
+	return NewFieldset(
+		NewFilter("filename", TYPE_STRING).WithLabel("Filename").Contains(),
+		NewFilter("module", TYPE_STRING).WithLabel("Module").Contains(),
+		NewFilter("field", TYPE_STRING).WithLabel("Field").Contains(),
+		NewFilter("mime_type", TYPE_STRING).WithLabel("Type").Contains(),
+		// Uploader: type a username (substring). Matches images whose created_by
+		// resolves to a user whose name ILIKEs the value.
+		NewFilter("uploaded_by", TYPE_STRING).WithLabel("Uploaded by").
+			Contains().
+			WithSQLWhere("created_by IN (SELECT id FROM users WHERE user_name ILIKE %s)"),
+	)
 }
 
 func NewImages() *Images {
@@ -375,6 +411,7 @@ func NewImages() *Images {
 		},
 	}
 	m.ModuleAbstract.Fields = m.fieldset()
+	m.ModuleAbstract.Filters = m.filters()
 
 	// The module owns its binary endpoints as custom routes (absolute paths).
 	m.ModuleAbstract.CustomRoutes = []CustomRoute{

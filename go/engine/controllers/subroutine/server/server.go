@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	f "tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/log"
 	"tls-rest/go/engine/controllers/route"
 	"tls-rest/go/engine/controllers/route/middleware"
@@ -22,15 +23,17 @@ const shutdownTimeout = 30 * time.Second
 // It blocks until receiving an interrupt or termination signal for graceful shutdown.
 func RunServer() {
 	// Load Cloudflare Origin Certificate and Private Key.
-	certPath := os.Getenv("CF_CERT_PATH")
-	if certPath == "" {
-		certPath = ".private/cert.pem"
-	}
 
-	keyPath := os.Getenv("CF_KEY_PATH")
-	if keyPath == "" {
-		keyPath = ".private/key.pem"
-	}
+	certPath := f.FirstNonEmpty(
+		os.Getenv("TLS_CERT_PATH"),
+		os.Getenv("CF_CERT_PATH"),
+		".private/server.crt",
+	)
+	keyPath := f.FirstNonEmpty(
+		os.Getenv("TLS_KEY_PATH"),
+		os.Getenv("CF_KEY_PATH"),
+		".private/server.key",
+	)
 
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {

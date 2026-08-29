@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"tls-rest/go/engine/controllers/functions"
@@ -34,6 +35,13 @@ func fillSessionRights(s *cache.Session) {
 // should fill session user and it's rights
 // If the session does not exist, it creates a new one
 func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
+	// Non-web (mobile) clients authenticate with a bearer token instead of the
+	// session cookie. When present it fully determines the session, and no cookie
+	// is set. The cookie flow below is unchanged for web clients.
+	if tok, ok := tokenFromHeader(r); ok {
+		return manageTokenSession(tok)
+	}
+
 	cookie, err := r.Cookie("X-Session-ID")
 
 	hash := ""
@@ -113,6 +121,7 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 	}
 }
 
+// GetSessionID returns the session id from context.
 func GetSessionID(ctx context.Context) string {
 	val := ctx.Value(SESSION_KEY)
 	if sid, ok := val.(string); ok {
@@ -171,4 +180,63 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 		fillSessionRights(stored)
 		cache.SessionCacheInstance.Set(cookie.Value, *stored)
 	}
+}
+
+// --- Non-web (mobile) bearer-token auth ---
+//
+// A bearer token is just a session key handed to a client that can't use
+// cookies. It maps to exactly the same cache-backed session and rights model as
+// the web cookie session, so authorization is identical across web and mobile.
+
+// tokenFromHeader returns a bearer token supplied via `Authorization: Bearer
+// <token>` (or the `X-Session-Token` header) and whether one was present.
+func tokenFromHeader(r *http.Request) (string, bool) {
+	if h := r.Header.Get("Authorization"); len(h) >= 7 && strings.EqualFold(h[:7], "Bearer ") {
+		if tok := strings.TrimSpace(h[7:]); tok != "" {
+			return tok, true
+		}
+	}
+	if tok := strings.TrimSpace(r.Header.Get("X-Session-Token")); tok != "" {
+		return tok, true
+	}
+	return "", false
+}
+
+// manageTokenSession resolves the session for a bearer-token request. A valid,
+// unexpired token returns its stored session (rights refreshed); an unknown or
+// expired token yields a fresh anonymous session. No cookie is ever set.
+func manageTokenSession(tok string) *cache.Session {
+	if stored, err := cache.SessionCacheInstance.Get(tok); err == nil && stored != nil && stored.Expire.After(time.Now()) {
+		stored.LastAccess = time.Now()
+		fillSessionRights(stored)
+		cache.SessionCacheInstance.Set(tok, *stored)
+		return stored
+	}
+	anon := cache.Session{Expire: time.Now().Add(30 * 24 * time.Hour), LastAccess: time.Now()}
+	fillSessionRights(&anon)
+	return &anon
+}
+
+// IssueToken creates an authenticated, cookie-less session for a non-web client
+// and returns its opaque bearer token and expiry. The client sends the token as
+// `Authorization: Bearer <token>` on subsequent requests.
+func IssueToken(userID int, username string) (string, time.Time, error) {
+	tok, err := functions.GetRandomHash(32)
+	if err != nil {
+		return "", time.Time{}, err
+	}
+	expire := time.Now().Add(30 * 24 * time.Hour)
+	s := cache.Session{UserID: userID, Username: username, Expire: expire, LastAccess: time.Now()}
+	fillSessionRights(&s)
+	cache.SessionCacheInstance.Set(tok, s)
+	return tok, expire, nil
+}
+
+// RevokeToken invalidates a bearer token (mobile logout). The cache exposes no
+// delete, so the entry is overwritten with an already-expired anonymous session.
+func RevokeToken(tok string) {
+	if tok == "" {
+		return
+	}
+	cache.SessionCacheInstance.Set(tok, cache.Session{Expire: time.Now().Add(-time.Hour)})
 }

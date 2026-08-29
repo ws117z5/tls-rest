@@ -7,6 +7,9 @@ import {
     ModuleViews,
     ModuleFilterMeta,
 } from "@engine/controllers/registry";
+import { FormLayoutBridge, WithLayout } from "@engine/fields/FormLayout";
+import { Fieldset } from "@engine/pages";
+import Auth from "@engine/controllers/auth";
 
 // The generic page for any backend module. Given a module name, its API
 // endpoint, and a mode, it loads the right data and renders the fieldset —
@@ -56,6 +59,18 @@ const ModulePage: React.FC<ModulePageProps> = ({
     const [record, setRecord] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+
+    // Layout override (admin-only): "default" uses the module's custom layout when
+    // one exists; "system" forces the generic engine rendering. Saved per
+    // module/mode. A non-admin's localStorage value is ignored (see useCustom).
+    const layoutKey = `layout:${module}:${mode}`;
+    const [layoutPref, setLayoutPref] = useState<string>(() => {
+        try {
+            return localStorage.getItem(layoutKey) || "default";
+        } catch {
+            return "default";
+        }
+    });
 
     // List filters. `draftFilters` is what the user is editing; `appliedFilters`
     // is what is actually sent to the server (only changes on Apply/Reset, so we
@@ -178,24 +193,96 @@ const ModulePage: React.FC<ModulePageProps> = ({
     // Auto-discovered per-module overrides (list/view/edit/create/filters).
     const views: ModuleViews = getModuleViews(module);
 
+    const fmMode = MODE_MAP[mode];
+    const isView = mode === "view";
+
     // A full-page override for the current mode takes over entirely.
     const Custom = views[mode as keyof ModuleViews] as
         | React.ComponentType<any>
         | undefined;
-    if (Custom) {
-        return (
-            <Custom
-                module={module}
-                mode={mode}
-                data={data}
-                record={record}
-                modes={modes}
-                navigate={go}
-                reload={load}
-                submit={submit}
-                remove={remove}
-            />
-        );
+
+    const isAdmin = Auth.isAdmin();
+    // Only admins may force the system layout; a non-admin who hand-edits
+    // localStorage still gets the custom layout.
+    const showSystem = isAdmin && layoutPref === "system";
+    const useCustom = !!Custom && !showSystem;
+
+    const toggleLayout = () => {
+        const next = layoutPref === "system" ? "default" : "system";
+        setLayoutPref(next);
+        try {
+            localStorage.setItem(layoutKey, next);
+        } catch {
+            // ignore storage failures
+        }
+    };
+
+    // Button shown only to admins when a custom layout exists for this mode. Its
+    // label is the current value ("default" | "system").
+    const LayoutToggle: React.FC = () =>
+        Custom && isAdmin ? (
+            <button
+                className="btn btn-outline-secondary"
+                title="Switch between this module's custom layout and the system default"
+                onClick={toggleLayout}
+            >
+                {layoutPref === "system" ? "system" : "default"}
+            </button>
+        ) : null;
+
+    if (useCustom && mode !== "list") {
+    // The parent container owns the standard chrome — module name, current mode,
+    // and the standard actions (Save in edit/create, Back always). The custom
+    // component only lays out the fields; it receives the form values and field
+    // options via WithLayout so it can inspect data/options.
+    const isEditable = mode === "edit" || mode === "create";
+    return (
+        <div className="container-fluid pt-4">
+            <div className="d-flex justify-content-between align-items-center mb-3">
+                <h1 className="h4 mb-0">
+                    {heading} — {mode}
+                </h1>
+                <div className="d-flex gap-2">
+                    {isEditable && (
+                        <button className="btn btn-primary" onClick={() => submit(record)}>
+                            Save
+                        </button>
+                    )}
+                    <LayoutToggle />
+                    <button className="btn btn-secondary" onClick={() => go(base)}>
+                        Back
+                    </button>
+                </div>
+            </div>
+            <div className="card">
+                <div className="card-body">
+                <FieldsetProvider module={module} mode={fmMode}>
+                    <FormLayoutBridge
+                        formData={record}
+                        setRecord={setRecord}
+                        mode={fmMode}
+                        module={module}
+                    >
+                        <WithLayout
+                            component={Custom}
+                            extra={{
+                                module,
+                                mode,
+                                data,
+                                record,
+                                modes,
+                                navigate: go,
+                                reload: load,
+                                submit,
+                                remove,
+                            }}
+                        />
+                    </FormLayoutBridge>
+                </FieldsetProvider>
+                </div>
+            </div>
+        </div>
+    );
     }
 
     if (loading) {
@@ -216,15 +303,21 @@ const ModulePage: React.FC<ModulePageProps> = ({
         // Custom filter bar if the module provides one, else the standard bar
         // built from the backend's declared filters.
         const FiltersComp = views.filters || FieldsetFilters;
+        // A custom list layout (e.g. an image grid) replaces the standard table,
+        // but keeps the Create button, filter bar and layout toggle around it.
+        const CustomList = useCustom ? (Custom as React.ComponentType<any>) : null;
         return (
             <div className="container-fluid pt-4">
                 <div className="d-flex justify-content-between align-items-center mb-3">
                     <h1 className="h4 mb-0">{heading}</h1>
-                    {can("create") && (
-                        <button className="btn btn-primary" onClick={() => go(`${base}/create`)}>
-                            Create
-                        </button>
-                    )}
+                    <div className="d-flex gap-2">
+                        {can("create") && (
+                            <button className="btn btn-primary" onClick={() => go(`${base}/create`)}>
+                                Create
+                            </button>
+                        )}
+                        <LayoutToggle />
+                    </div>
                 </div>
                 <FiltersComp
                     module={module}
@@ -234,28 +327,39 @@ const ModulePage: React.FC<ModulePageProps> = ({
                     onApply={applyFilters}
                     onReset={resetFilters}
                 />
-                <FieldsetProvider module={module} mode={MODES.LIST}>
-                    <FieldsetList
+                {CustomList ? (
+                    <CustomList
+                        module={module}
+                        mode="list"
                         data={data}
-                        sortable
-                        showActions
-                        onView={can("view") ? (row: any) => go(`${base}/${row.id}`) : undefined}
-                        onEdit={can("edit") ? (row: any) => go(`${base}/${row.id}/edit`) : undefined}
-                        onDelete={can("delete") ? remove : undefined}
-                        onBulkDelete={can("delete") ? bulkRemove : undefined}
-                        pagination={
-                            pageInfo
-                                ? { ...pageInfo, onPageChange: (p: number) => setPage(p) }
-                                : undefined
-                        }
+                        record={null}
+                        modes={modes}
+                        navigate={go}
+                        reload={load}
+                        submit={submit}
+                        remove={remove}
                     />
-                </FieldsetProvider>
+                ) : (
+                    <FieldsetProvider module={module} mode={MODES.LIST}>
+                        <FieldsetList
+                            data={data}
+                            sortable
+                            showActions
+                            onView={can("view") ? (row: any) => go(`${base}/${row.id}`) : undefined}
+                            onEdit={can("edit") ? (row: any) => go(`${base}/${row.id}/edit`) : undefined}
+                            onDelete={can("delete") ? remove : undefined}
+                            onBulkDelete={can("delete") ? bulkRemove : undefined}
+                            pagination={
+                                pageInfo
+                                    ? { ...pageInfo, onPageChange: (p: number) => setPage(p) }
+                                    : undefined
+                            }
+                        />
+                    </FieldsetProvider>
+                )}
             </div>
         );
     }
-
-    const fmMode = MODE_MAP[mode];
-    const isView = mode === "view";
 
     return (
         <div className="container-fluid pt-4">
@@ -263,9 +367,12 @@ const ModulePage: React.FC<ModulePageProps> = ({
                 <h1 className="h4 mb-0">
                     {heading} — {mode}
                 </h1>
-                <button className="btn btn-secondary" onClick={() => go(base)}>
-                    Back
-                </button>
+                <div className="d-flex gap-2">
+                    <LayoutToggle />
+                    <button className="btn btn-secondary" onClick={() => go(base)}>
+                        Back
+                    </button>
+                </div>
             </div>
             <div className="card">
                 <div className="card-body">

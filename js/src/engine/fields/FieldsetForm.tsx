@@ -1,6 +1,6 @@
 import React, { Component } from 'react';
 import { Field, BaseFieldProps } from './Field';
-import { useFieldset, MODES } from './FieldsetProvider';
+import { useFieldset, MODES, isImmutableField } from './FieldsetProvider';
 
 // Form data interface
 interface FormData {
@@ -123,19 +123,24 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
     
     const fields = fieldsetContext.getFieldsForMode();
     const newErrors: { [key: string]: string } = {};
+    // Errors only render for fields marked "touched". On submit the user may not
+    // have touched a field at all (e.g. an untouched required field), so touch
+    // every validated field here — otherwise a non-empty newErrors would be set
+    // in state but never shown.
+    const newTouched: { [key: string]: boolean } = { ...this.state.touched };
     let isValid = true;
 
     fields.forEach((field: any) => {
-      if (!field.readonly && !field.virtual) {
-        const error = this.validateField(field, formData[field.name]);
-        if (error) {
-          newErrors[field.name] = error;
-          isValid = false;
-        }
+      if (field.readonly || field.virtual || isImmutableField(field.name)) return;
+      const error = this.validateField(field, formData[field.name]);
+      newTouched[field.name] = true;
+      if (error) {
+        newErrors[field.name] = error;
+        isValid = false;
       }
     });
 
-    this.setState({ errors: newErrors });
+    this.setState({ errors: newErrors, touched: newTouched });
     
     if (this.props.onValidation) {
       this.props.onValidation(newErrors);
@@ -212,12 +217,16 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
 
     const hideDescription = !!(field.options && field.options.hideDescription);
 
+    // uuid (and other identity/system fields) are never editable, whatever the
+    // fieldset says. `access` is the one system field admins may edit.
+    const immutable = isImmutableField(field.name);
+
     const fieldProps: BaseFieldProps = {
       field,
       value: formData[field.name] || field.default_value,
       onChange: (value) => this.handleFieldChange(field.name, value),
       mode: mode || MODES.EDIT,
-      disabled: disabled || field.readonly,
+      disabled: disabled || field.readonly || immutable,
       module: this.props.fieldsetContext?.module,
       // All sibling values, so dependent fields (e.g. a TABLE whose rows come
       // from another field's selected module) can react to them.
@@ -257,7 +266,6 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
         >
           <div className="fw-semibold">
             {field.label}
-            {field.required && <span className="text-danger"> *</span>}
           </div>
           {field.description && (
             <div className="text-muted small">{field.description}</div>

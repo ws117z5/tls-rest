@@ -74,6 +74,15 @@ type Field struct {
 	Placeholder  string                 `json:"placeholder"`   // Input placeholder (edit/create/filters)
 	Access       int                    `json:"access"`        // Minimum access level required to see this field (0 = everyone)
 
+	// Display / formatting modifiers (list & view rendering).
+	LinkModule    string `json:"linkModule,omitempty"`    // render the value as a link into this module's record
+	Unit          string `json:"unit,omitempty"`          // unit suffix shown after the value (e.g. "kg", "USD")
+	ZeroEmpty     bool   `json:"zeroEmpty,omitempty"`     // render 0 as blank
+	NegativeClass string `json:"negativeClass,omitempty"` // CSS class applied when the value is negative
+	PositiveClass string `json:"positiveClass,omitempty"` // CSS class applied when the value is positive
+	Align         string `json:"align,omitempty"`         // list column alignment: left|center|right
+	ColumnWidth   string `json:"columnWidth,omitempty"`   // list column width (e.g. "120px")
+
 	// TYPE_TABLE configuration (clean API — see TableFieldset/TableSource/
 	// TableData/TableOnSubmit builders). The fieldset (columns) is serialized to
 	// the client; the data/submit hooks are server-side only.
@@ -86,6 +95,14 @@ type Field struct {
 	// framework's dynamic 'options'). Its result is resolved into Options["options"]
 	// when the fieldset is served. Set via WithOptions.
 	OptionsFunc func() []map[string]interface{} `json:"-"`
+
+	// Autocomplete configuration (set via WithAutocomplete). The kind is
+	// serialized so the client renders the autocomplete widget and calls the
+	// /autocomplete endpoint; the resolution (func/sql/source) is server-side.
+	AutocompleteKind   string                      `json:"autocomplete,omitempty"` // "function" | "sql" | "source"
+	AutocompleteFunc   func(input string) []string `json:"-"`
+	AutocompleteSQL    string                      `json:"-"`
+	AutocompleteSource []string                    `json:"-"` // {table, field, match}
 }
 
 func NewField(name, fieldType string, required bool) Field {
@@ -130,6 +147,93 @@ func (f Field) WithDescription(desc string) Field {
 // filter inputs for text-like fields.
 func (f Field) WithPlaceholder(p string) Field {
 	f.Placeholder = p
+	return f
+}
+
+// --- Display / formatting builders ------------------------------------------
+
+// WithLink renders the value in list/view as a link into the given module's
+// record (foreign-key navigation).
+func (f Field) WithLink(module string) Field {
+	f.LinkModule = module
+	return f
+}
+
+// WithUnit shows a unit suffix after the value (e.g. "kg", "USD").
+func (f Field) WithUnit(unit string) Field {
+	f.Unit = unit
+	return f
+}
+
+// WithZeroEmpty renders a zero value as blank.
+func (f Field) WithZeroEmpty() Field {
+	f.ZeroEmpty = true
+	return f
+}
+
+// WithSignClasses applies CSS classes based on the sign of a numeric value.
+func (f Field) WithSignClasses(negative, positive string) Field {
+	f.NegativeClass = negative
+	f.PositiveClass = positive
+	return f
+}
+
+// WithAlign sets list column alignment: "left", "center", or "right".
+func (f Field) WithAlign(align string) Field {
+	f.Align = align
+	return f
+}
+
+// WithColumnWidth sets the list column width (e.g. "120px").
+func (f Field) WithColumnWidth(width string) Field {
+	f.ColumnWidth = width
+	return f
+}
+
+// --- Mode builders ----------------------------------------------------------
+
+// InModes sets exactly which modes the field appears in (overwrites Mode).
+func (f Field) InModes(mode int) Field {
+	f.Mode = mode
+	return f
+}
+
+// NotSubmitted marks the field display-only: shown but never written on save
+// (clears MODE_SUBMIT). Use for computed/derived columns.
+func (f Field) NotSubmitted() Field {
+	f.Mode &^= MODE_SUBMIT
+	return f
+}
+
+// NotLogged excludes the field from the change log (clears MODE_LOG).
+func (f Field) NotLogged() Field {
+	f.Mode &^= MODE_LOG
+	return f
+}
+
+// WithAutocomplete enables type-ahead suggestions on a (string) field, resolved
+// server-side by the /api/modules/{module}/autocomplete/{field} endpoint. Three
+// kinds:
+//
+//	WithAutocomplete("function", func(input string) []string { ... })
+//	WithAutocomplete("sql", "SELECT name FROM city WHERE name LIKE $1")
+//	WithAutocomplete("source", []string{"city", "name", "left"}) // table, field, match: left|right|full
+func (f Field) WithAutocomplete(kind string, arg interface{}) Field {
+	f.AutocompleteKind = kind
+	switch kind {
+	case "function":
+		if fn, ok := arg.(func(string) []string); ok {
+			f.AutocompleteFunc = fn
+		}
+	case "sql":
+		if q, ok := arg.(string); ok {
+			f.AutocompleteSQL = q
+		}
+	case "source":
+		if s, ok := arg.([]string); ok {
+			f.AutocompleteSource = s
+		}
+	}
 	return f
 }
 

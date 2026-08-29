@@ -4,6 +4,7 @@ import TableEdit from './Table/Edit';
 import TableView from './Table/View';
 import BitmaskEdit from './Bitmask/Edit';
 import BitmaskView from './Bitmask/View';
+import AutocompleteEdit from './Autocomplete/Edit';
 
 // Import all field components
 import { 
@@ -30,6 +31,14 @@ export interface BaseFieldProps {
     options?: { [key: string]: any };
     readonly?: boolean;
     default_value?: any;
+    linkModule?: string;
+    unit?: string;
+    zeroEmpty?: boolean;
+    negativeClass?: string;
+    positiveClass?: string;
+    align?: string;
+    columnWidth?: string;
+    autocomplete?: string;
   };
   value?: any;
   onChange?: (value: any) => void;
@@ -68,6 +77,10 @@ const FIELD_COMPONENTS = {
     [MODES.VIEW]: TextView,
     [MODES.LIST]: TextList,
   },
+  // DEPRECATED as a type: prefer TYPE_STRING + WithAutocomplete(...) (the
+  // `autocomplete` option, handled above). These aliases keep any legacy
+  // type:"Autocomplete" fields rendering as a String; the type-ahead widget is
+  // enabled only when the `autocomplete` option is present.
   [FIELD_TYPES.AUTOCOMPLETE]: {
     [MODES.EDIT]: TextEdit,
     [MODES.VIEW]: TextView,
@@ -157,6 +170,27 @@ const DefaultField: React.FC<BaseFieldProps> = ({ field, value, mode }) => (
 // Main Field component
 export const Field: React.FC<BaseFieldProps> = (props) => {
   const { field, mode } = props;
+
+  // Autocomplete is an OPTION on a String field, not a field type of its own:
+  // `NewField("city", TYPE_STRING, ...).WithAutocomplete(...)` serializes an
+  // `autocomplete` kind that renders the server-backed type-ahead input in
+  // edit/create. Read it from the top-level flag or from options for robustness.
+  const autocompleteKind = field.autocomplete ?? (field.options && (field.options as any).autocomplete);
+  if (autocompleteKind && (mode === MODES.EDIT || mode === MODES.CREATE)) {
+    return (
+      <AutocompleteEdit
+        id={field.name}
+        fieldName={field.name}
+        module={props.module}
+        value={props.value}
+        placeholder={field.placeholder || field.description || field.label}
+        disabled={field.readonly || props.disabled}
+        required={field.required}
+        className={props.className}
+        onChange={props.onChange}
+      />
+    );
+  }
   
   // Find the appropriate component for the field type and mode. A field may
   // opt into the select widget (widget:"select") even when its stored type is
@@ -207,7 +241,47 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
     ...(field.options || {}),
   };
 
-  return <Component {...enhancedProps} />;
+  const rendered = <Component {...enhancedProps} />;
+
+  // Display modifiers apply to read-only rendering (list & view): zero-as-blank,
+  // unit suffix, sign-based CSS class, and foreign-key links.
+  if (mode === MODES.LIST || mode === MODES.VIEW) {
+    return applyDisplayModifiers(field, props.value, rendered);
+  }
+  return rendered;
 };
+
+// applyDisplayModifiers wraps a rendered value with the field's formatting
+// options (zeroEmpty, unit, sign class, linkModule).
+function applyDisplayModifiers(
+  field: any,
+  value: any,
+  rendered: React.ReactNode
+): React.ReactElement {
+  const num = typeof value === "number" ? value : parseFloat(value);
+  const isNum = !isNaN(num);
+
+  if (field.zeroEmpty && isNum && num === 0) {
+    return <span className="text-muted">—</span>;
+  }
+
+  let className = "";
+  if (isNum && num < 0 && field.negativeClass) className = field.negativeClass;
+  if (isNum && num > 0 && field.positiveClass) className = field.positiveClass;
+
+  let content: React.ReactNode = rendered;
+  if (field.unit && value !== undefined && value !== null && value !== "") {
+    content = (
+      <>
+        {rendered} <span className="field-unit text-muted">{field.unit}</span>
+      </>
+    );
+  }
+  if (field.linkModule && value) {
+    content = <a href={`/${field.linkModule}/${value}/view`}>{content}</a>;
+  }
+
+  return <span className={className}>{content}</span>;
+}
 
 export default Field;

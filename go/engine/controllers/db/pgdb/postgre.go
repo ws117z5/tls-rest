@@ -2,6 +2,7 @@ package pgdb
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"reflect"
@@ -200,6 +201,22 @@ func (db *Db) Escape(value string) string {
 }
 
 // InsertRow inserts a row and returns its id (via RETURNING id).
+// encodeParam prepares a Go value for binding to a SQL parameter. Values that
+// come from decoding a JSON request body as composite types — a JSON object
+// (map[string]interface{}) or array ([]interface{}) — can't be encoded into a
+// text/jsonb column by the driver, so they are JSON-marshaled to a string first.
+// Everything else (scalars, time.Time, and binary []byte for BYTEA) is left
+// untouched.
+func encodeParam(v interface{}) interface{} {
+	switch v.(type) {
+	case map[string]interface{}, []interface{}:
+		if b, err := json.Marshal(v); err == nil {
+			return string(b)
+		}
+	}
+	return v
+}
+
 func (db *Db) InsertRow(table string, fieldValues map[string]interface{}) (int64, error) {
 	fields := []string{}
 	values := []interface{}{}
@@ -208,7 +225,7 @@ func (db *Db) InsertRow(table string, fieldValues map[string]interface{}) (int64
 	i := 1
 	for field, value := range fieldValues {
 		fields = append(fields, db.Quote(field))
-		values = append(values, value)
+		values = append(values, encodeParam(value))
 		placeholders = append(placeholders, fmt.Sprintf("$%d", i))
 		i++
 	}
@@ -241,7 +258,7 @@ func (db *Db) UpdateRow(table string, fieldValues map[string]interface{}, keyFie
 
 	for field, value := range fieldValues {
 		setClauses = append(setClauses, fmt.Sprintf("%s = $%d", db.Quote(field), i))
-		values = append(values, value)
+		values = append(values, encodeParam(value))
 		i++
 	}
 	values = append(values, keyValue)
