@@ -37,6 +37,20 @@ const Thumb: React.FC<ThumbProps> = ({ refItem, size, fit }) => {
       <img
         src={imageUrl(refItem)}
         alt={alt}
+        onError={(e) => {
+          // Broken/empty image row: show a neutral placeholder instead of the
+          // browser's broken-image glyph.
+          const img = e.currentTarget;
+          img.onerror = null;
+          img.src =
+            "data:image/svg+xml;utf8," +
+            encodeURIComponent(
+              '<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120">' +
+              '<rect width="100%" height="100%" fill="#f1f1f1"/>' +
+              '<text x="50%" y="50%" fill="#999" font-family="sans-serif" font-size="11" ' +
+              'text-anchor="middle" dominant-baseline="middle">no image</text></svg>'
+            );
+        }}
         onClick={() => setOpen(true)}
         style={{
           width: size,

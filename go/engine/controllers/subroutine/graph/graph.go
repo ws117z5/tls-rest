@@ -63,16 +63,3 @@ func (g *Graph) WriteDOT(filename string) error {
 	fmt.Fprintln(f, "}")
 	return nil
 }
-
-// Example usage
-func main() {
-	nodes := 17
-	fanout := 3
-	graph := NewGraph(nodes, fanout)
-	err := graph.WriteDOT("graph.dot")
-	if err != nil {
-		fmt.Println("Failed to write dot file:", err)
-	} else {
-		fmt.Println("Graph written to graph.dot — use `dot -Tpng graph.dot -o graph.png` to render.")
-	}
-}

@@ -136,7 +136,7 @@ func Start() {
 	address := "127.0.0.1:3478"
 
 	normalized := normalize(address)
-	fmt.Println("gortc/stund listening on", normalized, "via", "udp")
+	log.Console.Infof("gortc/stund listening on", normalized, "via", "udp")
 
 	err := ListenUDPAndServe("udp", normalized)
 

@@ -248,6 +248,11 @@ const ModulePage: React.FC<ModulePageProps> = ({
                             Save
                         </button>
                     )}
+                    {isView && can("edit") && (
+                        <button className="btn btn-primary" onClick={() => go(`${base}/${id}/edit`)}>
+                            Edit
+                        </button>
+                    )}
                     <LayoutToggle />
                     <button className="btn btn-secondary" onClick={() => go(base)}>
                         Back
@@ -346,6 +351,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
                             sortable
                             showActions
                             onView={can("view") ? (row: any) => go(`${base}/${row.id}`) : undefined}
+                            onRowDoubleClick={can("view") ? (row: any) => go(`${base}/${row.id}`) : undefined}
                             onEdit={can("edit") ? (row: any) => go(`${base}/${row.id}/edit`) : undefined}
                             onDelete={can("delete") ? remove : undefined}
                             onBulkDelete={can("delete") ? bulkRemove : undefined}
@@ -368,6 +374,11 @@ const ModulePage: React.FC<ModulePageProps> = ({
                     {heading} — {mode}
                 </h1>
                 <div className="d-flex gap-2">
+                    {isView && can("edit") && (
+                        <button className="btn btn-primary" onClick={() => go(`${base}/${id}/edit`)}>
+                            Edit
+                        </button>
+                    )}
                     <LayoutToggle />
                     <button className="btn btn-secondary" onClick={() => go(base)}>
                         Back

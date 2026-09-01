@@ -28,7 +28,9 @@ package images
 
 import (
 	"io"
+	"mime"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -47,40 +49,6 @@ import (
 // --- binary upload / serve ---------------------------------------------------
 
 const maxUpload = 16 << 20 // 16 MiB
-
-// Preprocessor transforms uploaded bytes before they are stored.
-type Preprocessor func(module, field string, data []byte, mimeType string) (out []byte, outMime string, err error)
-
-func identityProcessor(_, _ string, data []byte, mimeType string) ([]byte, string, error) {
-	return data, mimeType, nil
-}
-
-var (
-	processors       = map[string]Preprocessor{}
-	defaultProcessor = Preprocessor(identityProcessor)
-	processorKey     = func(module, field string) string { return module + "." + field }
-)
-
-// RegisterProcessor sets a custom preprocessor for a specific (module, field).
-func RegisterProcessor(module, field string, fn Preprocessor) {
-	if fn != nil {
-		processors[processorKey(module, field)] = fn
-	}
-}
-
-// SetDefaultProcessor overrides the fallback preprocessor.
-func SetDefaultProcessor(fn Preprocessor) {
-	if fn != nil {
-		defaultProcessor = fn
-	}
-}
-
-func processorFor(module, field string) Preprocessor {
-	if fn, ok := processors[processorKey(module, field)]; ok {
-		return fn
-	}
-	return defaultProcessor
-}
 
 type cachedImage struct {
 	Id       int64
@@ -171,12 +139,6 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		access = recordAccess(moduleName, recordID)
 	}
 
-	data, mimeType, err := processorFor(moduleName, field)(moduleName, field, raw, mimeType)
-	if err != nil {
-		functions.JSONError(w, http.StatusBadRequest, "image processing failed: "+err.Error())
-		return
-	}
-
 	guid := uuid.NewString()
 
 	// Record the uploader so images can be listed/filtered by user.
@@ -190,7 +152,10 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
 	}
-	id, err := db.InsertRow("images", map[string]interface{}{
+	// Build the row, then run it through the module's data hooks — the same
+	// BeforeFieldset/AfterFieldset used by standard create/edit — so the upload
+	// path shares one preprocessing pipeline.
+	row := map[string]interface{}{
 		"uuid":       guid,
 		"module":     moduleName,
 		"field":      field,
@@ -198,9 +163,22 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		"filename":   header.Filename,
 		"mime_type":  mimeType,
 		"access":     access,
-		"data":       data,
+		"data":       raw,
 		"created_by": uploaderID,
-	})
+	}
+	if Module != nil && Module.BeforeFieldset != nil {
+		if row, err = Module.BeforeFieldset(r, row); err != nil {
+			functions.JSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	if Module != nil && Module.AfterFieldset != nil {
+		if row, err = Module.AfterFieldset(r, row); err != nil {
+			functions.JSONError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+	id, err := db.InsertRow("images", row)
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -209,12 +187,17 @@ func Process(w http.ResponseWriter, r *http.Request) {
 	// Image metadata (EXIF/dimensions/original name captured client-side from the
 	// pre-conversion file) is stored as JSONB. We enrich it with the stored byte
 	// size and set it in a second statement so the text is cast to jsonb.
-	if meta := buildMetadata(r.FormValue("metadata"), header.Filename, mimeType, len(data)); meta != "" {
+	storedMime, _ := row["mime_type"].(string)
+	storedBytes := 0
+	if b, ok := row["data"].([]byte); ok {
+		storedBytes = len(b)
+	}
+	if meta := buildMetadata(r.FormValue("metadata"), header.Filename, storedMime, storedBytes); meta != "" {
 		// Best-effort: the image is already stored; ignore a metadata failure.
 		_, _ = db.Exec("UPDATE images SET metadata = $1::jsonb WHERE id = $2", meta, id)
 	}
 
-	imageCache.Set(guid, cachedImage{Id: id, Data: data, MimeType: mimeType})
+	imageCache.Set(guid, cachedImage{Id: id, Data: raw, MimeType: mimeType})
 
 	name := guid
 	if ext := imageExt(header.Filename, mimeType); ext != "" {
@@ -255,9 +238,14 @@ func ServeByRef(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ci.MimeType != "" {
-		w.Header().Set("Content-Type", ci.MimeType)
+	// Always set a Content-Type. With X-Content-Type-Options: nosniff, a missing
+	// Content-Type stops the browser from rendering the image, so fall back to
+	// detecting it from the bytes when the stored mime is empty.
+	ct := ci.MimeType
+	if ct == "" {
+		ct = http.DetectContentType(ci.Data)
 	}
+	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
 	w.Write(ci.Data)
 }
@@ -366,16 +354,7 @@ func (m *Images) fieldset() []Field {
 		NewField("record_id", TYPE_INT, false).WithLabel("Record"),
 		NewField("filename", TYPE_STRING, false).WithLabel("Filename"),
 		NewField("mime_type", TYPE_STRING, false).WithLabel("Type"),
-		// Uploader: virtual username resolved from the created_by user id.
-		NewField("uploaded_by", TYPE_STRING, false).
-			WithLabel("Uploaded by").
-			AsVirtual().AsReadOnly().NonSortable().
-			WithSQL("(SELECT user_name FROM users u WHERE u.id = images.created_by)"),
 	}
-}
-
-func readOnly(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "access_log is read-only", http.StatusMethodNotAllowed)
 }
 
 // filters declares the list-mode filter bar for the images module (admin area):
@@ -386,11 +365,6 @@ func (m *Images) filters() *Filedset {
 		NewFilter("module", TYPE_STRING).WithLabel("Module").Contains(),
 		NewFilter("field", TYPE_STRING).WithLabel("Field").Contains(),
 		NewFilter("mime_type", TYPE_STRING).WithLabel("Type").Contains(),
-		// Uploader: type a username (substring). Matches images whose created_by
-		// resolves to a user whose name ILIKEs the value.
-		NewFilter("uploaded_by", TYPE_STRING).WithLabel("Uploaded by").
-			Contains().
-			WithSQLWhere("created_by IN (SELECT id FROM users WHERE user_name ILIKE %s)"),
 	)
 }
 
@@ -404,14 +378,16 @@ func NewImages() *Images {
 			DefaultPermission:    PERMISSION_READ,
 			DefaultPermissionSet: true,
 			OmitSystemFields:     []string{"updated"},
-			HiddenModes:          []string{"edit"}, // no edit button; create (upload) stays
-			Overrides: HandlerOverrides{
-				Edit: readOnly,
-			},
 		},
 	}
 	m.ModuleAbstract.Fields = m.fieldset()
 	m.ModuleAbstract.Filters = m.filters()
+
+	// New standard data hook: on create/edit (and on the upload path below), make
+	// sure an image row always has a mime_type — deriving it from the filename
+	// when missing — so ServeByRef can always set Content-Type (a missing type
+	// breaks rendering under X-Content-Type-Options: nosniff).
+	m.ModuleAbstract.AfterFieldset = fillMimeType
 
 	// The module owns its binary endpoints as custom routes (absolute paths).
 	m.ModuleAbstract.CustomRoutes = []CustomRoute{
@@ -421,6 +397,24 @@ func NewImages() *Images {
 	return m
 }
 
+// Module is the global images module instance, so the standalone upload handler
+// (Process) can run the same BeforeFieldset/AfterFieldset hooks as standard CRUD.
+var Module *Images
+
 func Init() {
-	NewImages().Initialize("images")
+	Module = NewImages()
+	Module.Initialize("images")
+}
+
+// fillMimeType is an AfterFieldset hook: guarantees a non-empty mime_type by
+// deriving it from the filename extension when missing.
+func fillMimeType(_ *http.Request, data map[string]interface{}) (map[string]interface{}, error) {
+	if mt, _ := data["mime_type"].(string); strings.TrimSpace(mt) == "" {
+		if fn, ok := data["filename"].(string); ok && fn != "" {
+			if guess := mime.TypeByExtension(filepath.Ext(fn)); guess != "" {
+				data["mime_type"] = guess
+			}
+		}
+	}
+	return data, nil
 }

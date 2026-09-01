@@ -76,7 +76,7 @@ func RunServer() {
 
 	serveErr := make(chan error, 1)
 	go func() {
-		log.Printf("HTTPS server listening on %s (Cloudflare TLS / HTTP/2 enabled)", srv.Addr)
+		log.Infof("HTTPS server listening on %s (Cloudflare TLS / HTTP/2 enabled)", srv.Addr)
 		err := srv.ListenAndServeTLS("", "")
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serveErr <- err

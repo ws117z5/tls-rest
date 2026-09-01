@@ -9,6 +9,7 @@ import (
 
 	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/log"
 
 	"github.com/go-pg/urlstruct"
 )
@@ -297,7 +298,7 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 	selectQuery += fmt.Sprintf(" LIMIT %d OFFSET %d", params.Limit, offset)
 
 	// Execute query
-	results, err := db.RQuery(selectQuery, selectArgs...)
+	results, err := db.GetAll(selectQuery, selectArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -565,7 +566,7 @@ func (fe *FieldsetEngine) ProcessTableFieldsInResult(result map[string]interface
 			tableData, err := fe.FetchTableFieldData(field, parentID)
 			if err != nil {
 				// Log error but don't fail the entire result
-				fmt.Printf("Warning: Failed to fetch table field data for %s: %v\n", field.Name, err)
+				log.Console.Warnf("Warning: Failed to fetch table field data for %s: %v\n", field.Name, err)
 				result[field.Name] = []interface{}{} // Empty array as fallback
 			} else {
 				result[field.Name] = tableData

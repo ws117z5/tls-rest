@@ -3,13 +3,12 @@ package papers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"time"
 
 	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/controllers/log"
 	"tls-rest/go/engine/controllers/module"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
@@ -205,7 +204,7 @@ func AddRoomUser(w http.ResponseWriter, r *http.Request) {
 
 	jsonUsers, err := json.Marshal(currentUsers)
 	if err != nil {
-		fmt.Println("error:", err)
+		log.Console.Errorf("error:", err)
 	}
 
 	pRoom.Users = string(jsonUsers)
@@ -247,7 +246,7 @@ func ViewRoomUsers(w http.ResponseWriter, r *http.Request) {
 
 	jsonUsers, err := json.Marshal(pRoom.Users)
 	if err != nil {
-		fmt.Println("error:", err)
+		log.Console.Errorf("error:", err)
 	}
 
 	w.Write(jsonUsers)

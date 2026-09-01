@@ -17,6 +17,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"uuid"
 )
 
 // This package wraps pgx v5 (github.com/jackc/pgx/v5). pgx speaks PostgreSQL's
@@ -168,7 +170,29 @@ func (db *Db) GetAffectedRows(result pgconn.CommandTag) (int64, error) {
 
 // GetAll fetches all rows as a slice of maps.
 func (db *Db) GetAll(query string, args ...interface{}) ([]map[string]interface{}, error) {
-	return db.RQuery(query, args...)
+
+	data, err := db.RQuery(query, args...)
+
+	if err != nil {
+		return nil, err
+	}
+
+	//fix for uuid
+	for _, row := range data {
+		if rawVal, exists := row["uuid"]; exists {
+
+			// 1. Assert the interface{} down to the []byte slice
+			byteArray, ok := rawVal.([16]uint8)
+			if !ok {
+				return nil, fmt.Errorf("Error: value is not a [16]uint8 array")
+			}
+
+			// 3. Update the map with the string representation or the native object
+			row["uuid"] = uuid.UUID(byteArray).String()
+		}
+	}
+
+	return data, nil
 }
 
 // GetOne fetches the first row as a map. Returns an error if no rows match.

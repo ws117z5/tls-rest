@@ -1,10 +1,10 @@
 package papers
 
 import (
-	"fmt"
 	"time"
 
 	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/controllers/log"
 
 	"github.com/pion/webrtc/v4"
 )
@@ -38,32 +38,32 @@ func (neg *Negotiatior) SpawnPeerConnections() {
 		// Set the handler for Peer connection state
 		// This will notify you when the peer has connected/disconnected
 		pc.OnConnectionStateChange(func(s webrtc.PeerConnectionState) {
-			fmt.Printf("Peer Connection State has changed: %s\n", s.String())
+			log.Console.Infof("Peer Connection State has changed: %s\n", s.String())
 
 			if s == webrtc.PeerConnectionStateFailed {
 				// Wait until PeerConnection has had no network activity for 30 seconds or another failure. It may be reconnected using an ICE Restart.
 				// Use webrtc.PeerConnectionStateDisconnected if you are interested in detecting faster timeout.
 				// Note that the PeerConnection may come back from PeerConnectionStateDisconnected.
-				fmt.Println("Peer Connection has gone to failed exiting")
+				log.Console.Error("Peer Connection has gone to failed exiting")
 				//os.Exit(0)
 
 				if cErr := pc.Close(); cErr != nil {
-					fmt.Printf("cannot close peerConnection: %v\n", cErr)
+					log.Console.Errorf("cannot close peerConnection: %v\n", cErr)
 				}
 			}
 		})
 
 		// Register data channel creation handling
 		pc.OnDataChannel(func(d *webrtc.DataChannel) {
-			fmt.Printf("New DataChannel %s %d\n", d.Label(), d.ID())
+			log.Console.Infof("New DataChannel %s %d\n", d.Label(), d.ID())
 
 			// Register channel opening handling
 			d.OnOpen(func() {
-				//fmt.Printf("Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n", d.Label(), d.ID())
+				//log.Console.Errorf("Data channel '%s'-'%d' open. Random messages will now be sent to any connected DataChannels every 5 seconds\n", d.Label(), d.ID())
 
 				// for range time.NewTicker(5 * time.Second).C {
 				// 	message := signal.RandSeq(15)
-				// 	fmt.Printf("Sending '%s'\n", message)
+				// 	log.Console.Errorf("Sending '%s'\n", message)
 
 				// 	// Send the message as text
 				// 	sendErr := d.SendText(message)
@@ -102,7 +102,7 @@ func (neg *Negotiatior) SpawnPeerConnections() {
 					neg.notifyAll(message.roomId, *message)
 				}
 
-				fmt.Printf("Message from DataChannel '%s': '%s'\n", d.Label(), string(msg.Data))
+				log.Console.Infof("Message from DataChannel '%s': '%s'\n", d.Label(), string(msg.Data))
 			})
 		})
 
@@ -154,7 +154,7 @@ func (c *Negotiatior) PutRoomMessage(roomId string, userId string, msg interface
 	case Message:
 		c.roomMessages[roomId] = append(c.roomMessages[roomId], msg.(Message))
 	default:
-		fmt.Printf("Print() invoked with unsupported type: '%T' (expected '%T')\n", msg, v)
+		log.Console.Errorf("Print() invoked with unsupported type: '%T' (expected '%T')\n", msg, v)
 		return
 	}
 

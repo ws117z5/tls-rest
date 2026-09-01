@@ -341,8 +341,9 @@ func intersectModes(have, allow []string) []string {
 	return out
 }
 
-// userAvatar returns the menu avatar URL for a user, or "" if none. The profile
-// image is a type_image ref stored on users.image and served at /image/<ref>.
+// userAvatar returns the menu avatar URL for a user, or "" if none. users.image
+// is a type_image field: a JSON array of refs (each already carrying a
+// "/image/<uuid>.<ext>" url). Use the first ref's url.
 func userAvatar(userID int) string {
 	db, err := pgdb.GetInstance()
 	if err != nil {
@@ -352,11 +353,31 @@ func userAvatar(userID int) string {
 	if err != nil || row == nil {
 		return ""
 	}
-	ref, _ := row["image"].(string)
-	if ref == "" {
+	raw, _ := row["image"].(string)
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
 		return ""
 	}
-	return "/image/" + ref
+
+	var refs []struct {
+		URL  string `json:"url"`
+		UUID string `json:"uuid"`
+	}
+	if err := json.Unmarshal([]byte(raw), &refs); err == nil && len(refs) > 0 {
+		if refs[0].URL != "" {
+			return refs[0].URL
+		}
+		if refs[0].UUID != "" {
+			return "/image/" + refs[0].UUID
+		}
+		return ""
+	}
+
+	// Back-compat: a value stored as a plain url or uuid string.
+	if strings.HasPrefix(raw, "/image/") {
+		return raw
+	}
+	return "/image/" + raw
 }
 
 // PagesAPI handles GET /api/pages. It returns the backend-registered pages

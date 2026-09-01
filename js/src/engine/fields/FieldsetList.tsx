@@ -11,6 +11,7 @@ interface ListData {
 interface FieldsetListProps {
   data?: ListData[];
   onRowClick?: (row: ListData, index: number) => void;
+  onRowDoubleClick?: (row: ListData, index: number) => void;
   onEdit?: (row: ListData, index: number) => void;
   onDelete?: (row: ListData, index: number) => void;
   // Bulk delete of the selected rows. Falls back to calling onDelete per row.
@@ -311,16 +312,17 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
   };
 
   renderTableRow = (row: ListData, index: number, fields: any[]) => {
-    const { onRowClick, onEdit, onDelete, onView, showActions, selectable } = this.props;
+    const { onRowClick, onRowDoubleClick, onEdit, onDelete, onView, showActions, selectable } = this.props;
     const id = this.rowId(row, index);
     const isSelected = this.state.selected.has(id);
 
     return (
       <tr
         key={id}
-        className={`${onRowClick ? 'clickable-row' : ''} ${isSelected ? 'table-active' : ''}`}
+        className={`${(onRowClick || onRowDoubleClick) ? 'clickable-row' : ''} ${isSelected ? 'table-active' : ''}`}
         onClick={onRowClick ? () => onRowClick(row, index) : undefined}
-        style={onRowClick ? { cursor: 'pointer' } : {}}
+        onDoubleClick={onRowDoubleClick ? () => onRowDoubleClick(row, index) : undefined}
+        style={(onRowClick || onRowDoubleClick) ? { cursor: 'pointer' } : {}}
       >
         {selectable && (
           <td onClick={e => e.stopPropagation()}>

@@ -66,6 +66,23 @@ func NewPosts() *Posts {
 	m.ModuleAbstract.Fields = m.fieldset()
 	m.ModuleAbstract.Filters = m.filters()
 
+	/** just an example of BeforeFieldset and AfterFieldset methods
+	slugify := func(value string) string {
+		return value[0:len(value)-2]
+	}
+
+	m.BeforeFieldset = func(r *http.Request, data map[string]interface{}) (map[string]interface{}, error) {
+		if s, ok := data["slug"].(string); !ok || s == "" {
+				data["slug"] = slugify(data["title"].(string))   // inject before validation
+		}
+		return data, nil
+	}
+	m.AfterFieldset = func(r *http.Request, data map[string]interface{}) (map[string]interface{}, error) {
+		data["search"] = strings.ToLower(fmt.Sprint(data["title"], " ", data["body"])) // derive right before save
+		return data, nil
+	}
+	**/
+
 	m.Initialize("posts")
 
 	return m

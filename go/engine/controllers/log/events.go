@@ -53,6 +53,7 @@ type EventLog struct {
 	Data       map[string]interface{} `json:"data,omitempty"`
 	Error      string                 `json:"error,omitempty"`
 	StackTrace string                 `json:"stack_trace,omitempty"`
+	Source     string                 `json:"source,omitempty"` // pkg/file.go:line
 }
 
 // EventLogger handles all event logging
@@ -275,8 +276,14 @@ func LogDatabaseEvent(operation, query string, duration float64, rowsAffected in
 }
 
 func (el *EventLogger) writeEvent(event EventLog) {
-	// Write to console
+	if event.Source == "" {
+		event.Source = capture()
+	}
+	// Uniform colored console line (same format as the leveled API).
 	el.writeToConsole(event)
+
+	// Fan out to subscribers (event emitting).
+	emitEvent(el.toEvent(event))
 
 	// Write to file if enabled
 	if el.writeToFile && el.logFile != nil {
@@ -289,9 +296,52 @@ func (el *EventLogger) writeEvent(event EventLog) {
 	}
 }
 
+// toEvent maps a structured EventLog to the unified Event shape for subscribers.
+func (el *EventLogger) toEvent(e EventLog) Event {
+	return Event{
+		Time:    e.Timestamp,
+		Level:   string(e.Level),
+		Module:  e.Module,
+		Message: e.Message,
+		Data:    e.Data,
+	}
+}
+
+// persist writes a leveled Event (from log.go's LOG_STORE sink) to the configured
+// storage sinks only. Console is handled by log.go so it isn't duplicated.
+func persist(ev Event) {
+	if GlobalEventLogger == nil {
+		return
+	}
+	e := EventLog{
+		ID:        generateEventID(),
+		Timestamp: ev.Time,
+		Type:      EventTypeSystem,
+		Level:     LogLevel(ev.Level),
+		Message:   ev.Message,
+		Module:    ev.Module,
+		Data:      ev.Data,
+		Source:    ev.Source,
+	}
+	if e.Timestamp.IsZero() {
+		e.Timestamp = time.Now()
+	}
+	if GlobalEventLogger.writeToFile && GlobalEventLogger.logFile != nil {
+		GlobalEventLogger.writeToLogFile(e)
+	}
+	if GlobalEventLogger.writeToDb {
+		GlobalEventLogger.writeToDatabase(e)
+	}
+}
+
+// writeToConsole prints one uniform colored line (shared format), tagging the
+// module when present, otherwise the event type.
 func (el *EventLogger) writeToConsole(event EventLog) {
-	jsonBytes, _ := json.Marshal(event)
-	fmt.Printf("[%s] %s: %s\n", event.Level, event.Type, string(jsonBytes))
+	tag := event.Module
+	if tag == "" {
+		tag = string(event.Type)
+	}
+	printLine(levelByName(string(event.Level)), tag, event.Source, event.Message)
 }
 
 func (el *EventLogger) writeToLogFile(event EventLog) {
@@ -318,7 +368,7 @@ func (el *EventLogger) writeToDatabase(event EventLog) {
 		"event_id":    event.ID,
 		"ts":          event.Timestamp,
 		"type":        string(event.Type),
-		"level":       string(event.Level),
+		"level":       string(dbLevel(event.Level)),
 		"message":     event.Message,
 		"module":      nullIfEmpty(event.Module),
 		"action":      nullIfEmpty(event.Action),
@@ -327,6 +377,7 @@ func (el *EventLogger) writeToDatabase(event EventLog) {
 		"method":      nullIfEmpty(event.Method),
 		"ip_address":  nullIfEmpty(event.IPAddress),
 		"error":       nullIfEmpty(event.Error),
+		"source":      nullIfEmpty(event.Source),
 	}
 	if event.UserID != nil {
 		row["user_id"] = *event.UserID

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"tls-rest/go/engine/controllers/db/cache"
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/httpx"
 	"tls-rest/go/engine/controllers/log"
@@ -108,7 +109,7 @@ func (bc *BaseController) respondError(w http.ResponseWriter, status int, messag
 			modID = bc.Module.ID
 		}
 		logID = log.LogErrorWithID(message, modID, errStr)
-		ModuleLogger.Printf("%s [log_id=%s]: %v", message, logID, err)
+		ModuleLog.Errorf("%s [log_id=%s]: %v", message, logID, err)
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -219,6 +220,16 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// BeforeFieldset hook: transform the raw body before any field processing.
+	if bc.Module != nil && bc.Module.BeforeFieldset != nil {
+		updated, herr := bc.Module.BeforeFieldset(r, data)
+		if herr != nil {
+			bc.respondError(w, http.StatusBadRequest, herr.Error(), nil)
+			return
+		}
+		data = updated
+	}
+
 	// Validate required fields
 	if err := bc.validateRequiredFields(data, MODE_SUBMIT); err != nil {
 		bc.respondError(w, http.StatusBadRequest, err.Error(), nil)
@@ -227,6 +238,24 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 
 	// Filter data to only include valid fields
 	filteredData := bc.filterValidFields(r, data, MODE_SUBMIT)
+
+	// Stamp the creating user. created_by is a system field the client never
+	// submits; fill it from the session when the table has the column.
+	if s := cache.SessionFromContext(r.Context()); s != nil && s.UserID > 0 {
+		if bc.Engine != nil && bc.Engine.hasField("created_by") {
+			filteredData["created_by"] = s.UserID
+		}
+	}
+
+	// AfterFieldset hook: last chance to transform data before the DB write.
+	if bc.Module != nil && bc.Module.AfterFieldset != nil {
+		updated, herr := bc.Module.AfterFieldset(r, filteredData)
+		if herr != nil {
+			bc.respondError(w, http.StatusBadRequest, herr.Error(), nil)
+			return
+		}
+		filteredData = updated
+	}
 
 	// Insert record
 	id, err := bc.insertRecord(filteredData)
@@ -263,8 +292,28 @@ func (bc *BaseController) Edit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// BeforeFieldset hook: transform the raw body before any field processing.
+	if bc.Module != nil && bc.Module.BeforeFieldset != nil {
+		updated, herr := bc.Module.BeforeFieldset(r, data)
+		if herr != nil {
+			bc.respondError(w, http.StatusBadRequest, herr.Error(), nil)
+			return
+		}
+		data = updated
+	}
+
 	// Filter data to only include valid fields (excluding read-only fields)
 	filteredData := bc.filterValidFields(r, data, MODE_SUBMIT)
+
+	// AfterFieldset hook: last chance to transform data before the DB write.
+	if bc.Module != nil && bc.Module.AfterFieldset != nil {
+		updated, herr := bc.Module.AfterFieldset(r, filteredData)
+		if herr != nil {
+			bc.respondError(w, http.StatusBadRequest, herr.Error(), nil)
+			return
+		}
+		filteredData = updated
+	}
 
 	// Update record
 	err := bc.updateRecord(id, filteredData)

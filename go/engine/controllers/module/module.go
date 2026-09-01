@@ -3,7 +3,6 @@ package module
 import (
 	"errors"
 	"fmt"
-	stdlog "log"
 	"net/http"
 	"strings"
 	"time"
@@ -129,7 +128,22 @@ type ModuleAbstract[T any] struct {
 	// Requires a created_by column (present unless dropped via OmitSystemFields);
 	// admins are not scoped. Use for per-user data such as a personal word list.
 	OwnerScoped bool
+
+	// BeforeFieldset and AfterFieldset are optional data hooks around field
+	// processing on create/update, letting a module change the data before it is
+	// written (the module-level analogue of the images Preprocessor).
+	//   BeforeFieldset — receives the RAW decoded request body, before the
+	//                    fieldset filters/coerces/validates fields.
+	//   AfterFieldset  — receives the FILTERED data, just before the DB write.
+	// Each returns the (possibly modified) data, or an error to abort with 400.
+	BeforeFieldset Preprocessor
+	AfterFieldset  Preprocessor
 }
+
+// Preprocessor transforms a submitted data map during create/update. Use it to
+// derive, normalize, inject, or strip fields before persistence. r is the request
+// (read mux.Vars for the id on update, or the session); data is the working map.
+type Preprocessor func(r *http.Request, data map[string]interface{}) (map[string]interface{}, error)
 
 func (m *ModuleAbstract[T]) GetID() string {
 	return m.ID
@@ -213,12 +227,13 @@ type ModuleEvent struct {
 }
 
 // Module event logger
-var ModuleLogger = stdlog.New(stdlog.Writer(), "[MODULE] ", stdlog.LstdFlags|stdlog.Lshortfile)
+// Module lifecycle diagnostics go to the console-only logger (never file/db).
+var ModuleLog = log.Console.With("module")
 
 // RegisterModuleDefaultPermission sets the default permission for a module
 func RegisterModuleDefaultPermission(module string, defaultPermission int) {
 	ModuleDefaultPermissions[module] = defaultPermission
-	ModuleLogger.Printf("Default permission %d registered for module %s", defaultPermission, module)
+	ModuleLog.Debugf("Default permission %d registered for module %s", defaultPermission, module)
 }
 
 // SetModuleDefaultPermission sets default permission for a module instance
@@ -282,7 +297,7 @@ func LogModuleEvent(event ModuleEvent) {
 		logMsg += fmt.Sprintf(", Details: %s", event.Details)
 	}
 
-	ModuleLogger.Println(logMsg)
+	ModuleLog.Debug(logMsg)
 }
 
 // Helper function to create event from HTTP request
@@ -350,7 +365,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 			event.Error = fmt.Sprintf("PANIC during initialization: %v", r)
 			event.Duration = time.Since(startTime).Milliseconds()
 			LogModuleEvent(event)
-			ModuleLogger.Printf("PANIC in module %s initialization: %v", m.ID, r)
+			ModuleLog.Errorf("PANIC in module %s initialization: %v", m.ID, r)
 			panic(r) // Re-panic to maintain original behavior
 		} else {
 			event.Duration = time.Since(startTime).Milliseconds()
@@ -474,7 +489,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	}
 
 	// Create a non-generic wrapper for the controller
-	ModuleLogger.Printf("Creating controller wrapper for module: %s", m.ID)
+	ModuleLog.Debugf("Creating controller wrapper for module: %s", m.ID)
 
 	moduleWrapper := &ModuleAbstract[interface{}]{
 		ID:      m.ID,
@@ -484,7 +499,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		Rights:  m.Rights,
 	}
 
-	ModuleLogger.Printf("Creating base controller for module: %s", m.ID)
+	ModuleLog.Debugf("Creating base controller for module: %s", m.ID)
 	m.Controller = NewBaseController(moduleWrapper, tableName)
 
 	if m.Controller == nil {
@@ -492,7 +507,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	}
 
 	// Register globally for automatic routing
-	ModuleLogger.Printf("Registering module globally: %s", m.ID)
+	ModuleLog.Debugf("Registering module globally: %s", m.ID)
 	RegisteredModules[m.ID] = m
 
 	// Publish menu metadata so /api/modules can list it (no go.config.json).
@@ -517,15 +532,15 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 
 	// Automatically register routes if GlobalRouter is available and auto-registration is enabled
 	if GlobalRouter != nil && AutoRegisterRoutes {
-		ModuleLogger.Printf("Auto-registering routes for module: %s", m.ID)
+		ModuleLog.Debugf("Auto-registering routes for module: %s", m.ID)
 		registerSingleModuleRoutes(GlobalRouter, m)
 	}
 
 	if GlobalFieldsetHandler != nil {
-		ModuleLogger.Printf("Registering module with fieldset handler: %s", m.ID)
+		ModuleLog.Debugf("Registering module with fieldset handler: %s", m.ID)
 		GlobalFieldsetHandler.RegisterModule(moduleWrapper)
 	} else {
-		ModuleLogger.Printf("WARNING: GlobalFieldsetHandler is nil for module: %s", m.ID)
+		ModuleLog.Warnf("GlobalFieldsetHandler is nil for module: %s", m.ID)
 	}
 }
 
@@ -948,7 +963,7 @@ func (m *ModuleAbstract[T]) EnsureTableExists() error {
 		// module can gain a field without a manual migration, e.g. the rights
 		// modules' "fields" column that activates field-level rights.
 		if err := m.addMissingColumns(db); err != nil {
-			ModuleLogger.Printf("reconcile columns for %s: %v", m.ID, err)
+			ModuleLog.Warnf("reconcile columns for %s: %v", m.ID, err)
 		}
 		event.Details = "Table already exists"
 		return nil // Table already exists
@@ -1126,7 +1141,7 @@ func GetRightNames(rights int) []string {
 // registerSingleModuleRoutes registers routes for a single module
 func registerSingleModuleRoutes(router *mux.Router, module ModuleInterface) {
 	moduleID := module.GetID()
-	ModuleLogger.Printf("Registering routes for module: %s", moduleID)
+	ModuleLog.Debugf("Registering routes for module: %s", moduleID)
 
 	// Create subrouter for this module
 	subrouter := router.PathPrefix("/" + moduleID).Subrouter()
@@ -1151,11 +1166,11 @@ func registerSingleModuleRoutes(router *mux.Router, module ModuleInterface) {
 			} else {
 				subrouter.HandleFunc(rt.Path, rt.Handler).Methods(methods...)
 			}
-			ModuleLogger.Printf("  custom route for %s: %v %s (absolute=%v)", moduleID, methods, rt.Path, rt.Absolute)
+			ModuleLog.Debugf("  custom route for %s: %v %s (absolute=%v)", moduleID, methods, rt.Path, rt.Absolute)
 		}
 	}
 
-	ModuleLogger.Printf("Routes registered for module %s: GET,POST /%s, GET,PUT,PATCH,DELETE /%s/{id}",
+	ModuleLog.Debugf("Routes registered for module %s: GET,POST /%s, GET,PUT,PATCH,DELETE /%s/{id}",
 		moduleID, moduleID, moduleID)
 }
 
@@ -1164,24 +1179,24 @@ func RegisterModuleRoutes(router *mux.Router) {
 	startTime := time.Now()
 	moduleCount := len(RegisteredModules)
 
-	ModuleLogger.Printf("Starting automatic route registration for %d modules", moduleCount)
+	ModuleLog.Debugf("Starting automatic route registration for %d modules", moduleCount)
 
 	for _, module := range RegisteredModules {
 		registerSingleModuleRoutes(router, module)
 	}
 
 	duration := time.Since(startTime).Milliseconds()
-	ModuleLogger.Printf("Route registration completed in %dms. %d modules registered.", duration, moduleCount)
+	ModuleLog.Debugf("Route registration completed in %dms. %d modules registered.", duration, moduleCount)
 }
 
 // SetGlobalRouter sets the global router for automatic route registration
 func SetGlobalRouter(router *mux.Router) {
 	GlobalRouter = router
-	ModuleLogger.Printf("Global router set for automatic module route registration")
+	ModuleLog.Debugf("Global router set for automatic module route registration")
 
 	// Register existing modules if any
 	if len(RegisteredModules) > 0 {
-		ModuleLogger.Printf("Registering %d existing modules with new global router", len(RegisteredModules))
+		ModuleLog.Debugf("Registering %d existing modules with new global router", len(RegisteredModules))
 		for _, module := range RegisteredModules {
 			registerSingleModuleRoutes(router, module)
 		}
@@ -1192,9 +1207,9 @@ func SetGlobalRouter(router *mux.Router) {
 func EnableAutoRegistration(enabled bool) {
 	AutoRegisterRoutes = enabled
 	if enabled {
-		ModuleLogger.Printf("Automatic route registration ENABLED")
+		ModuleLog.Debugf("Automatic route registration ENABLED")
 	} else {
-		ModuleLogger.Printf("Automatic route registration DISABLED")
+		ModuleLog.Debugf("Automatic route registration DISABLED")
 	}
 }
 
@@ -1206,7 +1221,7 @@ func RegisterModuleByID(router *mux.Router, moduleID string) error {
 	}
 
 	registerSingleModuleRoutes(router, module)
-	ModuleLogger.Printf("Manually registered routes for module: %s", moduleID)
+	ModuleLog.Debugf("Manually registered routes for module: %s", moduleID)
 	return nil
 }
 
