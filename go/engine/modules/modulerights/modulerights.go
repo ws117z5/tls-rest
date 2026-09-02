@@ -3,6 +3,7 @@ package modulerights
 import (
 	"tls-rest/go/engine/controllers/auth"
 	. "tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/functions"
 	. "tls-rest/go/engine/controllers/module"
 )
 
@@ -97,7 +98,7 @@ func fieldsField() Field {
 				}
 				modes := []string{}
 				for _, m := range []string{"list", "view", "create", "edit", "delete"} {
-					if truthy(r[m]) {
+					if functions.Truthy(r[m]) {
 						modes = append(modes, m)
 					}
 				}
@@ -109,27 +110,13 @@ func fieldsField() Field {
 		})
 }
 
-// truthy interprets a checkbox cell value (bool, "true"/"1", 1, etc.).
-func truthy(v interface{}) bool {
-	switch t := v.(type) {
-	case bool:
-		return t
-	case string:
-		return t == "true" || t == "1" || t == "on"
-	case float64:
-		return t != 0
-	case int:
-		return t != 0
-	}
-	return false
-}
-
 // GroupRightsModule: per-group module rights. Stored group_id as an integer FK
 // (INTEGER column) so it joins cleanly to users.user_group; rendered as a select.
 var GroupRightsModule = &ModuleAbstract[interface{}]{
-	ID:      "user_group_rights",
-	Name:    "Group Rights",
-	Submenu: "engine",
+	ID:              "user_group_rights",
+	RightsAffecting: true,
+	Name:            "Group Rights",
+	Submenu:         "engine",
 	Fields: []Field{
 		NewField("group_id", TYPE_INT, true).
 			WithLabel("User Group").
@@ -151,9 +138,10 @@ var GroupRightsModule = &ModuleAbstract[interface{}]{
 // UserRightsModule: extra per-user module rights, additive on top of the user's
 // group rights.
 var UserRightsModule = &ModuleAbstract[interface{}]{
-	ID:      "user_rights",
-	Name:    "User Rights",
-	Submenu: "engine",
+	ID:              "user_rights",
+	RightsAffecting: true,
+	Name:            "User Rights",
+	Submenu:         "engine",
 	Fields: []Field{
 		NewField("user_id", TYPE_INT, true).
 			WithLabel("User").
@@ -173,7 +161,38 @@ var UserRightsModule = &ModuleAbstract[interface{}]{
 }
 
 // Register wires this package into the engine (called from go/imports.go).
+// GroupMembersModule: additional group memberships, letting a user belong to
+// MULTIPLE groups beyond the primary users.user_group. Rights are aggregated
+// across every group a user is in (see auth's userGroupsSubquery).
+var GroupMembersModule = &ModuleAbstract[interface{}]{
+	ID:              "user_group_members",
+	RightsAffecting: true,
+	Name:            "Group Members",
+	Submenu:         "engine",
+	Fields: []Field{
+		NewField("user_id", TYPE_INT, true).
+			WithLabel("User").
+			WithDescription("User to add to a group").
+			WithOption("widget", "select").
+			WithOption("dataSource", "users").
+			WithOption("valueField", "id").
+			WithOption("displayField", "user_name"),
+		NewField("group_id", TYPE_INT, true).
+			WithLabel("User Group").
+			WithDescription("Group to add the user to").
+			WithOption("widget", "select").
+			WithOption("dataSource", "user_groups").
+			WithOption("valueField", "id").
+			WithOption("displayField", "name"),
+	},
+	// Administration module: no access unless explicitly granted (or admin).
+	DefaultPermission:    PERMISSION_DENY,
+	DefaultPermissionSet: true,
+	Rights:               make(map[int]int),
+}
+
 func Init() {
 	GroupRightsModule.Initialize("user_group_rights")
 	UserRightsModule.Initialize("user_rights")
+	GroupMembersModule.Initialize("user_group_members")
 }

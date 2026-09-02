@@ -81,6 +81,13 @@ type Session struct {
 
 	Expire     time.Time
 	LastAccess time.Time
+
+	// RightsEpoch is the value of auth's global rights epoch when this session's
+	// rights (ModuleModes/FieldRights/AccessLevel/IsAdmin) were last resolved.
+	// The per-request path re-resolves only when it no longer matches the current
+	// epoch (i.e. a user/group/rights change bumped it), so rights are cached in
+	// the session and recomputed on change instead of on every request.
+	RightsEpoch int64
 }
 
 // ContextKey is the type used for request-context keys defined by this package.
@@ -191,6 +198,7 @@ func (c *Cache[T]) Set(key string, value T) {
 	c.store(key, value)
 }
 
+// Get retrieves a value by key.
 func (c *Cache[T]) Get(key string) (*T, error) {
 	c.Lock()
 	defer c.Unlock()
@@ -278,4 +286,46 @@ func (c *Cache[T]) evict() {
 		}
 		c.remove(lruKey)
 	}
+}
+
+// Keys returns all cached keys (admin/console introspection).
+func (c *Cache[T]) Keys() []string {
+	c.Lock()
+	defer c.Unlock()
+	keys := make([]string, 0, len(c.data))
+	for k := range c.data {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+// Len returns the number of cached entries.
+func (c *Cache[T]) Len() int {
+	c.Lock()
+	defer c.Unlock()
+	return len(c.data)
+}
+
+// Delete removes a single entry.
+func (c *Cache[T]) Delete(key string) {
+	c.Lock()
+	defer c.Unlock()
+	if _, ok := c.data[key]; ok {
+		c.curBytes -= c.sizes[key]
+		delete(c.data, key)
+		delete(c.lastAccess, key)
+		delete(c.expireOn, key)
+		delete(c.sizes, key)
+	}
+}
+
+// Clear removes every entry.
+func (c *Cache[T]) Clear() {
+	c.Lock()
+	defer c.Unlock()
+	c.data = make(map[string]T)
+	c.lastAccess = make(map[string]time.Time)
+	c.expireOn = make(map[string]time.Time)
+	c.sizes = make(map[string]int64)
+	c.curBytes = 0
 }

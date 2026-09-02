@@ -447,7 +447,7 @@ func selectOptionsFromTable(table, valueField, displayField string) []map[string
 	for _, row := range rows {
 		options = append(options, map[string]interface{}{
 			"value": row["value"],
-			"name":  pgdb.Coerce[string](row["label"]),
+			"name":  functions.Coerce[string](row["label"]),
 		})
 	}
 	return options

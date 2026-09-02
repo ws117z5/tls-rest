@@ -1,6 +1,9 @@
 package registry
 
 import (
+	auth "tls-rest/go/engine/controllers/auth"
+	module "tls-rest/go/engine/controllers/module"
+
 	// Engine modules
 	accesslog "tls-rest/go/engine/modules/accesslog"
 	accessrules "tls-rest/go/engine/modules/accessrules"
@@ -29,6 +32,9 @@ import (
 // RegisterAll registers every module, page, and feature. Call once from main()
 // before the router is assembled.
 func InitAll() {
+	// Invalidate cached session rights when users/groups/rights change.
+	module.OnRightsChange = auth.BumpRightsEpoch
+
 	// --- Modules ---
 	users.Init()
 	posts.Init()

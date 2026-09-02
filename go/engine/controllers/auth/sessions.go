@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"tls-rest/go/engine/controllers/functions"
@@ -20,6 +21,21 @@ type ContextKey string
 // module engine) can read the same session via cache.SessionFromContext.
 var SESSION_KEY = cache.SessionKey
 
+// rightsEpoch is bumped whenever anything that affects resolved rights changes
+// (users, groups, user_rights, user_group_rights). Sessions record the epoch they
+// resolved at; the per-request path re-resolves only on a mismatch, so rights are
+// cached in the session and recomputed on change — not on every request. Cache
+// eviction recreates the session, which resolves fresh anyway.
+var rightsEpoch int64
+
+// CurrentRightsEpoch returns the current global rights epoch.
+func CurrentRightsEpoch() int64 { return atomic.LoadInt64(&rightsEpoch) }
+
+// BumpRightsEpoch invalidates cached session rights everywhere. Call it after any
+// change to users, groups, or rights so active sessions pick up the new rights on
+// their next request.
+func BumpRightsEpoch() { atomic.AddInt64(&rightsEpoch, 1) }
+
 // fillSessionRights resolves and attaches the user's per-module mode rights,
 // access level and admin status to the session, in a single place so every code
 // path (new session, restored session, anonymous) is populated consistently.
@@ -29,6 +45,13 @@ func fillSessionRights(s *cache.Session) {
 	s.FieldRights = ResolveModuleFieldRights(s.UserID)
 	s.AccessLevel = ResolveUserAccessLevel(s.UserID)
 	s.IsAdmin = ResolveIsAdmin(s.UserID)
+	s.RightsEpoch = CurrentRightsEpoch()
+}
+
+// rightsStale reports whether a stored session's cached rights predate the
+// current epoch and must be re-resolved.
+func rightsStale(s *cache.Session) bool {
+	return s.RightsEpoch != CurrentRightsEpoch()
 }
 
 // Checks session and fills cache with session data
@@ -110,9 +133,12 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 			stored.Expire = time.Now().Add(30 * 24 * time.Hour) // 30 days
 			stored.LastAccess = time.Now()
 
-			// Resolve the user's rights, access level and admin status through the
-			// per-mode group model (resolve.go), in one place for every session.
-			fillSessionRights(stored)
+			// Rights are cached in the session; only re-resolve when a
+			// user/group/rights change bumped the global epoch. This avoids
+			// hitting the DB for rights on every request.
+			if rightsStale(stored) {
+				fillSessionRights(stored)
+			}
 
 			cache.SessionCacheInstance.Set(hash, *stored)
 
@@ -208,7 +234,9 @@ func tokenFromHeader(r *http.Request) (string, bool) {
 func manageTokenSession(tok string) *cache.Session {
 	if stored, err := cache.SessionCacheInstance.Get(tok); err == nil && stored != nil && stored.Expire.After(time.Now()) {
 		stored.LastAccess = time.Now()
-		fillSessionRights(stored)
+		if rightsStale(stored) {
+			fillSessionRights(stored)
+		}
 		cache.SessionCacheInstance.Set(tok, *stored)
 		return stored
 	}

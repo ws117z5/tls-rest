@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
+	"tls-rest/go/engine/controllers/functions"
 )
 
 // Rule is one IP/CIDR access-control rule loaded from the access_rule table.
@@ -75,20 +76,20 @@ func ReloadRules() []Rule {
 
 	parsed := make([]Rule, 0, len(rows))
 	for _, row := range rows {
-		cidr := pgdb.Coerce[string](row["cidr"])
+		cidr := functions.Coerce[string](row["cidr"])
 		n := parseCIDR(cidr)
 		if n == nil {
 			continue
 		}
-		action := pgdb.Coerce[string](row["action"])
+		action := functions.Coerce[string](row["action"])
 		if action != "allow" {
 			action = "deny"
 		}
 		parsed = append(parsed, Rule{
-			ID:       pgdb.Coerce[int64](row["id"]),
+			ID:       functions.Coerce[int64](row["id"]),
 			Net:      n,
 			Action:   action,
-			Priority: int(pgdb.Coerce[int64](row["priority"])),
+			Priority: int(functions.Coerce[int64](row["priority"])),
 		})
 	}
 

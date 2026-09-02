@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
+	"tls-rest/go/engine/controllers/functions"
 )
 
 // OAuthAccount is the provider-agnostic result of an OAuth sign-in, normalized
@@ -38,7 +39,7 @@ func FindOrCreateOAuthUser(a *OAuthAccount) (int64, string, error) {
 			`SELECT id, user_name FROM users WHERE auth_provider = $1 AND auth_provider_id = $2 LIMIT 1`,
 			a.Provider, a.ProviderID,
 		); e == nil && row != nil {
-			return pgdb.Coerce[int64](row["id"]), pgdb.Coerce[string](row["user_name"]), nil
+			return functions.Coerce[int64](row["id"]), functions.Coerce[string](row["user_name"]), nil
 		}
 	}
 
@@ -47,14 +48,14 @@ func FindOrCreateOAuthUser(a *OAuthAccount) (int64, string, error) {
 		if row, e := db.GetOne(
 			`SELECT id, user_name FROM users WHERE lower(email) = lower($1) LIMIT 1`, a.Email,
 		); e == nil && row != nil {
-			id := pgdb.Coerce[int64](row["id"])
+			id := functions.Coerce[int64](row["id"])
 			if a.Provider != "" && a.ProviderID != "" {
 				_, _ = db.UpdateRow("users", map[string]interface{}{
 					"auth_provider":    a.Provider,
 					"auth_provider_id": a.ProviderID,
 				}, "id", id)
 			}
-			return id, pgdb.Coerce[string](row["user_name"]), nil
+			return id, functions.Coerce[string](row["user_name"]), nil
 		}
 	}
 

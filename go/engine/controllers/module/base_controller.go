@@ -263,6 +263,7 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 		bc.respondError(w, http.StatusInternalServerError, "Failed to create record", err)
 		return
 	}
+	bc.notifyRightsChange()
 
 	// Return created record
 	response := map[string]interface{}{
@@ -321,6 +322,7 @@ func (bc *BaseController) Edit(w http.ResponseWriter, r *http.Request) {
 		bc.respondError(w, http.StatusInternalServerError, "Failed to update record", err)
 		return
 	}
+	bc.notifyRightsChange()
 
 	response := map[string]interface{}{
 		"id":      id,
@@ -346,6 +348,7 @@ func (bc *BaseController) Delete(w http.ResponseWriter, r *http.Request) {
 		bc.respondError(w, http.StatusInternalServerError, "Failed to delete record", err)
 		return
 	}
+	bc.notifyRightsChange()
 
 	response := map[string]interface{}{
 		"id":      id,
@@ -354,6 +357,15 @@ func (bc *BaseController) Delete(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// notifyRightsChange fires the OnRightsChange callback for RightsAffecting
+// modules, so cached session rights are invalidated after users/groups/rights
+// are created, edited or deleted.
+func (bc *BaseController) notifyRightsChange() {
+	if bc.Module != nil && bc.Module.RightsAffecting && OnRightsChange != nil {
+		OnRightsChange()
+	}
 }
 
 // Helper methods

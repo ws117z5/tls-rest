@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
+	"tls-rest/go/engine/controllers/functions"
 )
 
 // This file is the single live bridge between the database and the per-mode
@@ -21,24 +22,15 @@ import (
 //     A user's effective modes for a module are the OR of the module default,
 //     their group's rights, and their own rights (user rights are additive).
 
-// toInt best-effort converts a value scanned by go-pg (int64 for integer
-// columns, but also int/float64/nil in edge cases) into an int.
-func toInt(v interface{}) int {
-	switch n := v.(type) {
-	case int64:
-		return int(n)
-	case int:
-		return n
-	case int32:
-		return int(n)
-	case float64:
-		return int(n)
-	case nil:
-		return 0
-	default:
-		return 0
-	}
-}
+// userGroupsSubquery yields every group id a user belongs to: the primary group
+// on the user row (users.user_group) UNION any additional memberships in
+// user_group_members. Callers reference $1 = userID (used in both halves). This
+// is how a user can belong to multiple groups; rights are aggregated across all.
+const userGroupsSubquery = `
+	SELECT user_group AS group_id FROM users WHERE id = $1 AND user_group IS NOT NULL
+	UNION
+	SELECT group_id FROM user_group_members WHERE user_id = $1
+`
 
 // defaultModesFor maps a module's registered default permission
 // (DENY/READ/WRITE) to a mode bitmask, so a module is usable before any
@@ -98,9 +90,8 @@ func ResolveModuleFieldRights(userID int) map[string]map[string]int {
 
 	if rows, e := db.RQuery(`
 		SELECT ugr.module AS module, ugr.fields AS fields
-		FROM users u
-		JOIN user_group_rights ugr ON ugr.group_id = u.user_group
-		WHERE u.id = $1
+		FROM user_group_rights ugr
+		WHERE ugr.group_id IN (`+userGroupsSubquery+`)
 	`, userID); e == nil {
 		consume(rows)
 	}
@@ -225,16 +216,16 @@ func ResolveModuleModeRights(userID int) ModuleModeRights {
 		return rights
 	}
 
-	// Group rights, via the single group referenced on the user row.
+	// Group rights, OR-ed across every group the user belongs to (the primary
+	// group on the user row plus any additional memberships).
 	if rows, gerr := db.RQuery(`
 		SELECT ugr.module AS module, ugr.modes AS modes
-		FROM users u
-		JOIN user_group_rights ugr ON ugr.group_id = u.user_group
-		WHERE u.id = $1
+		FROM user_group_rights ugr
+		WHERE ugr.group_id IN (`+userGroupsSubquery+`)
 	`, userID); gerr == nil {
 		for _, row := range rows {
 			if m, _ := row["module"].(string); m != "" {
-				rights[m] |= toInt(row["modes"])
+				rights[m] |= functions.Int(row["modes"])
 			}
 		}
 	}
@@ -245,7 +236,7 @@ func ResolveModuleModeRights(userID int) ModuleModeRights {
 	`, userID); uerr == nil {
 		for _, row := range rows {
 			if m, _ := row["module"].(string); m != "" {
-				rights[m] |= toInt(row["modes"])
+				rights[m] |= functions.Int(row["modes"])
 			}
 		}
 	}
@@ -268,15 +259,14 @@ func ResolveUserAccessLevel(userID int) int {
 	}
 
 	rows, err := db.RQuery(`
-		SELECT COALESCE(user_group, 0) AS level
-		FROM users
-		WHERE id = $1
+		SELECT COALESCE(MAX(group_id), 0) AS level
+		FROM (`+userGroupsSubquery+`) g
 	`, userID)
 	if err != nil || len(rows) == 0 {
 		return AccessAll
 	}
 
-	return toInt(rows[0]["level"])
+	return functions.Int(rows[0]["level"])
 }
 
 // ResolveIsAdmin reports whether the user's group is flagged as an administrator
@@ -292,10 +282,10 @@ func ResolveIsAdmin(userID int) bool {
 	}
 
 	rows, err := db.RQuery(`
-		SELECT ug.is_admin AS is_admin
-		FROM users u
-		JOIN user_groups ug ON ug.id = u.user_group
-		WHERE u.id = $1
+		SELECT EXISTS (
+			SELECT 1 FROM user_groups ug
+			WHERE ug.is_admin AND ug.id IN (`+userGroupsSubquery+`)
+		) AS is_admin
 	`, userID)
 	if err != nil || len(rows) == 0 {
 		return false

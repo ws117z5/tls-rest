@@ -9,6 +9,7 @@ import (
 
 	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/log"
 
 	"github.com/go-pg/urlstruct"
@@ -284,7 +285,7 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 	// GetOne now returns a map directly.
 	total := 0
 	if countResult != nil {
-		total = pgdb.Coerce[int](countResult["count"])
+		total = functions.Coerce[int](countResult["count"])
 	}
 
 	// Build and execute main query

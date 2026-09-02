@@ -1,5 +1,5 @@
 import React from 'react';
-import { FIELD_TYPES, MODES } from './FieldsetProvider';
+import { FIELD_TYPES, MODES, isImmutableField } from './FieldsetProvider';
 import TableEdit from './Table/Edit';
 import TableView from './Table/View';
 import BitmaskEdit from './Bitmask/Edit';
@@ -210,7 +210,14 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
   // Find component for specific mode, fallback to VIEW mode, then to default.
   // CREATE reuses the EDIT renderer (create is an editable form); without this,
   // CREATE would fall through to the read-only VIEW component.
-  const lookupMode = mode === MODES.CREATE ? MODES.EDIT : mode;
+  // Immutable identity/system fields (uuid, id, timestamps, created_by) are never
+  // editable: render them with their VIEW component (read-only text) even in
+  // edit/create, so they don't appear as inputs at all. `access` stays editable.
+  const lookupMode = isImmutableField(field.name)
+    ? MODES.VIEW
+    : mode === MODES.CREATE
+      ? MODES.EDIT
+      : mode;
   let Component: React.ComponentType<any> = fieldComponents[lookupMode] ||
                    fieldComponents[MODES.VIEW] ||
                    fieldComponents[MODES.EDIT] ||

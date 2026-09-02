@@ -138,7 +138,18 @@ type ModuleAbstract[T any] struct {
 	// Each returns the (possibly modified) data, or an error to abort with 400.
 	BeforeFieldset Preprocessor
 	AfterFieldset  Preprocessor
+
+	// RightsAffecting marks a module whose rows change resolved rights (users,
+	// groups, user_rights, user_group_rights). After a successful create/edit/
+	// delete on such a module, the controller fires OnRightsChange so cached
+	// session rights are invalidated.
+	RightsAffecting bool
 }
+
+// OnRightsChange is invoked after a successful write to a RightsAffecting module.
+// The bootstrap wires it to auth.BumpRightsEpoch (kept as a callback so the module
+// package doesn't import auth, which would be an import cycle).
+var OnRightsChange func()
 
 // Preprocessor transforms a submitted data map during create/update. Use it to
 // derive, normalize, inject, or strip fields before persistence. r is the request

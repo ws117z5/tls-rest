@@ -6,6 +6,7 @@ import (
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/functions"
 )
 
 // This file centralises request-time access filtering for the fieldset engine.
@@ -139,7 +140,7 @@ func CanViewRecord(r *http.Request, tableName string, id int64) (bool, error) {
 	}
 	access := 0
 	if row["access"] != nil {
-		access = pgdb.Coerce[int](row["access"])
+		access = functions.Coerce[int](row["access"])
 	}
 	return access <= v.level, nil
 }

@@ -85,14 +85,14 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	hash := pgdb.Coerce[string](row["password_hash"])
+	hash := functions.Coerce[string](row["password_hash"])
 	if hash == "" || bcrypt.CompareHashAndPassword([]byte(hash), []byte(c.Password)) != nil {
 		functions.JSONError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	}
 
-	id := pgdb.Coerce[int](row["id"])
-	username := pgdb.Coerce[string](row["user_name"])
+	id := functions.Coerce[int](row["id"])
+	username := functions.Coerce[string](row["user_name"])
 	auth.Login(w, r, id, username)
 
 	writeAuthResult(w, id, username, c.External)

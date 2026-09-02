@@ -89,9 +89,9 @@ func loadImage(ref string) (cachedImage, error) {
 	}
 
 	return cachedImage{
-		Id:       pgdb.Coerce[int64](row["id"]),
-		Data:     pgdb.Coerce[[]byte](row["data"]),
-		MimeType: pgdb.Coerce[string](row["mime_type"]),
+		Id:       functions.Coerce[int64](row["id"]),
+		Data:     functions.Coerce[[]byte](row["data"]),
+		MimeType: functions.Coerce[string](row["mime_type"]),
 	}, nil
 }
 
@@ -263,7 +263,7 @@ func recordAccess(moduleName string, recordID int64) int {
 	if err != nil || row == nil || row["access"] == nil {
 		return 0
 	}
-	return pgdb.Coerce[int](row["access"])
+	return functions.Coerce[int](row["access"])
 }
 
 func imageExt(filename, mime string) string {

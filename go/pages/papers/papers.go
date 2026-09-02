@@ -23,13 +23,13 @@ const proomColumns = "uuid, id, name, password, created_by, users, created"
 // rowToProom maps a result-set row (from RQuery) into a Proom.
 func rowToProom(row map[string]interface{}) Proom {
 	return Proom{
-		Uuid:      pgdb.Coerce[string](row["uuid"]),
-		Id:        pgdb.Coerce[int64](row["id"]),
-		Name:      pgdb.Coerce[string](row["name"]),
-		Password:  pgdb.Coerce[string](row["password"]),
-		CreatedBy: pgdb.Coerce[string](row["created_by"]),
-		Users:     pgdb.Coerce[string](row["users"]),
-		Created:   pgdb.Coerce[time.Time](row["created"]),
+		Uuid:      functions.Coerce[string](row["uuid"]),
+		Id:        functions.Coerce[int64](row["id"]),
+		Name:      functions.Coerce[string](row["name"]),
+		Password:  functions.Coerce[string](row["password"]),
+		CreatedBy: functions.Coerce[string](row["created_by"]),
+		Users:     functions.Coerce[string](row["users"]),
+		Created:   functions.Coerce[time.Time](row["created"]),
 	}
 }
 
