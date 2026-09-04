@@ -12,7 +12,7 @@ pipeline {
         }
         stage('Build & Test') {
             steps {
-                sh 'docker build -t ${APP_NAME}:latest .'
+                sh 'docker build --no-cache -t ${APP_NAME}:latest .'
             }
         }
         stage('Deploy') {
@@ -21,7 +21,7 @@ pipeline {
             }
             steps {
                 sh 'docker compose -f ${COMPOSE_FILE} down --remove-orphans || true'
-                sh 'docker compose -f ${COMPOSE_FILE} up -d --force-recreate'
+                sh 'docker compose -f ${COMPOSE_FILE} up -d --force-recreate --renew-anon-volumes --no-build'
             }
         }
     }
