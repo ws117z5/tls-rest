@@ -21,7 +21,7 @@ pipeline {
             }
             steps {
                 sh 'docker compose -f ${COMPOSE_FILE} down --remove-orphans || true'
-                sh 'docker compose -f ${COMPOSE_FILE} up -d'
+                sh 'docker compose -f ${COMPOSE_FILE} up -d --force-recreate'
             }
         }
     }
