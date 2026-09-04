@@ -41,7 +41,7 @@ const commonRules = [
 
 // Add plugins array to shared resolve config
 const commonResolve = {
-  extensions: ['.ts', '.tsx', '.js', '.jsx'],
+  extensions: ['.ts', '.tsx', '.js', '.jsx', '.css'],
   plugins: [
     new TsconfigPathsPlugin({
       configFile: path.resolve(__dirname, './tsconfig.json')
