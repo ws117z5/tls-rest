@@ -44,7 +44,7 @@ const commonResolve = {
   extensions: ['.ts', '.tsx', '.js', '.jsx', '.css'],
   alias: {
     // Explicitly bind @css to the actual CSS directory
-    '@css': path.resolve(__dirname, 'src/css') 
+    '@css': path.resolve(__dirname, '../css') 
   },
   plugins: [
     new TsconfigPathsPlugin({
