@@ -1,0 +1,102 @@
+/* Dark theme for the app (Bootstrap 4 base). Inert unless <html data-theme="dark">
+   is set (AppConfig.applyTheme). Keyed on the ancestor attribute so it cascades to
+   the whole document. Tweak the palette variables to taste. */
+:root {
+  --app-dark-bg:      #1c1f24;
+  --app-dark-surface: #262b31;
+  --app-dark-raised:  #2f353c;
+  --app-dark-border:  #3a424b;
+  --app-dark-text:    #e6e8eb;
+  --app-dark-muted:   #9aa4ae;
+  --app-dark-link:    #7ab0ff;
+}
+
+html[data-theme="dark"],
+html[data-theme="dark"] body {
+  background-color: var(--app-dark-bg);
+  color: var(--app-dark-text);
+}
+
+/* Surfaces */
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .list-group-item,
+html[data-theme="dark"] .dropdown-menu,
+html[data-theme="dark"] .modal-content,
+html[data-theme="dark"] .popover,
+html[data-theme="dark"] .accordion-body,
+html[data-theme="dark"] .accordion-button {
+  background-color: var(--app-dark-surface);
+  color: var(--app-dark-text);
+  border-color: var(--app-dark-border);
+}
+
+/* Muted / light backgrounds used across the UI */
+html[data-theme="dark"] .bg-light,
+html[data-theme="dark"] .bg-white,
+html[data-theme="dark"] .navbar,
+html[data-theme="dark"] .navbar-light {
+  background-color: var(--app-dark-raised) !important;
+  color: var(--app-dark-text);
+}
+
+/* Tables */
+html[data-theme="dark"] .table {
+  color: var(--app-dark-text);
+}
+html[data-theme="dark"] .table td,
+html[data-theme="dark"] .table th,
+html[data-theme="dark"] .table thead th {
+  border-color: var(--app-dark-border);
+}
+html[data-theme="dark"] .table-striped tbody tr:nth-of-type(odd) {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+html[data-theme="dark"] .table-hover tbody tr:hover,
+html[data-theme="dark"] .table-active,
+html[data-theme="dark"] .list-group-item-action:hover {
+  background-color: rgba(255, 255, 255, 0.06);
+  color: var(--app-dark-text);
+}
+
+/* Form controls */
+html[data-theme="dark"] .form-control,
+html[data-theme="dark"] .form-select,
+html[data-theme="dark"] select,
+html[data-theme="dark"] textarea,
+html[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]):not([type="range"]) {
+  background-color: var(--app-dark-surface);
+  color: var(--app-dark-text);
+  border-color: var(--app-dark-border);
+}
+html[data-theme="dark"] .form-control::placeholder { color: #7a828b; }
+html[data-theme="dark"] .form-control:focus,
+html[data-theme="dark"] select:focus {
+  background-color: var(--app-dark-surface);
+  color: var(--app-dark-text);
+  border-color: #5b6b7c;
+  box-shadow: 0 0 0 0.2rem rgba(122, 176, 255, 0.15);
+}
+
+/* Text + links + borders */
+html[data-theme="dark"] .text-muted,
+html[data-theme="dark"] .text-secondary { color: var(--app-dark-muted) !important; }
+html[data-theme="dark"] .text-dark { color: var(--app-dark-text) !important; }
+html[data-theme="dark"] a { color: var(--app-dark-link); }
+html[data-theme="dark"] .border,
+html[data-theme="dark"] .border-top,
+html[data-theme="dark"] .border-bottom,
+html[data-theme="dark"] .border-start,
+html[data-theme="dark"] .border-end { border-color: var(--app-dark-border) !important; }
+
+/* Secondary buttons (primary keep their color) */
+html[data-theme="dark"] .btn-secondary,
+html[data-theme="dark"] .btn-outline-secondary {
+  background-color: var(--app-dark-raised);
+  border-color: var(--app-dark-border);
+  color: var(--app-dark-text);
+}
+html[data-theme="dark"] .btn-light {
+  background-color: var(--app-dark-raised);
+  border-color: var(--app-dark-border);
+  color: var(--app-dark-text);
+}

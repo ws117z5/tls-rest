@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"tls-rest/go/engine/controllers/db/cache"
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/httpx"
@@ -239,6 +241,25 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 	// Filter data to only include valid fields
 	filteredData := bc.filterValidFields(r, data, MODE_SUBMIT)
 
+	// Apply field defaults for anything the client didn't submit, so a field left
+	// at its default value is still persisted (create only).
+	for _, field := range bc.Module.Fields {
+		if field.Virtual || field.ReadOnly || field.DefaultValue == nil {
+			continue
+		}
+		if _, ok := filteredData[field.Name]; !ok {
+			filteredData[field.Name] = field.DefaultValue
+		}
+	}
+
+	// Generate the uuid system value on create so the insert always satisfies the
+	// uuid NOT NULL column (the engine doesn't rely on a DB default for it).
+	if bc.Engine != nil && bc.Engine.hasField("uuid") {
+		if _, ok := filteredData["uuid"]; !ok {
+			filteredData["uuid"] = uuid.NewString()
+		}
+	}
+
 	// Stamp the creating user. created_by is a system field the client never
 	// submits; fill it from the session when the table has the column.
 	if s := cache.SessionFromContext(r.Context()); s != nil && s.UserID > 0 {
@@ -361,10 +382,17 @@ func (bc *BaseController) Delete(w http.ResponseWriter, r *http.Request) {
 
 // notifyRightsChange fires the OnRightsChange callback for RightsAffecting
 // modules, so cached session rights are invalidated after users/groups/rights
-// are created, edited or deleted.
+// are created, edited or deleted. It also fires OnConfigChange for
+// ConfigAffecting modules.
 func (bc *BaseController) notifyRightsChange() {
-	if bc.Module != nil && bc.Module.RightsAffecting && OnRightsChange != nil {
+	if bc.Module == nil {
+		return
+	}
+	if bc.Module.RightsAffecting && OnRightsChange != nil {
 		OnRightsChange()
+	}
+	if bc.Module.ConfigAffecting && OnConfigChange != nil {
+		OnConfigChange()
 	}
 }
 

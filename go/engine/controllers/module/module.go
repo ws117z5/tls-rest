@@ -144,12 +144,21 @@ type ModuleAbstract[T any] struct {
 	// delete on such a module, the controller fires OnRightsChange so cached
 	// session rights are invalidated.
 	RightsAffecting bool
+
+	// ConfigAffecting marks a module whose rows change resolved config (the
+	// config module). After a successful write, the controller fires
+	// OnConfigChange so cached session config is invalidated.
+	ConfigAffecting bool
 }
 
 // OnRightsChange is invoked after a successful write to a RightsAffecting module.
 // The bootstrap wires it to auth.BumpRightsEpoch (kept as a callback so the module
 // package doesn't import auth, which would be an import cycle).
 var OnRightsChange func()
+
+// OnConfigChange is invoked after a successful write to a ConfigAffecting module;
+// the bootstrap wires it to config.BumpConfigEpoch.
+var OnConfigChange func()
 
 // Preprocessor transforms a submitted data map during create/update. Use it to
 // derive, normalize, inject, or strip fields before persistence. r is the request

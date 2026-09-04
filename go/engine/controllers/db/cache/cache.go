@@ -88,6 +88,12 @@ type Session struct {
 	// epoch (i.e. a user/group/rights change bumped it), so rights are cached in
 	// the session and recomputed on change instead of on every request.
 	RightsEpoch int64
+
+	// Config is the user's effective config (global < group < user), cached here.
+	// ConfigEpoch mirrors RightsEpoch for config: re-resolved only when a config
+	// row changed (epoch bumped) or the session is recreated.
+	Config      map[string]string
+	ConfigEpoch int64
 }
 
 // ContextKey is the type used for request-context keys defined by this package.

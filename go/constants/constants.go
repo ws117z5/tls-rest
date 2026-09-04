@@ -50,7 +50,7 @@ var (
 	JsFooter = []string{"/js/dist/main.js", "/js/dist/gl-matrix-min.js"}
 
 	//Css styles array
-	Css = []string{"/css/bootstrap.min.css", "/css/index.css", "/css/index-cv.css", "/css/menu.css"}
+	Css = []string{"/css/bootstrap.min.css", "/css/index.css", "/css/index-cv.css", "/css/menu.css", "/css/theme-dark.css"}
 
 	//Img Images array
 	Img = []string{

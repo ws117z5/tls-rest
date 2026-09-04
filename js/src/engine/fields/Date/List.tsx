@@ -1,27 +1,15 @@
 import React, { Component } from "react";
+import { formatDate } from "@engine/controllers/dateformat";
+import AppConfig from "@engine/controllers/Appconfig";
 
-const locale = "US"
+interface DateListProps {
+    value: string | number | Date;
+}
 
-interface TimeViewProps {
-    value: string | number | Date; // Accepts a date string, timestamp, or Date object
-  }
-
-class TimeList extends Component<TimeViewProps>  {
+class DateList extends Component<DateListProps> {
     render() {
-        let time = new Date(this.props.value);
-
-        let timeStr: string;
-        
-        if(locale == "US") {
-            timeStr = time.getMonth() + "/" + time.getDay() + "/" + time.getFullYear() + " " + time.getHours() + ":" + time.getMinutes()
-        } else {
-            timeStr = time.getDay() + "/" + time.getMonth() + "/" + time.getFullYear() + " " + time.getHours() + ":" + time.getMinutes()
-        }
-
-        return (
-            <div>{timeStr}</div>
-        )
+        return <span>{formatDate(this.props.value, AppConfig.dateFormat())}</span>;
     }
 }
 
-export default TimeList;
+export default DateList;

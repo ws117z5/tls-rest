@@ -1,7 +1,6 @@
 import React from "react";
 import axios from "axios";
 import PageComponent from "@engine/containers/PageComponent";
-import Config from "@engine/Config";
 
 interface ConsoleState {
 	command: string;
@@ -29,7 +28,7 @@ class Console extends PageComponent<{}, ConsoleState> {
 		this.setState({ busy: true });
 		try {
 			const res = await axios.post(
-				Config.serverURL + "api/console",
+				"/api/console",
 				{ command: cmd },
 				{ headers: { "X-Request-Type": "api" } }
 			);

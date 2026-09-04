@@ -11,6 +11,7 @@ import (
 
 	"tls-rest/go/engine/controllers/module"
 	"tls-rest/go/engine/controllers/route/middleware"
+	userconfig "tls-rest/go/engine/pages/userconfig"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -104,6 +105,7 @@ func registerRoutes(router *mux.Router, routes []Route) {
 }
 
 func RegisterCustomRoutes(router *mux.Router) {
+
 	// Serve the SPA shell for any client-side "/pages/*" deep link so that a
 	// direct navigation / refresh boots the React app (which then routes
 	// client-side).
@@ -116,6 +118,7 @@ func RegisterCustomRoutes(router *mux.Router) {
 	// Everything else (profile, login, images, papers, module CRUD) now
 	// self-registers via module.AddRouteRegistrar / the module system.
 	router.HandleFunc("/api/modules", controllers.ModulesAPI).Methods("GET")
+	router.HandleFunc("/api/config", userconfig.Get).Methods("GET")
 	router.HandleFunc("/api/modules/{moduleId}/fieldset", module.GlobalFieldsetHandler.GetFieldset).Methods("POST")
 	router.HandleFunc("/api/modules/{moduleId}/table/{field}", module.GlobalFieldsetHandler.GetTableData).Methods("POST")
 	router.HandleFunc("/api/modules/{moduleId}/autocomplete/{field}", module.GlobalFieldsetHandler.GetAutocomplete).Methods("POST")
@@ -125,7 +128,7 @@ func RegisterCustomRoutes(router *mux.Router) {
 // GetRouter creates the main router with automatic module route registration
 func GetRouter() *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
-
+	
 	// Set this router as the global router for automatic module registration
 	module.SetGlobalRouter(router)
 

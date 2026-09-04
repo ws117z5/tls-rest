@@ -188,6 +188,7 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
         required={field.required}
         className={props.className}
         onChange={props.onChange}
+        values={props.formValues}
       />
     );
   }

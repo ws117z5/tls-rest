@@ -2,6 +2,7 @@ package registry
 
 import (
 	auth "tls-rest/go/engine/controllers/auth"
+	cfg "tls-rest/go/engine/controllers/config"
 	module "tls-rest/go/engine/controllers/module"
 
 	// Engine modules
@@ -14,8 +15,11 @@ import (
 
 	// App modules
 	posts "tls-rest/go/modules/posts"
+	words "tls-rest/go/modules/words"
 
 	// Engine pages
+	configmod "tls-rest/go/engine/modules/config"
+	console "tls-rest/go/engine/pages/console"
 	login "tls-rest/go/engine/pages/login"
 	profile "tls-rest/go/engine/pages/profile"
 
@@ -24,7 +28,6 @@ import (
 
 	// Features that own arbitrary route trees with unexported handlers — their
 	// registration lives behind an exported Register() in the package.
-	words "tls-rest/go/modules/words"
 	opencv "tls-rest/go/pages/opencv"
 	papers "tls-rest/go/pages/papers"
 )
@@ -34,10 +37,11 @@ import (
 func InitAll() {
 	// Invalidate cached session rights when users/groups/rights change.
 	module.OnRightsChange = auth.BumpRightsEpoch
-
+	module.OnConfigChange = cfg.BumpConfigEpoch
 	// --- Modules ---
 	users.Init()
 	posts.Init()
+	words.Init()
 	usergroups.Init()
 	modulerights.Init()
 	accesslog.Init()
@@ -46,13 +50,12 @@ func InitAll() {
 
 	// --- Pages ---
 	login.Init()
+	configmod.Init()
+	console.Init()
 	profile.Init()
 	netmapper.Init()
 
 	// --- Features (own route trees; unexported handlers) ---
 	papers.Init()
 	opencv.Init()
-
-	//external modules
-	words.Init()
 }

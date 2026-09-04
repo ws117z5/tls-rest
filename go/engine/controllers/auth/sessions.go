@@ -9,6 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"tls-rest/go/engine/controllers/config"
 	"tls-rest/go/engine/controllers/functions"
 
 	"tls-rest/go/engine/controllers/db/cache"
@@ -46,12 +47,28 @@ func fillSessionRights(s *cache.Session) {
 	s.AccessLevel = ResolveUserAccessLevel(s.UserID)
 	s.IsAdmin = ResolveIsAdmin(s.UserID)
 	s.RightsEpoch = CurrentRightsEpoch()
+	// Resolve config alongside rights so a freshly created/refreshed session has
+	// both populated.
+	fillSessionConfig(s)
+}
+
+// fillSessionConfig resolves and caches the user's effective config on the
+// session, stamping the config epoch it was resolved at.
+func fillSessionConfig(s *cache.Session) {
+	s.Config = config.Resolve(s.UserID)
+	s.ConfigEpoch = config.CurrentConfigEpoch()
 }
 
 // rightsStale reports whether a stored session's cached rights predate the
 // current epoch and must be re-resolved.
 func rightsStale(s *cache.Session) bool {
 	return s.RightsEpoch != CurrentRightsEpoch()
+}
+
+// configStale reports whether a stored session's cached config predates the
+// current config epoch.
+func configStale(s *cache.Session) bool {
+	return s.ConfigEpoch != config.CurrentConfigEpoch()
 }
 
 // Checks session and fills cache with session data
@@ -138,6 +155,8 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 			// hitting the DB for rights on every request.
 			if rightsStale(stored) {
 				fillSessionRights(stored)
+			} else if configStale(stored) {
+				fillSessionConfig(stored)
 			}
 
 			cache.SessionCacheInstance.Set(hash, *stored)
@@ -236,6 +255,8 @@ func manageTokenSession(tok string) *cache.Session {
 		stored.LastAccess = time.Now()
 		if rightsStale(stored) {
 			fillSessionRights(stored)
+		} else if configStale(stored) {
+			fillSessionConfig(stored)
 		}
 		cache.SessionCacheInstance.Set(tok, *stored)
 		return stored

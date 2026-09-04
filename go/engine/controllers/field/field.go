@@ -99,10 +99,10 @@ type Field struct {
 	// Autocomplete configuration (set via WithAutocomplete). The kind is
 	// serialized so the client renders the autocomplete widget and calls the
 	// /autocomplete endpoint; the resolution (func/sql/source) is server-side.
-	AutocompleteKind   string                      `json:"autocomplete,omitempty"` // "function" | "sql" | "source"
-	AutocompleteFunc   func(input string) []string `json:"-"`
-	AutocompleteSQL    string                      `json:"-"`
-	AutocompleteSource []string                    `json:"-"` // {table, field, match}
+	AutocompleteKind   string                                                         `json:"autocomplete,omitempty"` // "function" | "sql" | "source"
+	AutocompleteFunc   func(input string, values map[string]interface{}) []AutoOption `json:"-"`
+	AutocompleteSQL    string                                                         `json:"-"`
+	AutocompleteSource []string                                                       `json:"-"` // {table, field, match}
 }
 
 func NewField(name, fieldType string, required bool) Field {
@@ -218,11 +218,19 @@ func (f Field) NotLogged() Field {
 //	WithAutocomplete("function", func(input string) []string { ... })
 //	WithAutocomplete("sql", "SELECT name FROM city WHERE name LIKE $1")
 //	WithAutocomplete("source", []string{"city", "name", "left"}) // table, field, match: left|right|full
+//
+// AutoOption is one autocomplete suggestion: Value is stored, Label is shown.
+// For a plain string source, Value == Label.
+type AutoOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
 func (f Field) WithAutocomplete(kind string, arg interface{}) Field {
 	f.AutocompleteKind = kind
 	switch kind {
 	case "function":
-		if fn, ok := arg.(func(string) []string); ok {
+		if fn, ok := arg.(func(input string, values map[string]interface{}) []AutoOption); ok {
 			f.AutocompleteFunc = fn
 		}
 	case "sql":

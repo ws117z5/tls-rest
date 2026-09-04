@@ -54,15 +54,43 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
     };
   }
 
+  componentDidMount() {
+    this.seedDefaults();
+  }
+
   componentDidUpdate(prevProps: FieldsetFormClassProps) {
     if (prevProps.data !== this.props.data) {
-      this.setState({ 
+      this.setState({
         formData: { ...this.props.data },
         errors: {},
         touched: {}
-      });
+      }, this.seedDefaults);
+      return;
     }
+    // The fieldset loads asynchronously; seed once it's available.
+    this.seedDefaults();
   }
+
+  // seedDefaults fills empty fields with their default_value so a value shown by a
+  // control (e.g. a select defaulting to "global") is actually in formData and
+  // passes required validation / is submitted. Only fills blanks — never
+  // overrides an existing value — so it is safe on edit too, and idempotent.
+  seedDefaults = () => {
+    const ctx = this.props.fieldsetContext;
+    if (!ctx || !ctx.fieldset) return;
+    const fields = ctx.getFieldsForMode ? ctx.getFieldsForMode() : [];
+    let changed = false;
+    const next = { ...this.state.formData };
+    for (const f of fields) {
+      const dv = f.default_value;
+      const cur = next[f.name];
+      if (dv !== undefined && dv !== null && dv !== '' && (cur === undefined || cur === null || cur === '')) {
+        next[f.name] = dv;
+        changed = true;
+      }
+    }
+    if (changed) this.setState({ formData: next });
+  };
 
   validateField = (field: any, value: any): string => {
     const { validation = {}, required, type } = field;

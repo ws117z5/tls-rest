@@ -94,11 +94,14 @@ const Login: React.FC<LoginProps> = () => {
           <label className="login-label">Password</label>
           <input
             type="password"
+            name="password"
             className="login-input"
             value={password}
             required
             onChange={(e) => setPassword(e.target.value)}
             autoComplete={mode === "login" ? "current-password" : "new-password"}
+            {...{ passwordrules: "minlength: 8; required: lower; required: upper; required: digit;" }}
+
           />
         </div>
 

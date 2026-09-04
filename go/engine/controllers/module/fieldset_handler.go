@@ -72,7 +72,8 @@ func (fh *FieldsetHandler) GetAutocomplete(w http.ResponseWriter, r *http.Reques
 	}
 
 	var body struct {
-		Input string `json:"input"`
+		Input  string                 `json:"input"`
+		Values map[string]interface{} `json:"values"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -87,25 +88,27 @@ func (fh *FieldsetHandler) GetAutocomplete(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	options := []string{}
+	options := []AutoOption{}
 	if target != nil {
-		options = resolveAutocomplete(target, input)
+		options = resolveAutocomplete(target, input, body.Values)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{"options": options})
 }
 
-// resolveAutocomplete runs a field's autocomplete config against the input.
-func resolveAutocomplete(f *Field, input string) []string {
+// resolveAutocomplete runs a field's autocomplete config against the input,
+// returning value/label options. `values` carries the sibling field values of
+// the record being edited, so a function-kind autocomplete can branch on them.
+func resolveAutocomplete(f *Field, input string, values map[string]interface{}) []AutoOption {
 	switch f.AutocompleteKind {
 	case "function":
 		if f.AutocompleteFunc != nil {
-			return f.AutocompleteFunc(input)
+			return f.AutocompleteFunc(input, values)
 		}
 	case "sql":
 		if f.AutocompleteSQL != "" {
-			return autocompleteQuery(f.AutocompleteSQL, "%"+input+"%")
+			return stringsToOptions(autocompleteQuery(f.AutocompleteSQL, "%"+input+"%"))
 		}
 	case "source":
 		if len(f.AutocompleteSource) >= 2 && validIdent(f.AutocompleteSource[0]) && validIdent(f.AutocompleteSource[1]) {
@@ -122,10 +125,19 @@ func resolveAutocomplete(f *Field, input string) []string {
 				pattern = "%" + input + "%"
 			}
 			q := "SELECT DISTINCT " + col + " FROM " + table + " WHERE " + col + " LIKE $1 ORDER BY " + col + " LIMIT 20"
-			return autocompleteQuery(q, pattern)
+			return stringsToOptions(autocompleteQuery(q, pattern))
 		}
 	}
-	return []string{}
+	return []AutoOption{}
+}
+
+// stringsToOptions maps plain suggestion strings to value==label options.
+func stringsToOptions(ss []string) []AutoOption {
+	out := make([]AutoOption, 0, len(ss))
+	for _, s := range ss {
+		out = append(out, AutoOption{Value: s, Label: s})
+	}
+	return out
 }
 
 // autocompleteQuery runs a single-column LIKE query and returns the values.

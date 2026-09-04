@@ -1,3 +1,4 @@
+import AppConfig from "@engine/controllers/Appconfig";
 import Auth, { MenuEntry, isModuleEntry, BackendPage } from "@controllers/auth";
 
 // A resolved, renderable menu item. Modules route to the generic ModulePage;
@@ -34,6 +35,7 @@ export default class Config {
         Config.initPromise = (async () => {
             // 1) The complete, privilege-filtered menu from the server.
             await Auth.loadMenu();
+            await AppConfig.load();
 
             // 2) Barrel of page components, keyed by href (provides the React
             //    component to render each page; the server only sends metadata).
