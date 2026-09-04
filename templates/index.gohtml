@@ -11,6 +11,7 @@
         window.__MODULES__ = {{ .Body.AvailableModulesJSON }};
     </script>
     <title>{{ .Title}}</title>
+    <link rel="icon" type="image/x-icon" href="/img/favicon.ico">
     {{ range .Img}}
         <link rel="prefetch" href="{{ . }}" as="image" type="{{ getImgType . }}">
     {{ end }}
