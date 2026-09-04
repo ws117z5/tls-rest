@@ -20,6 +20,8 @@ RUN npm ci --legacy-peer-deps
 # Build ONLY the named "prod" webpack config (the config array also has a
 # watch:true dev config that never exits in a build).
 COPY js/ ./
+COPY css /app/css
+
 RUN npx webpack --config-name prod
 
 
