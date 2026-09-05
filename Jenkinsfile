@@ -2,7 +2,6 @@ pipeline {
     agent any
     environment {
         APP_NAME = 'tls-rest'
-        COMPOSE_FILE = 'docker-compose.yml'
     }
     stages {
         stage('Checkout') {
@@ -17,8 +16,7 @@ pipeline {
         }
         stage('Deploy') {
             steps {
-                sh 'docker compose -f ${COMPOSE_FILE} down --remove-orphans || true'
-                sh 'docker compose -f ${COMPOSE_FILE} up -d --force-recreate --no-build'
+                sh 'docker compose up -d --force-recreate --no-build'
 
                 // Wait 5 seconds and verify the binary didn't fatal crash
                 sh 'sleep 5 && docker ps --filter "name=${APP_NAME}" --filter "status=running" --quiet | grep .'
