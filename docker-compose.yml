@@ -1,5 +1,6 @@
 services:
   app:
+    image: tls-rest:latest
     build:
       context: .
       dockerfile: Dockerfile

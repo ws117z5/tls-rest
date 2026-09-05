@@ -1,6 +1,7 @@
 const path = require('path');
 const webpack = require('webpack');
 const TsconfigPathsPlugin = require('tsconfig-paths-webpack-plugin');
+const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
 
 const commonRules = [
   {
@@ -51,7 +52,7 @@ const commonResolve = {
       configFile: path.resolve(__dirname, './tsconfig.json')
     })
   ]
-};
+};// Add HMR plugin for dev
 
 module.exports = [
   {
@@ -60,9 +61,18 @@ module.exports = [
     entry: './src/app.tsx',
     watch: true,
     resolve: commonResolve, // 👈 Shared here
+    output: {
+      path: path.resolve(__dirname, 'dist'),
+      filename: '[name].js',
+    },
     module: {
       rules: commonRules,
     },
+    plugins: [
+      new BundleAnalyzerPlugin({
+        analyzerPort: 'auto', // Automatically uses next available port if 8888 is busy
+      })
+    ],
     optimization: {
       emitOnErrors: false,
     },
