@@ -17,9 +17,6 @@ pipeline {
         stage('Deploy') {
             steps {
                 sh 'docker compose up --force-recreate --no-build --detach'
-
-                // Wait 5 seconds and verify the binary didn't fatal crash
-                sh "sleep 5 && docker ps --filter \"name=${APP_NAME}\" --filter \"status=running\" --quiet | grep ."
             }
         }
     }

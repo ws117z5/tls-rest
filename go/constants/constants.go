@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime/debug"
+	"strings"
 )
 
 // ConfigType is the parsed go.config.json — the app's declared modules. The
@@ -47,7 +49,7 @@ var (
 	//JsHeaderAttr = [][]string{"/js/dist/platform.js"}
 
 	//JsFooter js footer array todo
-	JsFooter = []string{"/js/dist/main.js", "/js/dist/gl-matrix-min.js"}
+	JsFooter = append(GetFiles([]string{"main.js"}), "/js/static/gl-matrix-min.js")
 
 	//Css styles array
 	Css = []string{"/css/bootstrap.min.css", "/css/index.css", "/css/index-cv.css", "/css/menu.css", "/css/theme-dark.css"}
@@ -120,6 +122,75 @@ var (
 	//Config a config file
 	Config = new(ConfigType)
 )
+
+// GetProjectVersion extracts the version from go.mod build info,
+// falling back to a default version string if unavailable.
+func GetProjectVersion() string {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "1.0.0"
+	}
+
+	// 1. If built via go install/module release, Main.Version contains the tag (e.g., "v1.2.3")
+	if info.Main.Version != "" && info.Main.Version != "(devel)" {
+		return info.Main.Version
+	}
+
+	// 2. If built from source/Git, extract the VCS revision (commit hash)
+	for _, setting := range info.Settings {
+		if setting.Key == "vcs.revision" {
+			if len(setting.Value) >= 8 {
+				return setting.Value[:8] // Short commit hash (e.g., "a1b2c3d4")
+			}
+			return setting.Value
+		}
+	}
+
+	return "1.0.0"
+}
+
+// Call maps a slice of filenames to relative web paths with the project version query parameter
+func GetFiles(files []string) []string {
+	version := GetProjectVersion()
+	result := make([]string, 0, len(files))
+
+	for _, file := range files {
+		found := false
+		ext := filepath.Ext(file)                 // e.g. ".js"
+		baseName := strings.TrimSuffix(file, ext) // e.g. "main"
+
+		// 1. First, check for exact match (e.g., ./js/static/legacy-helper.js)
+		exactPath := filepath.Join("./js/dist", file)
+		if _, err := os.Stat(exactPath); err == nil {
+			webPath := "/" + strings.TrimPrefix(filepath.ToSlash("./js/dist"), "./")
+			result = append(result, fmt.Sprintf("%s/%s?v=%s", webPath, file, version))
+			found = true
+			break
+		}
+
+		// 2. If no exact match, search for hashed pattern (e.g., ./js/dist/main.*.js)
+		pattern := filepath.Join("./js/dist", baseName+".*"+ext)
+		matches, err := filepath.Glob(pattern)
+
+		if err == nil && len(matches) > 0 {
+			// Get the actual hashed filename on disk (e.g., "main.2e17295ca734.js")
+			actualFilename := filepath.Base(matches[0])
+			webPath := "/" + strings.TrimPrefix(filepath.ToSlash("./js/dist"), "./")
+
+			// Returns: /js/dist/main.2e17295ca734.js?v=a1b2c3d4
+			result = append(result, fmt.Sprintf("%s/%s?v=%s", webPath, actualFilename, version))
+			found = true
+			break
+		}
+
+		// Fallback if not found on disk
+		if !found {
+			result = append(result, fmt.Sprintf("/js/dist/%s?v=%s", file, version))
+		}
+	}
+
+	return result
+}
 
 // GetModule returns a module configuration by name.
 func (obj *ConfigType) GetModule(name string) (ModuleParams, error) {
