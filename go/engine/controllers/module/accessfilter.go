@@ -152,6 +152,9 @@ func (v viewer) fieldVisibleInSchema(f Field) bool {
 	if v.isAdmin {
 		return true
 	}
+	if f.AdminOnly {
+		return false // admin-only fields/filters hidden from non-admins
+	}
 	if IsSystemField(f.Name) {
 		return false
 	}

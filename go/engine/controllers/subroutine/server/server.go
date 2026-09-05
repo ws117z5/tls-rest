@@ -27,17 +27,17 @@ func RunServer() {
 	certPath := f.FirstNonEmpty(
 		os.Getenv("TLS_CERT_PATH"),
 		os.Getenv("CF_CERT_PATH"),
-		".private/server.crt",
+		".private/cert.pem",
 	)
 	keyPath := f.FirstNonEmpty(
 		os.Getenv("TLS_KEY_PATH"),
 		os.Getenv("CF_KEY_PATH"),
-		".private/server.key",
+		".private/key.pem",
 	)
 
 	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
 	if err != nil {
-		log.Fatalf("failed to load Cloudflare origin certificate and key: %v", err)
+		log.Fatalf("failed to load Cloudflare origin certificate and key: %v, certPath=%s, keyPath=%s", err, certPath, keyPath)
 	}
 
 	tlsConfig := &tls.Config{

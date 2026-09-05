@@ -26,10 +26,31 @@ func (p *Posts) filters() *Filedset {
 			WithLabel("Title").
 			Contains(),
 
-		// Exact boolean match on the public flag.
+		// Exact boolean match on the public flag. Admin-only.
 		NewFilter("public", TYPE_CHECKBOX).
 			WithLabel("Public").
+			AsAdminOnly().
 			Equals(),
+
+		// Admin-only: filter posts by their creator, searched by user name.
+		NewFilter("user", TYPE_STRING).
+			WithLabel("User").
+			AsAdminOnly().
+			Contains().
+			WithSQLWhere("created_by IN (SELECT id FROM users WHERE user_name ILIKE %s)"),
+
+		// Admin-only: filter posts by their creator's group (primary or additional),
+		// searched by group name.
+		NewFilter("user_group", TYPE_STRING).
+			WithLabel("User Group").
+			AsAdminOnly().
+			Contains().
+			WithSQLWhere("created_by IN ("+
+				"SELECT uid FROM ("+
+				"  SELECT id AS uid, user_group AS gid FROM users "+
+				"  UNION ALL "+
+				"  SELECT user_id AS uid, group_id AS gid FROM user_group_members"+
+				") ug WHERE ug.gid IN (SELECT id FROM user_groups WHERE name ILIKE %s))"),
 
 		// Date range against the created column. The filter parameter names
 		// (created_from / created_to) differ from the column (created), which is
