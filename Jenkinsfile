@@ -11,25 +11,25 @@ pipeline {
         }
         stage('Build & Test') {
             steps {
-                sh 'docker build --no-cache -t ${APP_NAME}:latest .'
+                sh "docker build --no-cache -t ${APP_NAME}:latest ."
             }
         }
         stage('Deploy') {
             steps {
-                sh 'docker compose up -d --force-recreate --no-build'
+                sh 'docker compose up --force-recreate --no-build --detach'
 
                 // Wait 5 seconds and verify the binary didn't fatal crash
-                sh 'sleep 5 && docker ps --filter "name=${APP_NAME}" --filter "status=running" --quiet | grep .'
+                sh "sleep 5 && docker ps --filter \"name=${APP_NAME}\" --filter \"status=running\" --quiet | grep ."
             }
         }
     }
     post {
         always {
-            sh 'docker image prune -f'
+            sh "docker image prune -f"
         }
         failure {
             // Print logs to Jenkins output automatically if the container crashes
-            sh 'docker logs tls-rest --tail 50 || true'
+            sh "docker logs tls-rest --tail 50 || true"
         }
     }
 }
