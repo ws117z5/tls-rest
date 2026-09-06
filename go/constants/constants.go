@@ -81,7 +81,8 @@ var (
 
 	//RDb TODO move
 	RDb = Db{
-		Addr: Env("REDIS_ADDR", "localhost:6379"),
+		Addr:     Env("REDIS_ADDR", "localhost:6379"),
+		Password: Env("REDIS_PASS", ""),
 	}
 
 	// ---- Secrets / environment-specific config ----
