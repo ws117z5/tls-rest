@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Graphviz } from "@hpcc-js/wasm";
+import { Graphviz } from "@hpcc-js/wasm-graphviz";
 
 type Format = "svg" | "dot" | "json" | "dot_json" | "xdot_json" | "plain" | "plain-ext";
 type Engine = "circo" | "dot" | "fdp" | "neato" | "osage" | "patchwork" | "twopi";

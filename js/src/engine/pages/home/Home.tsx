@@ -199,7 +199,7 @@ class Home extends PageComponent<IndexPageProps, IndexPageState> {
 
   private glitchTick = () => {
     const root = this.rootRef.current;
-    this.glitch *= 0.4; // hard flash: gone in ~2-3 frames
+    this.glitch *= 0.62; // brief but visible burst
     if (root) root.style.setProperty("--glitch", this.glitch.toFixed(3));
 
     if (this.glitch > 0.05) {

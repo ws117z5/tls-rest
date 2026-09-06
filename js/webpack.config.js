@@ -77,6 +77,11 @@ module.exports = [
       emitOnErrors: false,
     },
     devtool: 'source-map',
+    output: {
+      path: path.resolve(__dirname, 'dist'),
+      filename: '[name].[contenthash].js',
+      clean: true, // Empties /dist before every build
+    },
   },
   {
     name: 'prod',

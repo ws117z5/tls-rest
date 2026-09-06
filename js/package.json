@@ -51,7 +51,7 @@
     "webpack-dev-server": "^6.0.0"
   },
   "dependencies": {
-    "@hpcc-js/wasm": "^2.35.0",
+    "@hpcc-js/wasm-graphviz": "^1.29.0",
     "@react-three/fiber": "^9.7.0",
     "bootstrap": "^5.3.8",
     "exifr": "^7.1.3",

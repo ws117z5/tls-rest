@@ -2,6 +2,7 @@ package log
 
 import (
 	"encoding/json"
+
 	"fmt"
 	"net/http"
 	"os"
@@ -294,6 +295,7 @@ func (el *EventLogger) writeEvent(event EventLog) {
 	if el.writeToDb {
 		el.writeToDatabase(event)
 	}
+
 }
 
 // toEvent maps a structured EventLog to the unified Event shape for subscribers.

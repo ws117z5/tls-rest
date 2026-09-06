@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"tls-rest/go/engine/controllers/db/rdb"
+	"tls-rest/go/engine/controllers/log"
 )
 
 var SessionCacheInstance *Cache[Session]
@@ -23,6 +24,7 @@ func init() {
 
 		ctx := context.Background()
 
+		log.For("cache").Debugf("get %s", key)
 		data, err := redisClient.Get(ctx, key).Result()
 		if err == nil && data != "" {
 			ci, err := DecodeJson(data)
@@ -50,7 +52,13 @@ func init() {
 
 		duration := time.Until(value.Expire)
 
-		return redisClient.Set(ctx, key, data, duration).Err()
+		logger := log.For("cache")
+		logger.Debugf("push %s (ttl %s)", key, duration)
+		if serr := redisClient.Set(ctx, key, data, duration).Err(); serr != nil {
+			logger.Errorf("push %s failed: %v", key, serr)
+			return serr
+		}
+		return nil
 	})
 }
 
