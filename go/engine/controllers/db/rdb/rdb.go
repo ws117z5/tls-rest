@@ -24,13 +24,13 @@ func GetInstance() (*redis.Client, error) {
 		DB:       config.RDb.DatabaseInt, // use default DB
 	})
 
-	logger.Debugf("connecting to %s (db %d)", config.RDb.Addr, config.RDb.DatabaseInt)
+	//logger.Debugf("connecting to %s (db %d)", config.RDb.Addr, config.RDb.DatabaseInt)
 	ctx := context.Background()
 	_, err := db.Ping(ctx).Result()
 	if err != nil {
 		logger.Errorf("connect to %s failed: %v", config.RDb.Addr, err)
 	} else {
-		logger.Debugf("connected to %s", config.RDb.Addr)
+		//logger.Debugf("connected to %s", config.RDb.Addr)
 	}
 
 	return db, err

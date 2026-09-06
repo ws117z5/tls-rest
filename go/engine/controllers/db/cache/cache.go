@@ -53,7 +53,7 @@ func init() {
 		duration := time.Until(value.Expire)
 
 		logger := log.For("cache")
-		logger.Debugf("push %s (ttl %s)", key, duration)
+		//logger.Debugf("push %s (ttl %s)", key, duration)
 		if serr := redisClient.Set(ctx, key, data, duration).Err(); serr != nil {
 			logger.Errorf("push %s failed: %v", key, serr)
 			return serr
