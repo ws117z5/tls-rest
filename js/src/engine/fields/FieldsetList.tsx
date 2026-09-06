@@ -394,14 +394,35 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
     const totalPages = Math.ceil(total / limit);
     if (totalPages <= 1) return null;
 
-    const pages: React.ReactElement[] = [];
-    for (let i = 1; i <= totalPages; i++) {
-      pages.push(
-        <li key={i} className={`page-item ${page === i ? 'active' : ''}`}>
-          <button className="page-link" onClick={() => onPageChange(i)}>{i}</button>
-        </li>
-      );
+    // Windowed page list: first, current ± radius, last, with ellipses for gaps.
+    const radius = 3;
+    const windowSize = radius * 2 + 1;
+    let lo = Math.max(1, page - radius);
+    let hi = Math.min(totalPages, lo + windowSize - 1);
+    lo = Math.max(1, hi - windowSize + 1); // re-clamp near the end
+
+    const items: Array<number | "…"> = [];
+    if (lo > 1) {
+      items.push(1);
+      if (lo > 2) items.push("…");
     }
+    for (let i = lo; i <= hi; i++) items.push(i);
+    if (hi < totalPages) {
+      if (hi < totalPages - 1) items.push("…");
+      items.push(totalPages);
+    }
+
+    const pages = items.map((it, idx) =>
+      it === "…" ? (
+        <li key={`gap-${idx}`} className="page-item disabled">
+          <span className="page-link">…</span>
+        </li>
+      ) : (
+        <li key={it} className={`page-item ${page === it ? "active" : ""}`}>
+          <button className="page-link" onClick={() => onPageChange(it)}>{it}</button>
+        </li>
+      )
+    );
 
     return (
       <nav className="mt-3">

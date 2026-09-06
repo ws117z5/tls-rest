@@ -64,6 +64,15 @@ class Menu extends Component<{}, {}> {
       <div className="main-menu" style={menuDiv}>
         <Navbar color="dark" dark expand="md">
           <Nav className="ml-auto" navbar>
+              {/* Home link — the Home page's href is "" (the root route "/"), so it
+                isn't in the data-driven head list; add it explicitly here. `end`
+                keeps it active only on exactly "/", not on every route. */}
+            <NavItem>
+              <NavLink tag={RouterNavLink} to="/" end>
+                Home
+              </NavLink>
+            </NavItem>
+
             {head.map(renderHeadItem)}
 
             {Object.keys(submenus).map((title) => {

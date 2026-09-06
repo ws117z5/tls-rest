@@ -149,6 +149,10 @@ type ModuleAbstract[T any] struct {
 	// config module). After a successful write, the controller fires
 	// OnConfigChange so cached session config is invalidated.
 	ConfigAffecting bool
+
+	// ListAscending makes the list default to oldest-first (ORDER BY ... ASC).
+	// The default for every module is newest-first (DESC) — last record first.
+	ListAscending bool
 }
 
 // OnRightsChange is invoked after a successful write to a RightsAffecting module.
@@ -784,6 +788,16 @@ func (m *ModuleAbstract[T]) addMissingColumns(db *pgdb.Db) error {
 			continue
 		}
 		sqlType := m.fieldTypeToSQL(field)
+		// Reconciled columns are added NULLABLE so ALTER never fails on a table
+		// that already has rows. Required values are supplied on insert (uuid,
+		// created_by) or by a DB default below.
+		sqlType = strings.Replace(sqlType, " NOT NULL", "", 1)
+		switch field.Name {
+		case "created", "updated":
+			sqlType = "TIMESTAMP WITH TIME ZONE DEFAULT now()"
+		case "access":
+			sqlType = "INTEGER DEFAULT 0"
+		}
 		alter := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s", m.ID, field.Name, sqlType)
 		if _, err := db.Query(alter); err != nil {
 			return fmt.Errorf("add column %s.%s: %w", m.ID, field.Name, err)

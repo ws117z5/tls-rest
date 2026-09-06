@@ -135,6 +135,15 @@ const ModulePage: React.FC<ModulePageProps> = ({
         }
     }, [base, mode, id, appliedFilters, page]);
 
+    // Reset pagination and filters when navigating to a different module, so
+    // state from one module (e.g. page 51 in access_log) doesn't leak into the
+    // next (users would otherwise request ?page=51).
+    useEffect(() => {
+        setPage(1);
+        setDraftFilters({});
+        setAppliedFilters({});
+    }, [module]);
+
     useEffect(() => {
         load();
     }, [load]);

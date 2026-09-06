@@ -131,7 +131,7 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 
 		// IP/CIDR access-control enforcement (access_rule table). A denied IP is
 		// blocked before any handler runs, and the attempt is recorded.
-		if allowed, ruleID := accesslog.Decision(clientIP); !allowed {
+		if allowed, ruleID := accesslog.Decision(clientIP, r.UserAgent()); !allowed {
 			accesslog.Record(accesslog.Entry{
 				Time: startTime, Method: r.Method, Path: r.URL.Path,
 				Status: http.StatusForbidden, DurationMS: msSince(startTime),
@@ -277,7 +277,7 @@ func authorizeAPIRequest(ci *cache.Session, r *http.Request) (allowed bool, modu
 		return true, "auth", "login"
 	}
 	// Mobile bearer-token issue/revoke must be reachable while anonymous.
-	if path == "/api/auth/token" || path == "/api/auth/logout" {
+	if path == "/api/auth/token" || path == "/api/auth/oauth" || path == "/api/auth/logout" {
 		return true, "auth", "login"
 	}
 

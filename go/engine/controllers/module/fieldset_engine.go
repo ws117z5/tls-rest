@@ -10,7 +10,6 @@ import (
 	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/functions"
-	"tls-rest/go/engine/controllers/log"
 
 	"github.com/go-pg/urlstruct"
 )
@@ -20,7 +19,7 @@ type QueryParams struct {
 	Page    int                    `url:"page,default:1"`
 	Limit   int                    `url:"limit,default:20"`
 	Sort    string                 `url:"sort"`
-	Order   string                 `url:"order,default:asc"`
+	Order   string                 `url:"order"`
 	Search  string                 `url:"search"`
 	Filters map[string]interface{} `url:"filters"`
 }
@@ -84,7 +83,13 @@ func (fe *FieldsetEngine) ParseQueryParams() (*QueryParams, error) {
 		params.Limit = 20
 	}
 	if params.Order != "asc" && params.Order != "desc" {
-		params.Order = "asc"
+		// List defaults to newest-first (DESC); a module may opt into oldest-first
+		// (ASC) via ListAscending.
+		if fe.Module != nil && fe.Module.ListAscending {
+			params.Order = "asc"
+		} else {
+			params.Order = "desc"
+		}
 	}
 
 	return params, nil
@@ -299,7 +304,7 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 	selectQuery += fmt.Sprintf(" LIMIT %d OFFSET %d", params.Limit, offset)
 
 	// Execute query
-	results, err := db.GetAll(selectQuery, selectArgs...)
+	results, err := db.RQuery(selectQuery, selectArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
@@ -567,7 +572,7 @@ func (fe *FieldsetEngine) ProcessTableFieldsInResult(result map[string]interface
 			tableData, err := fe.FetchTableFieldData(field, parentID)
 			if err != nil {
 				// Log error but don't fail the entire result
-				log.Console.Warnf("Warning: Failed to fetch table field data for %s: %v\n", field.Name, err)
+				fmt.Printf("Warning: Failed to fetch table field data for %s: %v\n", field.Name, err)
 				result[field.Name] = []interface{}{} // Empty array as fallback
 			} else {
 				result[field.Name] = tableData

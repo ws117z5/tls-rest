@@ -18,10 +18,14 @@ type AccessRule struct {
 
 func (m *AccessRule) fieldset() []Field {
 	return []Field{
-		NewField("cidr", TYPE_STRING, true).
+		NewField("cidr", TYPE_STRING, false).
 			WithLabel("IP or CIDR").
-			WithDescription("A single IP (203.0.113.7) or a range (203.0.113.0/24)").
-			WithValidation("minLength", 3),
+			WithDescription("A single IP (203.0.113.7) or a range (203.0.113.0/24). Optional if a User-Agent is set."),
+
+		NewField("user_agent", TYPE_STRING, false).
+			WithLabel("User-Agent contains").
+			WithDescription("Match requests whose User-Agent contains this text (e.g. a bot name). Combine with CIDR to require both.").
+			WithOption("width", "400px"),
 
 		NewField("action", TYPE_SELECT, true).
 			WithLabel("Action").
@@ -41,6 +45,11 @@ func (m *AccessRule) fieldset() []Field {
 		NewField("enabled", TYPE_CHECKBOX, false).
 			WithLabel("Enabled").
 			WithDefault(true),
+
+		NewField("firewall", TYPE_CHECKBOX, false).
+			WithLabel("Block at OS firewall (ufw)").
+			WithDescription("Also drop this IP/CIDR at the host firewall via ufw, not just in the app. Applies to CIDR deny rules only.").
+			WithDefault(false),
 
 		NewField("note", TYPE_STRING, false).
 			WithLabel("Note").

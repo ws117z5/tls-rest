@@ -2,6 +2,7 @@ package accesslog
 
 import (
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -11,10 +12,13 @@ import (
 
 // Rule is one IP/CIDR access-control rule loaded from the access_rule table.
 type Rule struct {
-	ID       int64
-	Net      *net.IPNet // parsed from cidr (a bare IP becomes a /32 or /128)
-	Action   string     // "allow" | "deny"
-	Priority int
+	ID        int64
+	Net       *net.IPNet // parsed from cidr; nil = matches any IP (UA-only rule)
+	CIDR      string     // original cidr text (for firewall rules)
+	UserAgent string     // substring matched against the request User-Agent; "" = any
+	Action    string     // "allow" | "deny"
+	Priority  int
+	Firewall  bool // also enforce at the OS firewall (ufw) — CIDR deny rules only
 }
 
 var (
@@ -33,16 +37,25 @@ var (
 // higher-priority 'allow' rules).
 //
 // Returns (allowed, matchedRuleID). matchedRuleID is 0 when nothing matched.
-func Decision(ipStr string) (bool, int64) {
+func Decision(ipStr, userAgent string) (bool, int64) {
 	ip := parseIP(ipStr)
-	if ip == nil {
-		return true, 0 // unparseable → don't block
-	}
 
 	for _, ru := range currentRules() {
-		if ru.Net != nil && ru.Net.Contains(ip) {
-			return ru.Action == "allow", ru.ID
+		// A rule must constrain by IP and/or User-Agent; skip empty rules.
+		if ru.Net == nil && ru.UserAgent == "" {
+			continue
 		}
+		// IP constraint (if any): must contain the client IP.
+		if ru.Net != nil {
+			if ip == nil || !ru.Net.Contains(ip) {
+				continue
+			}
+		}
+		// User-Agent constraint (if any): substring match, case-sensitive.
+		if ru.UserAgent != "" && !strings.Contains(userAgent, ru.UserAgent) {
+			continue
+		}
+		return ru.Action == "allow", ru.ID
 	}
 	return true, 0
 }
@@ -68,7 +81,7 @@ func ReloadRules() []Rule {
 		markLoaded()
 		return currentSnapshot()
 	}
-	rows, err := db.GetAll(`SELECT id, cidr, action, priority FROM access_rule WHERE enabled = true ORDER BY priority ASC, id ASC`)
+	rows, err := db.GetAll(`SELECT id, cidr, action, priority, user_agent, firewall FROM access_rule WHERE enabled = true ORDER BY priority ASC, id ASC`)
 	if err != nil {
 		markLoaded()
 		return currentSnapshot()
@@ -77,8 +90,10 @@ func ReloadRules() []Rule {
 	parsed := make([]Rule, 0, len(rows))
 	for _, row := range rows {
 		cidr := functions.Coerce[string](row["cidr"])
+		ua := functions.Coerce[string](row["user_agent"])
 		n := parseCIDR(cidr)
-		if n == nil {
+		// A rule needs a CIDR and/or a User-Agent; skip if it has neither.
+		if n == nil && ua == "" {
 			continue
 		}
 		action := functions.Coerce[string](row["action"])
@@ -86,10 +101,13 @@ func ReloadRules() []Rule {
 			action = "deny"
 		}
 		parsed = append(parsed, Rule{
-			ID:       functions.Coerce[int64](row["id"]),
-			Net:      n,
-			Action:   action,
-			Priority: int(functions.Coerce[int64](row["priority"])),
+			ID:        functions.Coerce[int64](row["id"]),
+			Net:       n,
+			CIDR:      cidr,
+			UserAgent: ua,
+			Action:    action,
+			Priority:  int(functions.Coerce[int64](row["priority"])),
+			Firewall:  functions.Coerce[bool](row["firewall"]),
 		})
 	}
 
@@ -97,6 +115,11 @@ func ReloadRules() []Rule {
 	rules = parsed
 	rulesLoaded = time.Now()
 	rulesMu.Unlock()
+
+	// Keep the OS firewall (ufw) in sync with firewall-flagged deny rules. Async
+	// and best-effort so it never blocks a request; no-op when nothing changed.
+	go ReconcileFirewall(parsed)
+
 	return parsed
 }
 
