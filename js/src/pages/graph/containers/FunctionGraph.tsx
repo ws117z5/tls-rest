@@ -1,8 +1,6 @@
 import React, { Component } from "react";
 import "./canvas.css";
 
-import 'katex/dist/katex.min.css';
-import { InlineMath, BlockMath } from 'react-katex';
 
 
 interface FunctionGraphProps {
@@ -30,7 +28,9 @@ class FunctionGraph extends Component<FunctionGraphProps> {
 
         this.state = {
             fns: [],
-            canvasDrawn: false
+            canvasDrawn: false,
+            // react-katex + its CSS are heavy; loaded on demand (see below).
+            katex: null as null | { InlineMath: any }
         }
     }
 
@@ -42,6 +42,14 @@ class FunctionGraph extends Component<FunctionGraphProps> {
     
 
     componentDidMount() {
+        // Load KaTeX only when this page mounts, then re-render the formulas.
+        Promise.all([
+            import("react-katex"),
+            import("katex/dist/katex.min.css"),
+        ])
+            .then(([m]) => this.setState({ katex: { InlineMath: m.InlineMath } }))
+            .catch(() => { /* fall back to raw LaTeX text */ });
+
         var canvas = document.querySelector<HTMLCanvasElement>("canvas#graphs");
         var axes = {x0: 0, y0: 0, scale: 1, allowNegativeX: false, allowNegativeY: false};
 
@@ -119,7 +127,9 @@ class FunctionGraph extends Component<FunctionGraphProps> {
                             return (
                                 <div className="new-line function-description" style={{ top: 40*(index+1) + "px" } } key={index}>
                                     <div className="rect" style={ { backgroundColor: fn.hasOwnProperty('color') ? fn.color : "rgba(0, 0, 0, 1)" } } /> 
-                                    <InlineMath math={fn.latex}> </InlineMath>
+                                    {(this.state as any).katex
+                                        ? (() => { const IM = (this.state as any).katex.InlineMath; return <IM math={fn.latex} />; })()
+                                        : <span className="katex-fallback">{fn.latex}</span>}
                                 {`\n`}</div> 
                             )
                         }

@@ -91,6 +91,25 @@ module.exports = [
     module: {
       rules: commonRules,
     },
+    optimization: {
+    runtimeChunk: 'single', // Extracts Webpack runtime into a tiny separate file
+    splitChunks: {
+      chunks: 'all',
+      maxInitialRequests: 5, // Prevents loading everything in a single massive vendor chunk
+      cacheGroups: {
+        defaultVendors: {
+          test: /[\\/]node_modules[\\/]/,
+          priority: -10,
+          reuseExistingChunk: true,
+        },
+        default: {
+          minChunks: 2,
+          priority: -20,
+          reuseExistingChunk: true,
+        },
+      },
+    },
+  },
     externals: {},
     devtool: 'source-map',
     output: {

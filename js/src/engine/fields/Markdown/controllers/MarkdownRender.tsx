@@ -3,8 +3,6 @@ import Markdown, { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkDirective from "remark-directive";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
 import { safeUrl, resolveImageSrc } from "@engine/fields/Markdown/controllers/markdown";
 import allowedComponents, { allowedNames } from "../components";
 
@@ -78,21 +76,47 @@ interface MarkdownRenderProps {
     className?: string;
 }
 
-const MarkdownRender: React.FC<MarkdownRenderProps> = ({ value, className }) => (
-    <div className={`markdown-body ${className || ""}`}>
-        <Markdown
-            remarkPlugins={[
-                remarkGfm,
-                remarkMath,
-                remarkDirective,
-                remarkAllowedDirectives(allowedNames),
-            ]}
-            rehypePlugins={[rehypeKatex]}
-            components={components}
-        >
-            {value || ""}
-        </Markdown>
-    </div>
-);
+const MarkdownRender: React.FC<MarkdownRenderProps> = ({ value, className }) => {
+    // KaTeX (rehype-katex + its CSS) is heavy, so it's code-split and loaded on
+    // demand. Until it resolves, math renders as plain text; once loaded, the
+    // component re-renders with the plugin applied. The plugin is only added to
+    // the pipeline after it has loaded (never used before it's ready).
+    const [katexPlugin, setKatexPlugin] = React.useState<any>(null);
+
+    React.useEffect(() => {
+        let mounted = true;
+        Promise.all([
+            import("rehype-katex"),
+            // side-effect: pulls in katex's stylesheet as its own chunk
+            import("katex/dist/katex.min.css"),
+        ])
+            .then(([mod]) => {
+                if (mounted) setKatexPlugin(() => mod.default);
+            })
+            .catch(() => {
+                /* leave math as plain text if katex fails to load */
+            });
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
+    return (
+        <div className={`markdown-body ${className || ""}`}>
+            <Markdown
+                remarkPlugins={[
+                    remarkGfm,
+                    remarkMath,
+                    remarkDirective,
+                    remarkAllowedDirectives(allowedNames),
+                ]}
+                rehypePlugins={katexPlugin ? [katexPlugin] : []}
+                components={components}
+            >
+                {value || ""}
+            </Markdown>
+        </div>
+    );
+};
 
 export default MarkdownRender;

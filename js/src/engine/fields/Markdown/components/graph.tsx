@@ -1,14 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { Graphviz } from "@hpcc-js/wasm-graphviz";
 
 type Format = "svg" | "dot" | "json" | "dot_json" | "xdot_json" | "plain" | "plain-ext";
 type Engine = "circo" | "dot" | "fdp" | "neato" | "osage" | "patchwork" | "twopi";
-type GraphvizInstance = Awaited<ReturnType<typeof Graphviz.load>>;
 
-
+// The graphviz WASM is heavy, so it's code-split and loaded on demand — only when
+// a graph is actually rendered — and awaited before use.
 async function renderGraph(dotSource: string, format: Format, engine: Engine): Promise<string> {
-  // 1. Asynchronously load the WASM binary and initialize Graphviz
-  const graphviz: GraphvizInstance = await Graphviz.load();
+  // 1. Lazily import + initialize graphviz (WASM) the first time a graph renders.
+  const { Graphviz } = await import("@hpcc-js/wasm-graphviz");
+  const graphviz = await Graphviz.load();
 
   // 2. Execute layout: layout(dotSource, outputFormat, layoutEngine)
   const svg: string = graphviz.layout(dotSource, format, engine);
