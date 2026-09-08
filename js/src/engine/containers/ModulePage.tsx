@@ -175,8 +175,17 @@ const ModulePage: React.FC<ModulePageProps> = ({
     const submit = useCallback(
         async (form: any) => {
             try {
-                if (mode === "create") await axios.post(base, form);
-                else if (mode === "edit" && id) await axios.put(`${base}/${id}`, form);
+                if (mode === "create") {
+                    const res = await axios.post(base, form);
+                    // Open the newly-created record's view (by uuid key or id).
+                    const key = res?.data?.uuid ?? res?.data?.id;
+                    if (key != null && key !== "") {
+                        go(`${base}/${key}`);
+                        return;
+                    }
+                } else if (mode === "edit" && id) {
+                    await axios.put(`${base}/${id}`, form);
+                }
                 go(base);
             } catch (e) {
                 console.error("Save failed:", e);
@@ -257,7 +266,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
                             Save
                         </button>
                     )}
-                    {isView && can("edit") && (
+                    {isView && can("edit") && Auth.isAdmin() && (
                         <button className="btn btn-primary" onClick={() => go(`${base}/${id}/edit`)}>
                             Edit
                         </button>
@@ -383,7 +392,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
                     {heading} — {mode}
                 </h1>
                 <div className="d-flex gap-2">
-                    {isView && can("edit") && (
+                    {isView && can("edit") && Auth.isAdmin() && (
                         <button className="btn btn-primary" onClick={() => go(`${base}/${id}/edit`)}>
                             Edit
                         </button>

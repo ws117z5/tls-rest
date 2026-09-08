@@ -26,10 +26,11 @@ type Proom struct {
 }
 
 type Puser struct {
-	Uuid    string `json:"uuid"`
-	Id      int64  `json:"id"`
-	Name    string `json:"name"`
-	Session string `json:"session"`
+	Uuid     string `json:"uuid"`
+	Id       int64  `json:"id"`
+	Name     string `json:"name"`
+	Session  string `json:"session"`
+	Password string `json:"password,omitempty"`
 }
 
 type Filter struct {

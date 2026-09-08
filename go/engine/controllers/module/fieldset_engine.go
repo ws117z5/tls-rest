@@ -198,6 +198,10 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 		args = append(args, v.userID)
 		argIndex++
 	}
+	// Soft delete: a module flagged SoftDelete never lists/views deleted rows.
+	if fe.Module != nil && fe.Module.SoftDelete && fe.hasField("deleted") {
+		whereConditions = append(whereConditions, "deleted IS NOT TRUE")
+	}
 
 	// Add WHERE clause if we have conditions
 	if len(whereConditions) > 0 {
@@ -255,6 +259,10 @@ func (fe *FieldsetEngine) BuildCountQuery(params *QueryParams) (string, []interf
 		whereConditions = append(whereConditions, fmt.Sprintf("created_by = $%d", argIndex))
 		args = append(args, v.userID)
 		argIndex++
+	}
+	// Soft delete: a module flagged SoftDelete never lists/views deleted rows.
+	if fe.Module != nil && fe.Module.SoftDelete && fe.hasField("deleted") {
+		whereConditions = append(whereConditions, "deleted IS NOT TRUE")
 	}
 
 	if len(whereConditions) > 0 {
@@ -512,7 +520,7 @@ func (fe *FieldsetEngine) fetchFromDatabaseTable(field Field, parentRecordID int
 	}
 
 	// Execute the query
-	results, err := db.RQuery(query, args...)
+	results, err := db.GetAll(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch table data: %w", err)
 	}

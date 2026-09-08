@@ -18,6 +18,8 @@ export const isImmutableField = (name: string): boolean =>
 
 // Field type constants matching backend
 export const FIELD_TYPES = {
+  TIME_DURATION: 'TimeDuration',
+  PASSWORD: 'Password',
   HTML: 'Html',
   CHECKBOX: 'Checkbox',
   CHECKBOX_SET: 'CheckboxSet', 

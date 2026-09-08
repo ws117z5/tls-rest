@@ -5,6 +5,10 @@ import TableView from './Table/View';
 import BitmaskEdit from './Bitmask/Edit';
 import BitmaskView from './Bitmask/View';
 import AutocompleteEdit from './Autocomplete/Edit';
+import TimeDurationEdit from './TimeDuration/Edit';
+import TimeDurationView from './TimeDuration/View';
+import PasswordEdit from './Password/Edit';
+import PasswordView from './Password/View';
 
 // Import all field components
 import { 
@@ -57,6 +61,16 @@ export interface BaseFieldProps {
 
 // Field type mapping
 const FIELD_COMPONENTS = {
+  [FIELD_TYPES.TIME_DURATION]: {
+    [MODES.EDIT]: TimeDurationEdit,
+    [MODES.VIEW]: TimeDurationView,
+    [MODES.LIST]: TimeDurationView,
+  },
+  [FIELD_TYPES.PASSWORD]: {
+    [MODES.EDIT]: PasswordEdit,
+    [MODES.VIEW]: PasswordView,
+    [MODES.LIST]: PasswordView,
+  },
   [FIELD_TYPES.BITMASK_SELECT]: {
     [MODES.EDIT]: BitmaskEdit,
     [MODES.VIEW]: BitmaskView,

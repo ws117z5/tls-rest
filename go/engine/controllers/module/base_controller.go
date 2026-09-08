@@ -167,6 +167,14 @@ func (bc *BaseController) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // View handles GET requests for viewing a single record by ID
+// keyField is the column used to address a single record (default "id").
+func (bc *BaseController) keyField() string {
+	if bc.Module != nil && bc.Module.KeyField != "" {
+		return bc.Module.KeyField
+	}
+	return "id"
+}
+
 func (bc *BaseController) View(w http.ResponseWriter, r *http.Request) {
 	// Set CORS headers for API calls
 	httpx.AllowOrigin(w, r) // reflect only allowlisted origins (credentialed CORS)
@@ -192,7 +200,7 @@ func (bc *BaseController) View(w http.ResponseWriter, r *http.Request) {
 
 	// Manually add ID filter to the request URL query
 	q := r.URL.Query()
-	q.Set("filters[id]", id)
+	q.Set("filters["+bc.keyField()+"]", id)
 	r.URL.RawQuery = q.Encode()
 
 	result, err := engine.ExecuteQuery(MODE_VIEW)
@@ -290,6 +298,13 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 	response := map[string]interface{}{
 		"id":      id,
 		"message": "Record created successfully",
+	}
+	// Also return the key field value (e.g. uuid) so the client can navigate to
+	// the new record's view when the module isn't keyed by the numeric id.
+	if key := bc.keyField(); key != "id" {
+		if v, ok := filteredData[key]; ok {
+			response[key] = v
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -485,13 +500,15 @@ func (bc *BaseController) updateRecord(id string, data map[string]interface{}) e
 		return err
 	}
 
-	// Convert id to appropriate type
-	var idValue interface{} = id
-	if idInt, err := strconv.ParseInt(id, 10, 64); err == nil {
-		idValue = idInt
+	key := bc.keyField()
+	var keyValue interface{} = id
+	if key == "id" {
+		if idInt, err := strconv.ParseInt(id, 10, 64); err == nil {
+			keyValue = idInt
+		}
 	}
 
-	_, err = db.UpdateRow(bc.TableName, data, "id", idValue)
+	_, err = db.UpdateRow(bc.TableName, data, key, keyValue)
 	return err
 }
 
@@ -501,12 +518,20 @@ func (bc *BaseController) deleteRecord(id string) error {
 		return err
 	}
 
-	// Convert id to appropriate type
-	var idValue interface{} = id
-	if idInt, err := strconv.ParseInt(id, 10, 64); err == nil {
-		idValue = idInt
+	key := bc.keyField()
+	var keyValue interface{} = id
+	if key == "id" {
+		if idInt, err := strconv.ParseInt(id, 10, 64); err == nil {
+			keyValue = idInt
+		}
 	}
 
-	_, err = db.DeleteRow(bc.TableName, "id", idValue)
+	// Soft delete: flag the row instead of removing it.
+	if bc.Module != nil && bc.Module.SoftDelete {
+		_, err = db.UpdateRow(bc.TableName, map[string]interface{}{"deleted": true}, key, keyValue)
+		return err
+	}
+
+	_, err = db.DeleteRow(bc.TableName, key, keyValue)
 	return err
 }

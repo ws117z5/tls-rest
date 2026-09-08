@@ -3,13 +3,13 @@ package papers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"time"
 
 	"tls-rest/go/engine/controllers/functions"
-	"tls-rest/go/engine/controllers/log"
-	"tls-rest/go/engine/controllers/module"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
 
@@ -185,6 +185,13 @@ func AddRoomUser(w http.ResponseWriter, r *http.Request) {
 	}
 	*pRoom = rowToProom(prow)
 
+	// Password gate: a protected room requires the correct password to join.
+	if pRoom.Password != "" && newUser.Password != pRoom.Password {
+		http.Error(w, "invalid room password", http.StatusForbidden)
+		return
+	}
+	newUser.Password = "" // never persist the join password into the users list
+
 	err = json.Unmarshal([]byte(pRoom.Users), &currentUsers)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -204,7 +211,7 @@ func AddRoomUser(w http.ResponseWriter, r *http.Request) {
 
 	jsonUsers, err := json.Marshal(currentUsers)
 	if err != nil {
-		log.Console.Errorf("error:", err)
+		fmt.Println("error:", err)
 	}
 
 	pRoom.Users = string(jsonUsers)
@@ -246,31 +253,9 @@ func ViewRoomUsers(w http.ResponseWriter, r *http.Request) {
 
 	jsonUsers, err := json.Marshal(pRoom.Users)
 	if err != nil {
-		log.Console.Errorf("error:", err)
+		fmt.Println("error:", err)
 	}
 
 	w.Write(jsonUsers)
 	//fmt.Fprintln(w, string(jsonUsers))
-}
-
-var Page = &module.PageAbstract{
-	ID:            "papers",
-	Name:          "Papers Game ",
-	Submenu:       "games",
-	RequiresAuth:  true,
-	RequiresAdmin: true,
-	Routes: []module.PageRoute{
-		{Path: "/papers", Methods: []string{http.MethodGet}, Handler: List},
-		{Path: "/papers/create", Methods: []string{http.MethodPost}, Handler: CreateRoom},
-		{Path: "/papers/{roomId}", Methods: []string{http.MethodPost}, Handler: AddRoomUser},
-		{Path: "/papers/{roomId}", Methods: []string{http.MethodGet}, Handler: ViewRoomUsers},
-		{Path: "/papers/{roomId}/report", Methods: []string{http.MethodPost}, Handler: ReportLink},
-		{Path: "/papers/{roomId}/plan", Methods: []string{http.MethodGet}, Handler: GetPlan},
-		{Path: "/papers/{roomId}/{userId}", Methods: []string{http.MethodGet}, Handler: RegisterUser},
-	},
-}
-
-func Init() {
-	neg = NewNegotiator()
-	Page.Initialize()
 }

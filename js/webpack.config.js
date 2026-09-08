@@ -79,7 +79,7 @@ module.exports = [
     devtool: 'source-map',
     output: {
       path: path.resolve(__dirname, 'dist'),
-      filename: '[name].[contenthash].js',
+      filename: '[name].js',
       clean: true, // Empties /dist before every build
     },
   },
@@ -114,7 +114,7 @@ module.exports = [
     devtool: 'source-map',
     output: {
       path: path.resolve(__dirname, 'dist'),
-      filename: '[name].[contenthash].js',
+      filename: '[name].js',
       clean: true, // Empties /dist before every build
     },
   },

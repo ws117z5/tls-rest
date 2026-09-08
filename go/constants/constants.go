@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
 	"strings"
 )
 
@@ -49,16 +50,14 @@ var (
 	//JsHeaderAttr = [][]string{"/js/dist/platform.js"}
 
 	//JsFooter js footer array todo
-	JsFooter = append(GetFiles([]string{"main.js"}), "/js/static/gl-matrix-min.js")
+	JsFooter = append(GetFiles(), "/js/static/gl-matrix-min.js")
 
 	//Css styles array
 	Css = []string{"/css/bootstrap.min.css", "/css/index.css", "/css/index-cv.css", "/css/menu.css", "/css/theme-dark.css"}
 
 	//Img Images array
-	Img = []string{
-		"/img/background.jpg",
-		"/img/pano.jpg",
-	}
+	//todo populate with image paths
+	Img = []string{}
 
 	SQLPath       = "sql"
 	SQLBackupPath = "backup"
@@ -150,45 +149,62 @@ func GetProjectVersion() string {
 	return "1.0.0"
 }
 
-// Call maps a slice of filenames to relative web paths with the project version query parameter
-func GetFiles(files []string) []string {
+// GetFiles scans ./js/dist and returns relative web paths with version parameters.
+// The returned slice is ordered strictly:
+// 1. runtime.*.js
+// 2. All other chunks/files
+// 3. main.*.js
+func GetFiles() []string {
+	distDir := "./js/dist"
 	version := GetProjectVersion()
-	result := make([]string, 0, len(files))
 
-	for _, file := range files {
-		found := false
-		ext := filepath.Ext(file)                 // e.g. ".js"
-		baseName := strings.TrimSuffix(file, ext) // e.g. "main"
-
-		// 1. First, check for exact match (e.g., ./js/static/legacy-helper.js)
-		exactPath := filepath.Join("./js/dist", file)
-		if _, err := os.Stat(exactPath); err == nil {
-			webPath := "/" + strings.TrimPrefix(filepath.ToSlash("./js/dist"), "./")
-			result = append(result, fmt.Sprintf("%s/%s?v=%s", webPath, file, version))
-			found = true
-			break
-		}
-
-		// 2. If no exact match, search for hashed pattern (e.g., ./js/dist/main.*.js)
-		pattern := filepath.Join("./js/dist", baseName+".*"+ext)
-		matches, err := filepath.Glob(pattern)
-
-		if err == nil && len(matches) > 0 {
-			// Get the actual hashed filename on disk (e.g., "main.2e17295ca734.js")
-			actualFilename := filepath.Base(matches[0])
-			webPath := "/" + strings.TrimPrefix(filepath.ToSlash("./js/dist"), "./")
-
-			// Returns: /js/dist/main.2e17295ca734.js?v=a1b2c3d4
-			result = append(result, fmt.Sprintf("%s/%s?v=%s", webPath, actualFilename, version))
-			found = true
-			break
-		}
-
-		// Fallback if not found on disk
-		if !found {
-			result = append(result, fmt.Sprintf("/js/dist/%s?v=%s", file, version))
-		}
+	entries, err := os.ReadDir(distDir)
+	if err != nil {
+		panic(fmt.Errorf("failed to read dist directory: %w", err))
 	}
+
+	webBasePath := "/" + strings.TrimPrefix(filepath.ToSlash(distDir), "./")
+	result := make([]string, 0, len(entries))
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+
+		// Only process files ending with .js (automatically skips .map, .css, .ttf, etc.)
+		if !strings.HasSuffix(name, ".js") {
+			continue
+		}
+
+		fileURL := fmt.Sprintf("%s/%s?v=%s", webBasePath, name, version)
+		result = append(result, fileURL)
+	}
+
+	// Sort files to guarantee runtime -> remaining .js files -> main ordering
+	sort.SliceStable(result, func(i, j int) bool {
+		fileI := filepath.Base(result[i])
+		fileJ := filepath.Base(result[j])
+
+		isRuntimeI := strings.HasPrefix(fileI, "runtime.")
+		isRuntimeJ := strings.HasPrefix(fileJ, "runtime.")
+		isMainI := strings.HasPrefix(fileI, "main.")
+		isMainJ := strings.HasPrefix(fileJ, "main.")
+
+		// 1. runtime always comes first
+		if isRuntimeI != isRuntimeJ {
+			return isRuntimeI
+		}
+
+		// 2. main always comes last
+		if isMainI != isMainJ {
+			return !isMainI
+		}
+
+		// 3. Preserve relative alphabetical order for all other .js chunks
+		return result[i] < result[j]
+	})
 
 	return result
 }

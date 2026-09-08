@@ -153,6 +153,15 @@ type ModuleAbstract[T any] struct {
 	// ListAscending makes the list default to oldest-first (ORDER BY ... ASC).
 	// The default for every module is newest-first (DESC) — last record first.
 	ListAscending bool
+
+	// KeyField is the column used to look up a single record in view/edit/delete
+	// (the /{module}/{key} path segment). Defaults to "id"; set to "uuid" for
+	// modules addressed by uuid instead of an incrementing id.
+	KeyField string
+
+	// SoftDelete makes DELETE flag the row (deleted = true) instead of removing
+	// it, and hides deleted rows from list/view. Requires a `deleted` column.
+	SoftDelete bool
 }
 
 // OnRightsChange is invoked after a successful write to a RightsAffecting module.

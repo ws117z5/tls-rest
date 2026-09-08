@@ -28,8 +28,8 @@ import (
 
 	// Features that own arbitrary route trees with unexported handlers — their
 	// registration lives behind an exported Register() in the package.
+	papers "tls-rest/go/modules/papers"
 	opencv "tls-rest/go/pages/opencv"
-	papers "tls-rest/go/pages/papers"
 )
 
 // RegisterAll registers every module, page, and feature. Call once from main()

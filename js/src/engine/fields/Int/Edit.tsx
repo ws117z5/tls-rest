@@ -1,96 +1,66 @@
 import React, { Component, ChangeEvent } from "react";
 
 interface IntEditProps {
-    id?: string;
-    label?: string;
-    value?: number;
-    min?: number;
-    max?: number;
-    step?: number;
-    disabled?: boolean;
-    required?: boolean;
-    placeholder?: string;
-    onChange?: (value: number) => void;
-    className?: string;
+  id?: string;
+  value?: number | string;
+  min?: number;
+  max?: number;
+  step?: number;
+  disabled?: boolean;
+  required?: boolean;
+  placeholder?: string;
+  className?: string;
+  width?: string | number;
+  onChange?: (value: number) => void;
 }
 
-interface IntEditState {
-    value: string;
-}
+interface IntEditState { value: string; }
 
+// Editable integer input for TYPE_INT. Renders only the control (the field layout
+// draws the label). Reports an integer via onChange; empty stays empty.
 class IntEdit extends Component<IntEditProps, IntEditState> {
-    static defaultProps = {
-        value: 0,
-        step: 1,
-        disabled: false,
-        required: false,
-        className: "",
-    };
+  static defaultProps = { step: 1, width: "auto" };
 
-    constructor(props: IntEditProps) {
-        super(props);
-        this.state = {
-            value: (props.value ?? "").toString(),
-        };
+  constructor(props: IntEditProps) {
+    super(props);
+    this.state = { value: props.value === undefined || props.value === null ? "" : String(props.value) };
+  }
+
+  componentDidUpdate(prev: IntEditProps) {
+    if (prev.value !== this.props.value) {
+      const v = this.props.value;
+      this.setState({ value: v === undefined || v === null ? "" : String(v) });
     }
+  }
 
-    componentDidUpdate(prevProps: IntEditProps) {
-        if (prevProps.value !== this.props.value) {
-            this.setState({ value: (this.props.value ?? "").toString() });
-        }
-    }
+  handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const s = e.target.value;
+    this.setState({ value: s });
+    if (!this.props.onChange) return;
+    if (s === "") { this.props.onChange(0); return; }
+    const n = parseInt(s, 10);
+    if (!isNaN(n)) this.props.onChange(n);
+  };
 
-    handleChange = (e: ChangeEvent<HTMLInputElement>) => {
-        const stringValue = e.target.value;
-        this.setState({ value: stringValue });
-
-        // Parse and validate integer
-        const numValue = parseInt(stringValue, 10);
-        if (!isNaN(numValue) && this.props.onChange) {
-            this.props.onChange(numValue);
-        } else if (stringValue === "" && this.props.onChange) {
-            this.props.onChange(0);
-        }
-    };
-
-    render() {
-        const { 
-            id, 
-            label, 
-            min, 
-            max, 
-            step, 
-            disabled, 
-            required, 
-            placeholder,
-            className 
-        } = this.props;
-        const { value } = this.state;
-
-        return (
-            <div className={`form-group ${className}`}>
-                {label && (
-                    <label htmlFor={id} className="form-label">
-                        {label}
-                        {required && <span className="text-danger"> *</span>}
-                    </label>
-                )}
-                <input
-                    id={id}
-                    type="number"
-                    className="form-control"
-                    value={value}
-                    min={min}
-                    max={max}
-                    step={step}
-                    disabled={disabled}
-                    required={required}
-                    placeholder={placeholder || label}
-                    onChange={this.handleChange}
-                />
-            </div>
-        );
-    }
+  render() {
+    const { id, min, max, step, disabled, required, placeholder, className, width } = this.props;
+    return (
+      <input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        step={step ?? 1}
+        className={`form-control ${className || ""}`.trim()}
+        value={this.state.value}
+        min={min}
+        max={max}
+        disabled={disabled}
+        required={required}
+        placeholder={placeholder}
+        style={{ width }}
+        onChange={this.handleChange}
+      />
+    );
+  }
 }
-
 export default IntEdit;

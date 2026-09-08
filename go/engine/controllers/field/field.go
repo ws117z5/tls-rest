@@ -33,6 +33,8 @@ const TYPE_DATE = "Date"
 const TYPE_DATE_TIME = "DateTime"
 const TYPE_COLOR = "Color"
 const TYPE_WEEK = "Week"
+const TYPE_TIME_DURATION = "TimeDuration"
+const TYPE_PASSWORD = "Password"
 
 const TYPE_INT = "Int"
 const TYPE_FLOAT = "Float"
@@ -327,6 +329,18 @@ func (f Field) WithAccess(level int) Field {
 
 func (f Field) WithValidation(key string, value interface{}) Field {
 	f.Validation[key] = value
+	return f
+}
+
+// WithExtraParams merges arbitrary field-specific params into Options (e.g.
+// WithExtraParams(map[string]interface{}{"format": "mm:ss"}) for a duration).
+func (f Field) WithExtraParams(params map[string]interface{}) Field {
+	if f.Options == nil {
+		f.Options = map[string]interface{}{}
+	}
+	for k, v := range params {
+		f.Options[k] = v
+	}
 	return f
 }
 
