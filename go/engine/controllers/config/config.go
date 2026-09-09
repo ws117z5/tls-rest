@@ -66,9 +66,7 @@ func Resolve(userID int) map[string]string {
 		if rows, e := db.RQuery(`
 			SELECT theme, date_format FROM config
 			WHERE scope = 'group' AND scope_id IN (
-				SELECT user_group FROM users WHERE id = $1 AND user_group IS NOT NULL
-				UNION
-				SELECT group_id FROM user_group_members WHERE user_id = $1
+				SELECT jsonb_array_elements_text(groups)::int FROM users WHERE id = $1
 			)
 			ORDER BY scope_id ASC
 		`, userID); e == nil {

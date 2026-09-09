@@ -36,7 +36,7 @@ func modesField() Field {
 	return NewField("modes", TYPE_BITMASK_SELECT, true).
 		WithLabel("Allowed Modes").
 		WithDescription("Modes this subject may perform on the module").
-		WithDefaultValue(0).
+		WithDefault(0).
 		WithValidation("min", 0).
 		WithOptions(modeBitOptions)
 }
@@ -160,39 +160,7 @@ var UserRightsModule = &ModuleAbstract[interface{}]{
 	Rights:               make(map[int]int),
 }
 
-// Register wires this package into the engine (called from go/imports.go).
-// GroupMembersModule: additional group memberships, letting a user belong to
-// MULTIPLE groups beyond the primary users.user_group. Rights are aggregated
-// across every group a user is in (see auth's userGroupsSubquery).
-var GroupMembersModule = &ModuleAbstract[interface{}]{
-	ID:              "user_group_members",
-	RightsAffecting: true,
-	Name:            "Group Members",
-	Submenu:         "engine",
-	Fields: []Field{
-		NewField("user_id", TYPE_INT, true).
-			WithLabel("User").
-			WithDescription("User to add to a group").
-			WithOption("widget", "select").
-			WithOption("dataSource", "users").
-			WithOption("valueField", "id").
-			WithOption("displayField", "user_name"),
-		NewField("group_id", TYPE_INT, true).
-			WithLabel("User Group").
-			WithDescription("Group to add the user to").
-			WithOption("widget", "select").
-			WithOption("dataSource", "user_groups").
-			WithOption("valueField", "id").
-			WithOption("displayField", "name"),
-	},
-	// Administration module: no access unless explicitly granted (or admin).
-	DefaultPermission:    PERMISSION_DENY,
-	DefaultPermissionSet: true,
-	Rights:               make(map[int]int),
-}
-
 func Init() {
 	GroupRightsModule.Initialize("user_group_rights")
 	UserRightsModule.Initialize("user_rights")
-	GroupMembersModule.Initialize("user_group_members")
 }

@@ -43,6 +43,13 @@ func IsSystemField(name string) bool {
 	return systemFields[name]
 }
 
+// SystemFieldsExceptID returns the engine-managed system field names other than
+// "id". It is the value a module passes to OmitSystemFields when its table has
+// only "id" of the standard system columns (logs, accesslog, accessrules).
+func SystemFieldsExceptID() []string {
+	return []string{"uuid", "created", "updated", "created_by", "access"}
+}
+
 // adminOnlyData lists system fields whose *values* are withheld from non-admins
 // entirely (not just hidden from the schema). uuid qualifies: a non-admin never
 // receives it. id does NOT — the client routes and acts on records by id, so it

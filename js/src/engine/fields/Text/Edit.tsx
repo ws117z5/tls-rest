@@ -109,6 +109,9 @@ class TextEdit extends Component<TextEditProps, TextEditState> {
             placeholder,
             id,
             ...inputProps,
+            // Set after the spread so form-control is always applied (merging any
+            // caller className) — matches Int/Password/Float form styling.
+            className: `form-control ${(inputProps && (inputProps as any).className) || ""}`.trim(),
         };
 
         return (

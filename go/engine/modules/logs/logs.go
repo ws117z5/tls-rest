@@ -63,7 +63,7 @@ func NewLogs() *Logs {
 			DefaultPermission:    PERMISSION_DENY,
 			DefaultPermissionSet: true,
 			// The logs table has none of the standard system columns except id.
-			OmitSystemFields: []string{"uuid", "created", "updated", "created_by", "access"},
+			OmitSystemFields: SystemFieldsExceptID(),
 			// Read-only: the event logger writes rows; the UI only browses them.
 			Overrides: HandlerOverrides{
 				Create: readOnly,

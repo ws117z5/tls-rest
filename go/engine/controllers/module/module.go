@@ -15,16 +15,7 @@ import (
 )
 
 const (
-	// Legacy rights constants (for backward compatibility)
-	RIGHT_NONE   = 0
-	RIGHT_VIEW   = 1 << 0 // 1 - View rights
-	RIGHT_CREATE = 1 << 1 // 2 - Create rights
-	RIGHT_EDIT   = 1 << 2 // 4 - Edit rights
-	RIGHT_DELETE = 1 << 3 // 8 - Delete rights
-	RIGHT_ADMIN  = 1 << 4 // 16 - Admin rights
-	RIGHT_ALL    = RIGHT_VIEW | RIGHT_CREATE | RIGHT_EDIT | RIGHT_DELETE | RIGHT_ADMIN
-
-	// New permission system constants (matching auth/rights.go)
+	// Permission system constants (matching auth/rights.go)
 	PERMISSION_INHERIT = -1 // Inherit permission from parent (group or default)
 	PERMISSION_DENY    = 0  // No access to module
 	PERMISSION_READ    = 1  // Read-only access
@@ -273,28 +264,6 @@ func RegisterModuleDefaultPermission(module string, defaultPermission int) {
 func (m *ModuleAbstract[T]) SetDefaultPermission(permission int) {
 	m.DefaultPermission = permission
 	RegisterModuleDefaultPermission(m.ID, permission)
-}
-
-// Helper functions to extract user and session info from request
-func getSessionIDFromRequest(r *http.Request) string {
-	// Try to get session ID from cookie
-	if cookie, err := r.Cookie("session_id"); err == nil {
-		return cookie.Value
-	}
-
-	// Try to get from custom header
-	if sessionID := r.Header.Get("X-Session-ID"); sessionID != "" {
-		return sessionID
-	}
-
-	// Generate a basic session ID from IP and UserAgent
-	return r.RemoteAddr + "_" + strings.ReplaceAll(r.UserAgent(), " ", "_")
-}
-
-func getUserIDFromRequest(r *http.Request) *int {
-	// In a real implementation, this would extract from context or session
-	// For now, return nil (anonymous user)
-	return nil
 }
 
 // LogModuleEvent logs module events with structured data
@@ -577,199 +546,87 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	}
 }
 
-// Default CRUD methods - can be overridden by setting CustomHandler
-func (m *ModuleAbstract[T]) List(w http.ResponseWriter, r *http.Request) {
+// dispatch routes one CRUD action through the override → CustomHandler → default
+// controller chain (first non-nil wins), wrapped in a single timed module event.
+// custom and controller are passed pre-bound (or nil) so a missing CustomHandler
+// or Controller simply falls through.
+func (m *ModuleAbstract[T]) dispatch(w http.ResponseWriter, r *http.Request, action string, override http.HandlerFunc, custom, controller func(http.ResponseWriter, *http.Request)) {
 	startTime := time.Now()
-
-	// Log module event using new logging system
-	sessionID := getSessionIDFromRequest(r)
-	userID := getUserIDFromRequest(r)
-
-	log.LogModuleEvent(
-		m.ID,
-		"list",
-		fmt.Sprintf("Module %s list operation started", m.ID),
-		userID,
-		sessionID,
-		map[string]interface{}{
-			"fields_count":       len(m.Fields),
-			"has_custom_handler": m.CustomHandler != nil,
-		})
-
-	defer func() {
-		duration := time.Since(startTime).Seconds() * 1000
-		// Capture any panic/error
-		if err := recover(); err != nil {
-			log.LogError(
-				fmt.Sprintf("Module %s list operation failed", m.ID),
-				fmt.Sprintf("panic: %v", err),
-				"", // stack trace would be added here in production
-				map[string]interface{}{
-					"module":      m.ID,
-					"duration_ms": duration,
-				},
-			)
-			panic(err) // Re-panic to maintain original behavior
+	event := NewModuleEventFromRequest(m.ID, action, r)
+	if vars := mux.Vars(r); vars != nil {
+		if id, ok := vars["id"]; ok {
+			event.RecordID = id
 		}
-
-		log.LogModuleEvent(m.ID, "list", fmt.Sprintf("Module %s list operation completed", m.ID), userID, sessionID, map[string]interface{}{
-			"duration_ms": duration,
-			"success":     true,
-		})
+	}
+	defer func() {
+		event.Duration = time.Since(startTime).Milliseconds()
+		LogModuleEvent(event)
 	}()
 
-	if m.Overrides.List != nil {
-		m.Overrides.List(w, r)
-		return
+	switch {
+	case override != nil:
+		override(w, r)
+	case custom != nil:
+		custom(w, r)
+	case controller != nil:
+		controller(w, r)
 	}
+}
+
+// Default CRUD methods - can be overridden by setting CustomHandler
+func (m *ModuleAbstract[T]) List(w http.ResponseWriter, r *http.Request) {
+	var custom, controller func(http.ResponseWriter, *http.Request)
 	if m.CustomHandler != nil {
-		m.CustomHandler.List(w, r)
-		return
+		custom = m.CustomHandler.List
 	}
 	if m.Controller != nil {
-		m.Controller.List(w, r)
+		controller = m.Controller.List
 	}
+	m.dispatch(w, r, "LIST", m.Overrides.List, custom, controller)
 }
 
 func (m *ModuleAbstract[T]) View(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-	event := NewModuleEventFromRequest(m.ID, "VIEW", r)
-
-	// Extract record ID from URL path
-	if vars := mux.Vars(r); vars != nil {
-		if id, exists := vars["id"]; exists {
-			event.RecordID = id
-		}
-	}
-
-	defer func() {
-		event.Duration = time.Since(startTime).Milliseconds()
-		LogModuleEvent(event)
-	}()
-
-	if m.Overrides.View != nil {
-		m.Overrides.View(w, r)
-		return
-	}
+	var custom, controller func(http.ResponseWriter, *http.Request)
 	if m.CustomHandler != nil {
-		m.CustomHandler.View(w, r)
-		return
+		custom = m.CustomHandler.View
 	}
 	if m.Controller != nil {
-		m.Controller.View(w, r)
+		controller = m.Controller.View
 	}
+	m.dispatch(w, r, "VIEW", m.Overrides.View, custom, controller)
 }
 
 func (m *ModuleAbstract[T]) Create(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-	event := NewModuleEventFromRequest(m.ID, "CREATE", r)
-
-	defer func() {
-		event.Duration = time.Since(startTime).Milliseconds()
-		LogModuleEvent(event)
-	}()
-
-	if m.Overrides.Create != nil {
-		m.Overrides.Create(w, r)
-		return
-	}
+	var custom, controller func(http.ResponseWriter, *http.Request)
 	if m.CustomHandler != nil {
-		m.CustomHandler.Create(w, r)
-		return
+		custom = m.CustomHandler.Create
 	}
 	if m.Controller != nil {
-		m.Controller.Create(w, r)
+		controller = m.Controller.Create
 	}
+	m.dispatch(w, r, "CREATE", m.Overrides.Create, custom, controller)
 }
 
 func (m *ModuleAbstract[T]) Edit(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-	event := NewModuleEventFromRequest(m.ID, "EDIT", r)
-
-	// Extract record ID from URL path
-	if vars := mux.Vars(r); vars != nil {
-		if id, exists := vars["id"]; exists {
-			event.RecordID = id
-		}
-	}
-
-	defer func() {
-		event.Duration = time.Since(startTime).Milliseconds()
-		LogModuleEvent(event)
-	}()
-
-	if m.Overrides.Edit != nil {
-		m.Overrides.Edit(w, r)
-		return
-	}
+	var custom, controller func(http.ResponseWriter, *http.Request)
 	if m.CustomHandler != nil {
-		m.CustomHandler.Edit(w, r)
-		return
+		custom = m.CustomHandler.Edit
 	}
 	if m.Controller != nil {
-		m.Controller.Edit(w, r)
+		controller = m.Controller.Edit
 	}
+	m.dispatch(w, r, "EDIT", m.Overrides.Edit, custom, controller)
 }
 
 func (m *ModuleAbstract[T]) Delete(w http.ResponseWriter, r *http.Request) {
-	startTime := time.Now()
-	event := NewModuleEventFromRequest(m.ID, "DELETE", r)
-
-	// Extract record ID from URL path
-	if vars := mux.Vars(r); vars != nil {
-		if id, exists := vars["id"]; exists {
-			event.RecordID = id
-		}
-	}
-
-	defer func() {
-		event.Duration = time.Since(startTime).Milliseconds()
-		LogModuleEvent(event)
-	}()
-
-	if m.Overrides.Delete != nil {
-		m.Overrides.Delete(w, r)
-		return
-	}
+	var custom, controller func(http.ResponseWriter, *http.Request)
 	if m.CustomHandler != nil {
-		m.CustomHandler.Delete(w, r)
-		return
+		custom = m.CustomHandler.Delete
 	}
 	if m.Controller != nil {
-		m.Controller.Delete(w, r)
+		controller = m.Controller.Delete
 	}
-}
-
-func (m *ModuleAbstract[T]) getQuery() string {
-	query := "SELECT "
-	for i, field := range m.Fields {
-		if field.SQL != "" {
-			query += field.GetSQL()
-		} else {
-			query += field.Name
-		}
-		if i < len(m.Fields)-1 {
-			query += ", "
-		}
-	}
-	query += " FROM " + m.ID
-
-	return query
-}
-
-func (m *ModuleAbstract[T]) HasRight(userGroupID int, right int) bool {
-	if r, ok := m.Rights[userGroupID]; ok {
-		return r&right != 0
-	}
-	return false
-}
-
-func (m *ModuleAbstract[T]) SetRight(userGroupID, moduleID, right int) {
-	if r, ok := m.Rights[userGroupID]; ok {
-		m.Rights[userGroupID] = r | right
-	} else {
-		m.Rights[userGroupID] = right
-	}
+	m.dispatch(w, r, "DELETE", m.Overrides.Delete, custom, controller)
 }
 
 // getDB returns a database instance
@@ -778,16 +635,9 @@ func (m *ModuleAbstract[T]) SetRight(userGroupID, moduleID, right int) {
 // Virtual and SQL-computed fields (e.g. an IMAGE preview aliased to another
 // column) are skipped since they aren't real columns.
 func (m *ModuleAbstract[T]) addMissingColumns(db *pgdb.Db) error {
-	rows, err := db.RQuery(
-		`SELECT column_name FROM information_schema.columns WHERE table_name = $1`, m.ID)
+	existing, err := tableColumns(db, m.ID)
 	if err != nil {
 		return err
-	}
-	existing := map[string]bool{}
-	for _, r := range rows {
-		if c, ok := r["column_name"].(string); ok {
-			existing[strings.ToLower(c)] = true
-		}
 	}
 	for _, field := range m.Fields {
 		if field.Virtual || field.SQL != "" {
@@ -801,10 +651,9 @@ func (m *ModuleAbstract[T]) addMissingColumns(db *pgdb.Db) error {
 		// that already has rows. Required values are supplied on insert (uuid,
 		// created_by) or by a DB default below.
 		sqlType = strings.Replace(sqlType, " NOT NULL", "", 1)
-		switch field.Name {
-		case "created", "updated":
-			sqlType = "TIMESTAMP WITH TIME ZONE DEFAULT now()"
-		case "access":
+		if t, ok := timestampSystemColumnType(field.Name); ok {
+			sqlType = t
+		} else if field.Name == "access" {
 			sqlType = "INTEGER DEFAULT 0"
 		}
 		alter := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s", m.ID, field.Name, sqlType)
@@ -895,6 +744,18 @@ func SetModuleRights(moduleID, userOrGroupID string, right int, isGroup bool, db
 	}
 }
 
+// timestampSystemColumnType returns the column type the engine forces for a
+// timestamp system field (created/updated and their _at variants), and whether
+// name is one. Shared by CREATE TABLE generation and column reconciliation so
+// both emit the same "DEFAULT now()" definition.
+func timestampSystemColumnType(name string) (string, bool) {
+	switch name {
+	case "created", "created_at", "updated", "updated_at":
+		return "TIMESTAMP WITH TIME ZONE DEFAULT now()", true
+	}
+	return "", false
+}
+
 // fieldTypeToSQL converts a field type to SQL column definition
 func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 	var sqlType string
@@ -921,24 +782,10 @@ func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 		// ({id, uuid, filename}); the bytes live in the images table.
 		sqlType = "JSONB"
 	case TYPE_TABLE:
-		// For table fields, check the data source type
-		if field.Options != nil {
-			if dataSource, ok := field.Options["dataSource"].(string); ok {
-				switch dataSource {
-				case "database", "query":
-					// For database tables, this field is virtual - no storage needed
-					return "" // Empty means this field won't be created in the table
-				case "static":
-					sqlType = "JSONB" // Store static data as JSON
-				default:
-					sqlType = "JSONB" // Default fallback
-				}
-			} else {
-				sqlType = "JSONB" // Default fallback
-			}
-		} else {
-			sqlType = "JSONB" // Default fallback
-		}
+		// A table field's rows are stored as JSON on the record (or, for a
+		// TableSource-backed table, kept out of the fieldset's own SELECT and
+		// loaded via the /table/{field} endpoint).
+		sqlType = "JSONB"
 	case TYPE_MONEY:
 		sqlType = "NUMERIC(15,2)"
 	default:
@@ -1083,13 +930,9 @@ func (m *ModuleAbstract[T]) generateCreateTableSQL() string {
 			if !hasIdField {
 				primaryKeys = append(primaryKeys, field.Name)
 			}
-		case "created", "created_at":
-			if field.Type == TYPE_DATE_TIME {
-				columnDef = fmt.Sprintf("%s TIMESTAMP WITH TIME ZONE DEFAULT now()", field.Name)
-			}
-		case "updated", "updated_at":
-			if field.Type == TYPE_DATE_TIME {
-				columnDef = fmt.Sprintf("%s TIMESTAMP WITH TIME ZONE DEFAULT now()", field.Name)
+		case "created", "created_at", "updated", "updated_at":
+			if t, ok := timestampSystemColumnType(field.Name); ok && field.Type == TYPE_DATE_TIME {
+				columnDef = field.Name + " " + t
 			}
 		}
 
@@ -1116,69 +959,6 @@ func (m *ModuleAbstract[T]) GenerateCreateTableSQL() string {
 
 func (m *ModuleAbstract[T]) FieldTypeToSQL(field Field) string {
 	return m.fieldTypeToSQL(field)
-}
-
-// Rights management methods
-func (m *ModuleAbstract[T]) RevokeRight(userOrGroupID, right int) {
-	if r, ok := m.Rights[userOrGroupID]; ok {
-		m.Rights[userOrGroupID] = r & ^right
-	}
-}
-
-func (m *ModuleAbstract[T]) GetRights(userOrGroupID int) int {
-	if r, ok := m.Rights[userOrGroupID]; ok {
-		return r
-	}
-	return RIGHT_NONE
-}
-
-func HasRight(rights int, right int) bool {
-	return (rights & right) != 0
-}
-
-func AddRight(rights int, right int) int {
-	return rights | right
-}
-
-func RemoveRight(rights int, right int) int {
-	return rights & ^right
-}
-
-func GetRightName(right int) string {
-	switch right {
-	case RIGHT_VIEW:
-		return "View"
-	case RIGHT_CREATE:
-		return "Create"
-	case RIGHT_EDIT:
-		return "Edit"
-	case RIGHT_DELETE:
-		return "Delete"
-	case RIGHT_ADMIN:
-		return "Admin"
-	default:
-		return "Unknown"
-	}
-}
-
-func GetRightNames(rights int) []string {
-	var names []string
-	if HasRight(rights, RIGHT_VIEW) {
-		names = append(names, "View")
-	}
-	if HasRight(rights, RIGHT_CREATE) {
-		names = append(names, "Create")
-	}
-	if HasRight(rights, RIGHT_EDIT) {
-		names = append(names, "Edit")
-	}
-	if HasRight(rights, RIGHT_DELETE) {
-		names = append(names, "Delete")
-	}
-	if HasRight(rights, RIGHT_ADMIN) {
-		names = append(names, "Admin")
-	}
-	return names
 }
 
 // registerSingleModuleRoutes registers routes for a single module

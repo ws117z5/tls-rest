@@ -75,7 +75,7 @@ func NewAccessRule() *AccessRule {
 			Rights:               make(map[int]int),
 			DefaultPermission:    PERMISSION_DENY, // admin-only
 			DefaultPermissionSet: true,
-			OmitSystemFields:     []string{"uuid", "created", "updated", "created_by", "access"},
+			OmitSystemFields:     SystemFieldsExceptID(),
 		},
 	}
 	m.ModuleAbstract.Fields = m.fieldset()

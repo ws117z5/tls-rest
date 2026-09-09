@@ -110,21 +110,31 @@ func tableColumnsCached(table string) map[string]bool {
 	}
 	cols := map[string]bool{}
 	if db, err := pgdb.GetInstance(); err == nil {
-		if rows, err := db.RQuery(
-			`SELECT column_name FROM information_schema.columns WHERE table_name = $1`,
-			table,
-		); err == nil {
-			for _, r := range rows {
-				if c, ok := r["column_name"].(string); ok {
-					cols[strings.ToLower(c)] = true
-				}
-			}
+		if c, err := tableColumns(db, table); err == nil {
+			cols = c
 		}
 	}
 	if len(cols) > 0 {
 		tableColsCache.Store(table, cols)
 	}
 	return cols
+}
+
+// tableColumns returns the set of column names (lowercased) that currently exist
+// on the given table, straight from information_schema.
+func tableColumns(db *pgdb.Db, table string) (map[string]bool, error) {
+	rows, err := db.RQuery(
+		`SELECT column_name FROM information_schema.columns WHERE table_name = $1`, table)
+	if err != nil {
+		return nil, err
+	}
+	cols := make(map[string]bool, len(rows))
+	for _, r := range rows {
+		if c, ok := r["column_name"].(string); ok {
+			cols[strings.ToLower(c)] = true
+		}
+	}
+	return cols, nil
 }
 
 func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (string, []interface{}, error) {
@@ -164,46 +174,7 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 
 	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectFields, ", "), fe.TableName)
 
-	// Build WHERE conditions
-	if params.Search != "" && fe.hasSearchableFields() {
-		searchConditions := fe.buildSearchConditions(params.Search, &argIndex, &args)
-		if len(searchConditions) > 0 {
-			whereConditions = append(whereConditions, fmt.Sprintf("(%s)", strings.Join(searchConditions, " OR ")))
-		}
-	}
-
-	// Build filter conditions
-	if params.Filters != nil {
-		filterConditions := fe.buildFilterConditions(params.Filters, &argIndex, &args)
-		whereConditions = append(whereConditions, filterConditions...)
-	}
-
-	// Declared list filters (module <name>/filters.go): turn matching query
-	// parameters into WHERE clauses for list mode.
-	declaredFilters := fe.buildDeclaredFilterConditions(&argIndex, &args)
-	whereConditions = append(whereConditions, declaredFilters...)
-
-	// Row-level access filtering: non-admins only see records whose access level
-	// is within their own (admins see everything).
-	if !v.isAdmin && fe.hasField("access") {
-		whereConditions = append(whereConditions, fmt.Sprintf("access <= $%d", argIndex))
-		args = append(args, v.level)
-		argIndex++
-	}
-
-	// Owner scoping: a module flagged OwnerScoped shows a non-admin only the rows
-	// they created (personal data). Admins are not scoped.
-	if fe.Module != nil && fe.Module.OwnerScoped && !v.isAdmin && v.userID > 0 && fe.hasField("created_by") {
-		whereConditions = append(whereConditions, fmt.Sprintf("created_by = $%d", argIndex))
-		args = append(args, v.userID)
-		argIndex++
-	}
-	// Soft delete: a module flagged SoftDelete never lists/views deleted rows.
-	if fe.Module != nil && fe.Module.SoftDelete && fe.hasField("deleted") {
-		whereConditions = append(whereConditions, "deleted IS NOT TRUE")
-	}
-
-	// Add WHERE clause if we have conditions
+	whereConditions = fe.buildScopeConditions(params, v, &argIndex, &args)
 	if len(whereConditions) > 0 {
 		query += " WHERE " + strings.Join(whereConditions, " AND ")
 	}
@@ -211,60 +182,67 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 	// Add ORDER BY
 	if params.Sort != "" && fe.isValidSortField(params.Sort) {
 		query += fmt.Sprintf(" ORDER BY %s %s", params.Sort, params.Order)
-	} else if fe.hasDefaultSortField() {
-		defaultSort := fe.getDefaultSortField()
-		query += fmt.Sprintf(" ORDER BY %s %s", defaultSort, params.Order)
+	} else if ds := fe.defaultSortField(); ds != "" {
+		query += fmt.Sprintf(" ORDER BY %s %s", ds, params.Order)
 	}
 
 	return query, args, nil
 }
 
+// buildScopeConditions returns the WHERE conditions common to the list SELECT and
+// its COUNT — free-text search, ad-hoc filters, declared list filters, row-level
+// access, owner scoping and soft-delete — appending bind values to args and
+// advancing argIndex. Sharing this is what keeps the paginated total consistent
+// with the rows actually returned.
+func (fe *FieldsetEngine) buildScopeConditions(params *QueryParams, v viewer, argIndex *int, args *[]interface{}) []string {
+	var conds []string
+
+	// Free-text search across searchable columns.
+	if params.Search != "" && fe.hasSearchableFields() {
+		if sc := fe.buildSearchConditions(params.Search, argIndex, args); len(sc) > 0 {
+			conds = append(conds, fmt.Sprintf("(%s)", strings.Join(sc, " OR ")))
+		}
+	}
+
+	// Ad-hoc filters[...] parameters.
+	if params.Filters != nil {
+		conds = append(conds, fe.buildFilterConditions(params.Filters, argIndex, args)...)
+	}
+
+	// Declared list filters (module <name>/filters.go).
+	conds = append(conds, fe.buildDeclaredFilterConditions(argIndex, args)...)
+
+	// Row-level access: non-admins only see records within their own access level.
+	if !v.isAdmin && fe.hasField("access") {
+		conds = append(conds, fmt.Sprintf("access <= $%d", *argIndex))
+		*args = append(*args, v.level)
+		*argIndex++
+	}
+
+	// Owner scoping: an OwnerScoped module shows a non-admin only rows they created.
+	if fe.Module != nil && fe.Module.OwnerScoped && !v.isAdmin && v.userID > 0 && fe.hasField("created_by") {
+		conds = append(conds, fmt.Sprintf("created_by = $%d", *argIndex))
+		*args = append(*args, v.userID)
+		*argIndex++
+	}
+
+	// Soft delete: a SoftDelete module never lists/views deleted rows.
+	if fe.Module != nil && fe.Module.SoftDelete && fe.hasField("deleted") {
+		conds = append(conds, "deleted IS NOT TRUE")
+	}
+
+	return conds
+}
+
 // BuildCountQuery constructs a COUNT query for pagination
 func (fe *FieldsetEngine) BuildCountQuery(params *QueryParams) (string, []interface{}, error) {
-	var whereConditions []string
 	var args []interface{}
 	argIndex := 1
 
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", fe.TableName)
 
 	v := viewerFromRequest(fe.Request)
-
-	// Build WHERE conditions (same as select query)
-	if params.Search != "" && fe.hasSearchableFields() {
-		searchConditions := fe.buildSearchConditions(params.Search, &argIndex, &args)
-		if len(searchConditions) > 0 {
-			whereConditions = append(whereConditions, fmt.Sprintf("(%s)", strings.Join(searchConditions, " OR ")))
-		}
-	}
-
-	if params.Filters != nil {
-		filterConditions := fe.buildFilterConditions(params.Filters, &argIndex, &args)
-		whereConditions = append(whereConditions, filterConditions...)
-	}
-
-	// Same declared list filters as the select query, so the total count matches
-	// the filtered result set.
-	declaredFilters := fe.buildDeclaredFilterConditions(&argIndex, &args)
-	whereConditions = append(whereConditions, declaredFilters...)
-
-	// Keep the count consistent with the filtered result set.
-	if !v.isAdmin && fe.hasField("access") {
-		whereConditions = append(whereConditions, fmt.Sprintf("access <= $%d", argIndex))
-		args = append(args, v.level)
-		argIndex++
-	}
-
-	// Owner scoping — same rule as the select query so the total matches.
-	if fe.Module != nil && fe.Module.OwnerScoped && !v.isAdmin && v.userID > 0 && fe.hasField("created_by") {
-		whereConditions = append(whereConditions, fmt.Sprintf("created_by = $%d", argIndex))
-		args = append(args, v.userID)
-		argIndex++
-	}
-	// Soft delete: a module flagged SoftDelete never lists/views deleted rows.
-	if fe.Module != nil && fe.Module.SoftDelete && fe.hasField("deleted") {
-		whereConditions = append(whereConditions, "deleted IS NOT TRUE")
-	}
-
+	whereConditions := fe.buildScopeConditions(params, v, &argIndex, &args)
 	if len(whereConditions) > 0 {
 		query += " WHERE " + strings.Join(whereConditions, " AND ")
 	}
@@ -317,13 +295,9 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
-	// Process TYPE_TABLE fields for each result
-	for _, result := range results {
-		err = fe.ProcessTableFieldsInResult(result)
-		if err != nil {
-			return nil, fmt.Errorf("failed to process table fields: %w", err)
-		}
-	}
+	// TYPE_TABLE fields are excluded from the main SELECT (shouldIncludeField) and
+	// loaded on demand via POST /api/modules/{id}/table/{field}; nothing to fold
+	// into the row here.
 
 	// Calculate total pages
 	totalPages := (total + params.Limit - 1) / params.Limit
@@ -340,9 +314,12 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 // Helper methods
 
 func (fe *FieldsetEngine) shouldIncludeField(field Field, mode int) bool {
-	// Exclude TYPE_TABLE fields from main SELECT - they have their own queries
+	// TYPE_TABLE rows load via their own endpoint and are never part of the edit
+	// SELECT. A table field WITH an SQL expression is included in list/view only,
+	// so a computed display value (e.g. group names resolved from stored ids) can
+	// be shown without a separate request.
 	if field.Type == TYPE_TABLE {
-		return false
+		return field.SQL != "" && mode&(MODE_LIST|MODE_VIEW) != 0
 	}
 
 	// Include field based on mode (LIST, VIEW, EDIT, etc.)
@@ -350,9 +327,18 @@ func (fe *FieldsetEngine) shouldIncludeField(field Field, mode int) bool {
 	return !field.Virtual || (mode&MODE_EDIT != 0)
 }
 
+// searchable reports whether a field participates in the free-text list search:
+// a text-like column that has not been opted out with NonSearchable().
+func searchable(f Field) bool {
+	if !f.Searchable {
+		return false
+	}
+	return f.Type == TYPE_STRING || f.Type == TYPE_TEXT || f.Type == TYPE_AUTOCOMPLETE
+}
+
 func (fe *FieldsetEngine) hasSearchableFields() bool {
 	for _, field := range fe.Fields {
-		if field.Type == TYPE_STRING || field.Type == TYPE_TEXT || field.Type == TYPE_AUTOCOMPLETE {
+		if searchable(field) {
 			return true
 		}
 	}
@@ -363,7 +349,7 @@ func (fe *FieldsetEngine) buildSearchConditions(search string, argIndex *int, ar
 	var conditions []string
 
 	for _, field := range fe.Fields {
-		if field.Type == TYPE_STRING || field.Type == TYPE_TEXT || field.Type == TYPE_AUTOCOMPLETE {
+		if searchable(field) {
 			conditions = append(conditions, fmt.Sprintf("%s ILIKE $%d", field.Name, *argIndex))
 			*args = append(*args, "%"+search+"%")
 			*argIndex++
@@ -402,38 +388,25 @@ func (fe *FieldsetEngine) isValidSortField(fieldName string) bool {
 	return field != nil && !field.Virtual
 }
 
-func (fe *FieldsetEngine) hasDefaultSortField() bool {
-	// Look for an ID field or created field
-	for _, field := range fe.Fields {
-		if field.Name == "id" || field.Name == "created" || field.Name == "created_at" {
-			return true
-		}
-	}
-	return false
-}
-
-func (fe *FieldsetEngine) getDefaultSortField() string {
-	// Priority: id > created > created_at > first field
+// defaultSortField returns the column to ORDER BY when the request names none:
+// "id" if present, else a "created"/"created_at" column, else "" (no ORDER BY).
+func (fe *FieldsetEngine) defaultSortField() string {
+	var created string
 	for _, field := range fe.Fields {
 		if field.Name == "id" {
 			return "id"
 		}
-	}
-	for _, field := range fe.Fields {
-		if field.Name == "created" || field.Name == "created_at" {
-			return field.Name
+		if created == "" && (field.Name == "created" || field.Name == "created_at") {
+			created = field.Name
 		}
 	}
-	if len(fe.Fields) > 0 {
-		return fe.Fields[0].Name
-	}
-	return "id"
+	return created
 }
 
 func (fe *FieldsetEngine) getFieldByName(name string) *Field {
-	for _, field := range fe.Fields {
-		if field.Name == name {
-			return &field
+	for i := range fe.Fields {
+		if fe.Fields[i].Name == name {
+			return &fe.Fields[i]
 		}
 	}
 	return nil
@@ -441,151 +414,5 @@ func (fe *FieldsetEngine) getFieldByName(name string) *Field {
 
 // hasField reports whether the module declares a field with the given name.
 func (fe *FieldsetEngine) hasField(name string) bool {
-	for _, field := range fe.Fields {
-		if field.Name == name {
-			return true
-		}
-	}
-	return false
-}
-
-// FetchTableFieldData fetches data for a TABLE field from database
-func (fe *FieldsetEngine) FetchTableFieldData(field Field, parentRecordID interface{}) (interface{}, error) {
-	if field.Type != TYPE_TABLE || field.Options == nil {
-		return nil, fmt.Errorf("field %s is not a valid table field", field.Name)
-	}
-
-	dataSource, ok := field.Options["dataSource"].(string)
-	if !ok {
-		dataSource = "static"
-	}
-
-	switch dataSource {
-	case "database":
-		return fe.fetchFromDatabaseTable(field, parentRecordID)
-	case "query":
-		return fe.fetchFromCustomQuery(field, parentRecordID)
-	case "static":
-		return field.Options["data"], nil
-	default:
-		return nil, fmt.Errorf("unknown data source: %s", dataSource)
-	}
-}
-
-// fetchFromDatabaseTable fetches data from a referenced database table
-func (fe *FieldsetEngine) fetchFromDatabaseTable(field Field, parentRecordID interface{}) (interface{}, error) {
-	db, err := pgdb.GetInstance()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get database connection: %w", err)
-	}
-
-	sourceTable, ok := field.Options["sourceTable"].(string)
-	if !ok {
-		return nil, fmt.Errorf("sourceTable not configured for field %s", field.Name)
-	}
-
-	// Build the query
-	var query string
-	var args []interface{}
-
-	// Check if there are columns specified
-	columns := "*"
-	if cols, ok := field.Options["columns"].([]string); ok && len(cols) > 0 {
-		columns = strings.Join(cols, ", ")
-	}
-
-	// Check if there's a foreign key relationship
-	if fk, ok := field.Options["foreignKey"].(map[string]string); ok {
-		foreignKeyColumn := fk["column"]
-		query = fmt.Sprintf("SELECT %s FROM %s WHERE %s = $1", columns, sourceTable, foreignKeyColumn)
-		args = append(args, parentRecordID)
-	} else {
-		// No foreign key, return all records
-		query = fmt.Sprintf("SELECT %s FROM %s", columns, sourceTable)
-	}
-
-	// Add any additional query parameters
-	if params, ok := field.Options["queryParams"].(map[string]interface{}); ok {
-		paramIndex := len(args) + 1
-		for column, value := range params {
-			if len(args) == 0 {
-				query += " WHERE "
-			} else {
-				query += " AND "
-			}
-			query += fmt.Sprintf("%s = $%d", column, paramIndex)
-			args = append(args, value)
-			paramIndex++
-		}
-	}
-
-	// Execute the query
-	results, err := db.GetAll(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch table data: %w", err)
-	}
-
-	return results, nil
-}
-
-// fetchFromCustomQuery fetches data using a custom SQL query
-func (fe *FieldsetEngine) fetchFromCustomQuery(field Field, parentRecordID interface{}) (interface{}, error) {
-	db, err := pgdb.GetInstance()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get database connection: %w", err)
-	}
-
-	query, ok := field.Options["query"].(string)
-	if !ok {
-		return nil, fmt.Errorf("query not configured for field %s", field.Name)
-	}
-
-	// Prepare arguments
-	var args []interface{}
-
-	// If the query has placeholders, add parent record ID as first parameter
-	if strings.Contains(query, "$1") || strings.Contains(query, "?") {
-		args = append(args, parentRecordID)
-	}
-
-	// Add any additional query parameters
-	if params, ok := field.Options["queryParams"].(map[string]interface{}); ok {
-		for _, value := range params {
-			args = append(args, value)
-		}
-	}
-
-	// Execute the query
-	results, err := db.RQuery(query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute custom query: %w", err)
-	}
-
-	return results, nil
-}
-
-// ProcessTableFieldsInResult processes table fields in query results to fetch their data
-func (fe *FieldsetEngine) ProcessTableFieldsInResult(result map[string]interface{}) error {
-	for _, field := range fe.Fields {
-		if field.Type == TYPE_TABLE {
-			// Get the parent record ID for foreign key relationships
-			var parentID interface{}
-			if id, exists := result["id"]; exists {
-				parentID = id
-			} else if uuid, exists := result["uuid"]; exists {
-				parentID = uuid
-			}
-
-			// Fetch table field data
-			tableData, err := fe.FetchTableFieldData(field, parentID)
-			if err != nil {
-				// Log error but don't fail the entire result
-				fmt.Printf("Warning: Failed to fetch table field data for %s: %v\n", field.Name, err)
-				result[field.Name] = []interface{}{} // Empty array as fallback
-			} else {
-				result[field.Name] = tableData
-			}
-		}
-	}
-	return nil
+	return fe.getFieldByName(name) != nil
 }

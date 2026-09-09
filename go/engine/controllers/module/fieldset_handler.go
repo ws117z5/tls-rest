@@ -80,13 +80,7 @@ func (fh *FieldsetHandler) GetAutocomplete(w http.ResponseWriter, r *http.Reques
 	}
 	input := strings.TrimSpace(body.Input)
 
-	var target *Field
-	for i := range module.Fields {
-		if module.Fields[i].Name == fieldName {
-			target = &module.Fields[i]
-			break
-		}
-	}
+	target := findField(module.Fields, fieldName)
 
 	options := []AutoOption{}
 	if target != nil {
@@ -129,6 +123,17 @@ func resolveAutocomplete(f *Field, input string, values map[string]interface{}) 
 		}
 	}
 	return []AutoOption{}
+}
+
+// findField returns a pointer to the named field within fields, or nil when the
+// fieldset has no such field.
+func findField(fields []Field, name string) *Field {
+	for i := range fields {
+		if fields[i].Name == name {
+			return &fields[i]
+		}
+	}
+	return nil
 }
 
 // stringsToOptions maps plain suggestion strings to value==label options.
@@ -187,13 +192,7 @@ func (fh *FieldsetHandler) GetTableData(w http.ResponseWriter, r *http.Request) 
 		ctx = map[string]interface{}{}
 	}
 
-	var target *Field
-	for i := range module.Fields {
-		if module.Fields[i].Name == fieldName {
-			target = &module.Fields[i]
-			break
-		}
-	}
+	target := findField(module.Fields, fieldName)
 	rows := []map[string]interface{}{}
 	if target != nil && target.TableDataFunc != nil {
 		if got := target.TableDataFunc(ctx); got != nil {
@@ -253,7 +252,7 @@ func (fh *FieldsetHandler) GetFieldset(w http.ResponseWriter, r *http.Request) {
 				continue // not granted in any mode -> omit entirely
 			}
 		}
-		visibleFields = append(visibleFields, resolveFieldOptions(field))
+		visibleFields = append(visibleFields, resolveFieldOptions(field, v))
 	}
 
 	// Hashsum of the authority-scoped fieldset. Returned to the client (stored in
@@ -367,10 +366,41 @@ func registeredModuleOptions() []map[string]interface{} {
 	return opts
 }
 
-func resolveFieldOptions(field Field) Field {
-	// A field may supply its options via a provider func (WithOptions), resolved
-	// here at request time. This handles TYPE_BITMASK_SELECT and any select-style
-	// field, and takes priority over static options.
+// resolveFieldOptions fills in a field's concrete `options` list at request time
+// (from a WithOptions provider, the registered-modules source, or a table-backed
+// select) so the client can render it. For a TYPE_TABLE field it recurses into
+// the column fieldset, resolving each column the same way. v is the requesting
+// viewer, so an option source can scope its choices to the user's authority.
+func resolveFieldOptions(field Field, v viewer) Field {
+	// TYPE_TABLE: the table field carries no options list of its own; resolve
+	// each column so select columns arrive with their choices populated.
+	if field.Type == TYPE_TABLE && len(field.TableColumns) > 0 {
+		cols := make([]Field, len(field.TableColumns))
+		for i, c := range field.TableColumns {
+			cols[i] = resolveFieldOptions(c, v)
+		}
+		field.TableColumns = cols
+		return field
+	}
+
+	// A field may supply its options via a provider func, resolved here at request
+	// time (takes priority over a static list). WithOptionsCtx additionally gets
+	// the requesting user's authority so the module — not the engine — decides
+	// which choices that user may see.
+	if field.OptionsCtxFunc != nil {
+		out := field
+		newOpts := make(map[string]interface{}, len(field.Options)+1)
+		for k, val := range field.Options {
+			newOpts[k] = val
+		}
+		newOpts["options"] = field.OptionsCtxFunc(map[string]interface{}{
+			"userID":  v.userID,
+			"isAdmin": v.isAdmin,
+			"level":   v.level,
+		})
+		out.Options = newOpts
+		return out
+	}
 	if field.OptionsFunc != nil {
 		out := field
 		newOpts := make(map[string]interface{}, len(field.Options)+1)
@@ -392,14 +422,13 @@ func resolveFieldOptions(field Field) Field {
 		return field
 	}
 
-	// Lazy source: the set of registered modules (resolved now, at request time,
-	// so the registry is fully populated — unlike package-init). Used by the
-	// rights modules' "module" select.
+	// Lazy source: the set of registered modules (registry is fully populated
+	// now, unlike at package-init). Used by the rights modules' "module" select.
 	if src, _ := opts["optionsSource"].(string); src == "modules" {
 		out := field
 		newOpts := make(map[string]interface{}, len(opts)+1)
-		for k, v := range opts {
-			newOpts[k] = v
+		for k, val := range opts {
+			newOpts[k] = val
 		}
 		newOpts["options"] = registeredModuleOptions()
 		out.Options = newOpts

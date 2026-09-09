@@ -1,26 +1,5 @@
 import React from 'react';
 import { FIELD_TYPES, MODES, isImmutableField } from './FieldsetProvider';
-import TableEdit from './Table/Edit';
-import TableView from './Table/View';
-import BitmaskEdit from './Bitmask/Edit';
-import BitmaskView from './Bitmask/View';
-import AutocompleteEdit from './Autocomplete/Edit';
-import TimeDurationEdit from './TimeDuration/Edit';
-import TimeDurationView from './TimeDuration/View';
-import PasswordEdit from './Password/Edit';
-import PasswordView from './Password/View';
-
-// Import all field components
-import { 
-  TextEdit, TextView, TextList,
-  FloatEdit, FloatView, FloatList,
-  DateEdit, DateView, DateList,
-  SelectEdit, SelectView, SelectList,
-  CheckboxEdit, CheckboxList,
-  ImageEdit, ImageView, ImageList,
-  MarkdownEdit, MarkdownView, MarkdownList,
-  ButtonView
-} from './index';
 
 // Base field component props
 export interface BaseFieldProps {
@@ -59,108 +38,77 @@ export interface BaseFieldProps {
   label?: string;
 }
 
-// Field type mapping
-const FIELD_COMPONENTS = {
-  [FIELD_TYPES.TIME_DURATION]: {
-    [MODES.EDIT]: TimeDurationEdit,
-    [MODES.VIEW]: TimeDurationView,
-    [MODES.LIST]: TimeDurationView,
-  },
-  [FIELD_TYPES.PASSWORD]: {
-    [MODES.EDIT]: PasswordEdit,
-    [MODES.VIEW]: PasswordView,
-    [MODES.LIST]: PasswordView,
-  },
-  [FIELD_TYPES.BITMASK_SELECT]: {
-    [MODES.EDIT]: BitmaskEdit,
-    [MODES.VIEW]: BitmaskView,
-    [MODES.LIST]: BitmaskView,
-  },
-  [FIELD_TYPES.TABLE]: {
-    [MODES.EDIT]: TableEdit,
-    [MODES.VIEW]: TableView,
-    [MODES.LIST]: TableView,
-  },
-  [FIELD_TYPES.STRING]: {
-    [MODES.EDIT]: TextEdit,
-    [MODES.VIEW]: TextView,
-    [MODES.LIST]: TextList,
-  },
-  [FIELD_TYPES.TEXT]: {
-    [MODES.EDIT]: TextEdit,
-    [MODES.VIEW]: TextView,
-    [MODES.LIST]: TextList,
-  },
-  // DEPRECATED as a type: prefer TYPE_STRING + WithAutocomplete(...) (the
-  // `autocomplete` option, handled above). These aliases keep any legacy
-  // type:"Autocomplete" fields rendering as a String; the type-ahead widget is
-  // enabled only when the `autocomplete` option is present.
-  [FIELD_TYPES.AUTOCOMPLETE]: {
-    [MODES.EDIT]: TextEdit,
-    [MODES.VIEW]: TextView,
-    [MODES.LIST]: TextList,
-  },
-  [FIELD_TYPES.AUTOCOMPLETE_TEXT]: {
-    [MODES.EDIT]: TextEdit,
-    [MODES.VIEW]: TextView,
-    [MODES.LIST]: TextList,
-  },
-  [FIELD_TYPES.INT]: {
-    [MODES.EDIT]: FloatEdit,
-    [MODES.VIEW]: FloatView,
-    [MODES.LIST]: FloatList,
-  },
-  [FIELD_TYPES.FLOAT]: {
-    [MODES.EDIT]: FloatEdit,
-    [MODES.VIEW]: FloatView,
-    [MODES.LIST]: FloatList,
-  },
-  [FIELD_TYPES.MONEY]: {
-    [MODES.EDIT]: FloatEdit,
-    [MODES.VIEW]: FloatView,
-    [MODES.LIST]: FloatList,
-  },
-  [FIELD_TYPES.DATE]: {
-    [MODES.EDIT]: DateEdit,
-    [MODES.VIEW]: DateView,
-    [MODES.LIST]: DateList,
-  },
-  [FIELD_TYPES.DATE_TIME]: {
-    [MODES.EDIT]: DateEdit,
-    [MODES.VIEW]: DateView,
-    [MODES.LIST]: DateList,
-  },
-  [FIELD_TYPES.SELECT]: {
-    [MODES.EDIT]: SelectEdit,
-    [MODES.VIEW]: SelectView,
-    [MODES.LIST]: SelectList,
-  },
-  [FIELD_TYPES.SELECT_ADDNEW]: {
-    [MODES.EDIT]: SelectEdit,
-    [MODES.VIEW]: SelectView,
-    [MODES.LIST]: SelectList,
-  },
-  [FIELD_TYPES.CHECKBOX]: {
-    [MODES.EDIT]: CheckboxEdit,
-    [MODES.VIEW]: CheckboxList,
-    [MODES.LIST]: CheckboxList,
-  },
-  [FIELD_TYPES.CHECKBOX_SET]: {
-    [MODES.EDIT]: CheckboxEdit,
-    [MODES.VIEW]: CheckboxList,
-    [MODES.LIST]: CheckboxList,
-  },
-  [FIELD_TYPES.MARKDOWN]: {
-    [MODES.EDIT]: MarkdownEdit,
-    [MODES.VIEW]: MarkdownView,
-    [MODES.LIST]: MarkdownList,
-  },
-  [FIELD_TYPES.IMAGE]: {
-    [MODES.EDIT]: ImageEdit,
-    [MODES.VIEW]: ImageView,
-    [MODES.LIST]: ImageList,
-  },
+// --- Field renderer discovery --------------------------------------------
+//
+// Field renderers are picked up from the filesystem at build time, the same way
+// per-module list/view/edit overrides are (see controllers/registry.ts): every
+// fields/<Name>/{Edit,View,List}.tsx is bundled automatically and keyed by its
+// directory name. A new field type is just a new directory — nothing to wire up
+// here. TYPE_DIR below only lists the handful of types whose renderer lives in a
+// differently-named directory.
+
+type ModeMap = Partial<Record<number, React.ComponentType<any>>>;
+
+const wpMeta = import.meta as unknown as {
+  webpackContext: (
+    request: string,
+    options: { recursive: boolean; regExp: RegExp }
+  ) => __WebpackModuleApi.RequireContext;
 };
+
+const FILE_MODE: Record<string, number> = {
+  Edit: MODES.EDIT,
+  View: MODES.VIEW,
+  List: MODES.LIST,
+};
+
+const COMPONENT_KEY = /^\.\/([A-Za-z0-9]+)\/(Edit|View|List)\.tsx$/;
+
+// directory name -> { [mode]: Component }
+const COMPONENTS: Record<string, ModeMap> = {};
+
+const fieldCtx = wpMeta.webpackContext('.', { recursive: true, regExp: COMPONENT_KEY });
+fieldCtx.keys().forEach((key: string) => {
+  const m = COMPONENT_KEY.exec(key);
+  if (!m) return;
+  const mod = fieldCtx(key) as any;
+  const component = mod && (mod.default || mod);
+  if (!component) return;
+  if (!COMPONENTS[m[1]]) COMPONENTS[m[1]] = {};
+  COMPONENTS[m[1]][FILE_MODE[m[2]]] = component;
+});
+
+// Historical quirk: a checkbox in view mode is rendered with its list widget
+// (a disabled checkbox), not its own badge-style View component.
+if (COMPONENTS.Checkbox && COMPONENTS.Checkbox[MODES.LIST]) {
+  COMPONENTS.Checkbox[MODES.VIEW] = COMPONENTS.Checkbox[MODES.LIST];
+}
+
+// Field types whose renderer directory is not simply their type string. Any type
+// not listed uses the directory named exactly after it (Text, Float, Date,
+// Select, Checkbox, Markdown, Image, Table, Password, TimeDuration, ...).
+const TYPE_DIR: Record<string, string> = {
+  [FIELD_TYPES.STRING]: 'Text',
+  [FIELD_TYPES.AUTOCOMPLETE]: 'Text',
+  [FIELD_TYPES.AUTOCOMPLETE_TEXT]: 'Text',
+  [FIELD_TYPES.INT]: 'Float',
+  [FIELD_TYPES.MONEY]: 'Float',
+  [FIELD_TYPES.DATE_TIME]: 'Date',
+  [FIELD_TYPES.SELECT_ADDNEW]: 'Select',
+  [FIELD_TYPES.CHECKBOX_SET]: 'Checkbox',
+  [FIELD_TYPES.BITMASK_SELECT]: 'Bitmask',
+};
+
+// componentsForType returns the { [mode]: Component } triple for a field type,
+// or undefined when no renderer directory matches.
+function componentsForType(type: string): ModeMap | undefined {
+  const found = COMPONENTS[TYPE_DIR[type] || type];
+  return found && Object.keys(found).length ? found : undefined;
+}
+
+const AutocompleteEdit = COMPONENTS['Autocomplete']?.[MODES.EDIT] as
+  | React.ComponentType<any>
+  | undefined;
 
 // Default fallback component
 const DefaultField: React.FC<BaseFieldProps> = ({ field, value, mode }) => (
@@ -190,7 +138,7 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
   // `autocomplete` kind that renders the server-backed type-ahead input in
   // edit/create. Read it from the top-level flag or from options for robustness.
   const autocompleteKind = field.autocomplete ?? (field.options && (field.options as any).autocomplete);
-  if (autocompleteKind && (mode === MODES.EDIT || mode === MODES.CREATE)) {
+  if (autocompleteKind && AutocompleteEdit && (mode === MODES.EDIT || mode === MODES.CREATE)) {
     return (
       <AutocompleteEdit
         id={field.name}
@@ -212,10 +160,10 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
   // e.g. Int (a foreign-key id) — honour that so table-backed selects render as
   // dropdowns rather than raw number inputs.
   const effectiveType =
-    field.options && field.options.widget === "select" && FIELD_COMPONENTS[FIELD_TYPES.SELECT]
+    field.options && field.options.widget === "select" && componentsForType(FIELD_TYPES.SELECT)
       ? FIELD_TYPES.SELECT
       : field.type;
-  const fieldComponents = FIELD_COMPONENTS[effectiveType];
+  const fieldComponents = componentsForType(effectiveType);
 
   if (!fieldComponents) {
     console.warn(`No component found for field type: ${field.type}`);

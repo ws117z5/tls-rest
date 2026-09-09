@@ -67,7 +67,7 @@ func NewAccessLog() *AccessLog {
 			DefaultPermission:    module.PERMISSION_DENY,
 			DefaultPermissionSet: true,
 			// Drop every standard field except id (this table has none of them).
-			OmitSystemFields: []string{"uuid", "created", "updated", "created_by", "access"},
+			OmitSystemFields: module.SystemFieldsExceptID(),
 			// Read-only: writes are refused; only List/View are meaningful.
 			Overrides: module.HandlerOverrides{
 				Create: readOnly,

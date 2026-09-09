@@ -42,7 +42,7 @@ var Module = &ModuleAbstract[interface{}]{
 		NewField("active", TYPE_CHECKBOX, false).
 			WithLabel("Active").
 			WithDescription("Whether the group is active").
-			WithDefaultValue(true),
+			WithDefault(true),
 
 		// Admin groups bypass all mode and record-access checks. The group's id
 		// is the access level (0/none = unauthorized, higher = more privileged),
@@ -50,7 +50,7 @@ var Module = &ModuleAbstract[interface{}]{
 		NewField("is_admin", TYPE_CHECKBOX, false).
 			WithLabel("Administrator").
 			WithDescription("Members of this group have unrestricted access").
-			WithDefaultValue(false),
+			WithDefault(false),
 	},
 	// Administration module: no access unless explicitly granted (or admin).
 	DefaultPermission:    PERMISSION_DENY,

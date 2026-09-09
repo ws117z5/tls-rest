@@ -12,9 +12,10 @@ import (
 // bitmask access model declared in access.go.
 //
 // Model (per the revised rights design):
-//   - Every user belongs to at most one group, referenced by users.user_group.
+//   - A user belongs to zero or more groups, stored as a jsonb array of ids in
+//     users.groups.
 //   - Groups are ordered by id: 0 (or no group) = unauthorized ... n = higher
-//     privilege. A group's id IS the user's access level.
+//     privilege. A user's access level is the highest id they belong to.
 //   - A group may be flagged is_admin; admins bypass mode and row checks.
 //   - Rights are per-mode bitmasks (auth.MODE_*) split across two tables:
 //       user_group_rights(group_id, module, modes)  - rights for a whole group
@@ -22,14 +23,11 @@ import (
 //     A user's effective modes for a module are the OR of the module default,
 //     their group's rights, and their own rights (user rights are additive).
 
-// userGroupsSubquery yields every group id a user belongs to: the primary group
-// on the user row (users.user_group) UNION any additional memberships in
-// user_group_members. Callers reference $1 = userID (used in both halves). This
-// is how a user can belong to multiple groups; rights are aggregated across all.
+// userGroupsSubquery yields every group id a user belongs to, from the jsonb
+// array in users.groups. Callers reference $1 = userID. Rights are aggregated
+// across all of them.
 const userGroupsSubquery = `
-	SELECT user_group AS group_id FROM users WHERE id = $1 AND user_group IS NOT NULL
-	UNION
-	SELECT group_id FROM user_group_members WHERE user_id = $1
+	SELECT jsonb_array_elements_text(groups)::int AS group_id FROM users WHERE id = $1
 `
 
 // defaultModesFor maps a module's registered default permission

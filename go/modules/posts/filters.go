@@ -39,18 +39,17 @@ func (p *Posts) filters() *Filedset {
 			Contains().
 			WithSQLWhere("created_by IN (SELECT id FROM users WHERE user_name ILIKE %s)"),
 
-		// Admin-only: filter posts by their creator's group (primary or additional),
-		// searched by group name.
+		// Admin-only: filter posts by their creator's group membership, searched
+		// by group name (users.groups is a jsonb array of group ids).
 		NewFilter("user_group", TYPE_STRING).
 			WithLabel("User Group").
 			AsAdminOnly().
 			Contains().
 			WithSQLWhere("created_by IN ("+
-				"SELECT uid FROM ("+
-				"  SELECT id AS uid, user_group AS gid FROM users "+
-				"  UNION ALL "+
-				"  SELECT user_id AS uid, group_id AS gid FROM user_group_members"+
-				") ug WHERE ug.gid IN (SELECT id FROM user_groups WHERE name ILIKE %s))"),
+				"SELECT u.id FROM users u WHERE EXISTS ("+
+				"  SELECT 1 FROM user_groups g "+
+				"  WHERE g.name ILIKE %s "+
+				"  AND g.id IN (SELECT jsonb_array_elements_text(u.groups)::int)))"),
 
 		// Date range against the created column. The filter parameter names
 		// (created_from / created_to) differ from the column (created), which is

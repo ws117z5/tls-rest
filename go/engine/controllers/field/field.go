@@ -1,7 +1,5 @@
 package field
 
-import "fmt"
-
 const MODE_LIST = 0b000001
 const MODE_VIEW = 0b000010
 const MODE_EDIT = 0b000100
@@ -87,17 +85,29 @@ type Field struct {
 	ColumnWidth   string `json:"columnWidth,omitempty"`   // list column width (e.g. "120px")
 
 	// TYPE_TABLE configuration (clean API — see TableFieldset/TableSource/
-	// TableData/TableOnSubmit builders). The fieldset (columns) is serialized to
-	// the client; the data/submit hooks are server-side only.
+	// TableData/TableOnSubmit/TableRowsAddable builders). The fieldset (columns)
+	// is serialized to the client, which renders each column with its own field
+	// component; the data/submit hooks are server-side only.
 	TableColumns    []Field                                                   `json:"tableFieldset,omitempty"` // column definitions (each a Field)
 	TableSourceName string                                                    `json:"tableSource,omitempty"`   // DB table with module_id,row_id to load rows from
 	TableDataFunc   func(ctx map[string]interface{}) []map[string]interface{} `json:"-"`                       // manual row provider (wins over TableSource)
 	TableSubmitFunc func(data []map[string]interface{}) interface{}           `json:"-"`                       // process submitted rows before storing
+	// RowsAddable lets the client add and remove rows (default: rows are fixed,
+	// supplied only by TableDataFunc). RowKey names the column that identifies a
+	// row; empty means the first column. Duplicate keys are allowed.
+	RowsAddable bool   `json:"tableRowsAddable,omitempty"`
+	RowKey      string `json:"tableRowKey,omitempty"`
 
 	// OptionsFunc supplies the field's options at request time (like the legacy
 	// framework's dynamic 'options'). Its result is resolved into Options["options"]
 	// when the fieldset is served. Set via WithOptions.
 	OptionsFunc func() []map[string]interface{} `json:"-"`
+
+	// OptionsCtxFunc is like OptionsFunc but receives a context map describing the
+	// requesting user (userID, isAdmin, level), so a field can scope its choices
+	// to the caller's authority. Domain policy lives in the module's closure, not
+	// the engine. Set via WithOptionsCtx.
+	OptionsCtxFunc func(ctx map[string]interface{}) []map[string]interface{} `json:"-"`
 
 	// Autocomplete configuration (set via WithAutocomplete). The kind is
 	// serialized so the client renders the autocomplete widget and calls the
@@ -259,6 +269,15 @@ func (f Field) WithOptions(fn func() []map[string]interface{}) Field {
 	return f
 }
 
+// WithOptionsCtx sets an options provider that receives a context map with the
+// requesting user's authority ("userID", "isAdmin", "level"), so the module can
+// scope the choices (e.g. only groups a user may assign). Takes priority over a
+// static list and over WithOptions.
+func (f Field) WithOptionsCtx(fn func(ctx map[string]interface{}) []map[string]interface{}) Field {
+	f.OptionsCtxFunc = fn
+	return f
+}
+
 // --- TYPE_TABLE clean configuration API -------------------------------------
 //
 // A table field is configured like a mini-module:
@@ -300,6 +319,16 @@ func (f Field) TableData(fn func(ctx map[string]interface{}) []map[string]interf
 // stored into the module. Its return value becomes the stored column value.
 func (f Field) TableOnSubmit(fn func(rows []map[string]interface{}) interface{}) Field {
 	f.TableSubmitFunc = fn
+	return f
+}
+
+// TableRowsAddable lets the user add and remove rows in the table editor (by
+// default the row set is fixed and comes only from TableData). keyColumn names
+// the column that identifies a row; pass "" to use the first column. Rows added
+// by the user start from each column's default value; duplicate keys are allowed.
+func (f Field) TableRowsAddable(keyColumn string) Field {
+	f.RowsAddable = true
+	f.RowKey = keyColumn
 	return f
 }
 
@@ -395,172 +424,6 @@ func (f Field) AsVirtual() Field {
 func (f Field) AsReadOnly() Field {
 	f.ReadOnly = true
 	return f
-}
-
-func (f Field) WithDefaultValue(value interface{}) Field {
-	f.DefaultValue = value
-	return f
-}
-
-// Table-specific configuration methods
-func (f Field) WithTableColumns(columns []string) Field {
-	if f.Type != TYPE_TABLE {
-		return f
-	}
-	if f.Options == nil {
-		f.Options = make(map[string]interface{})
-	}
-	f.Options["columns"] = columns
-	return f
-}
-
-func (f Field) WithTableData(data interface{}) Field {
-	if f.Type != TYPE_TABLE {
-		return f
-	}
-	if f.Options == nil {
-		f.Options = make(map[string]interface{})
-	}
-	f.Options["data"] = data
-	f.Options["dataSource"] = "static"
-	return f
-}
-
-// Configure table to fetch data from database table
-func (f Field) WithDatabaseTable(tableName string) Field {
-	if f.Type != TYPE_TABLE {
-		return f
-	}
-	if f.Options == nil {
-		f.Options = make(map[string]interface{})
-	}
-	f.Options["sourceTable"] = tableName
-	f.Options["dataSource"] = "database"
-	return f
-}
-
-// Configure custom SQL query for table data
-func (f Field) WithTableQuery(query string) Field {
-	if f.Type != TYPE_TABLE {
-		return f
-	}
-	if f.Options == nil {
-		f.Options = make(map[string]interface{})
-	}
-	f.Options["query"] = query
-	f.Options["dataSource"] = "query"
-	return f
-}
-
-// Configure table with query parameters
-func (f Field) WithTableQueryParams(params map[string]interface{}) Field {
-	if f.Type != TYPE_TABLE {
-		return f
-	}
-	if f.Options == nil {
-		f.Options = make(map[string]interface{})
-	}
-	f.Options["queryParams"] = params
-	return f
-}
-
-// Configure foreign key relationship for table updates
-func (f Field) WithTableForeignKey(foreignKeyColumn, parentColumn string) Field {
-	if f.Type != TYPE_TABLE {
-		return f
-	}
-	if f.Options == nil {
-		f.Options = make(map[string]interface{})
-	}
-	f.Options["foreignKey"] = map[string]string{
-		"column":       foreignKeyColumn,
-		"parentColumn": parentColumn,
-	}
-	return f
-}
-
-func (f Field) WithTableSubmitFunction(submitFunc string) Field {
-	if f.Type != TYPE_TABLE {
-		return f
-	}
-	if f.Options == nil {
-		f.Options = make(map[string]interface{})
-	}
-	f.Options["submitFunction"] = submitFunc
-	// If submit function is provided, mark field as editable
-	f.Options["editable"] = true
-	return f
-}
-
-func (f Field) WithTableEditable(editable bool) Field {
-	if f.Type != TYPE_TABLE {
-		return f
-	}
-	if f.Options == nil {
-		f.Options = make(map[string]interface{})
-	}
-	f.Options["editable"] = editable
-
-	// If editable is true but no submit function is provided, require one
-	if editable {
-		if _, hasSubmitFunc := f.Options["submitFunction"]; !hasSubmitFunc {
-			// This will be validated later
-			f.Options["requiresSubmitFunction"] = true
-		}
-	}
-	return f
-}
-
-func (f Field) WithTableRowActions(actions []map[string]interface{}) Field {
-	if f.Type != TYPE_TABLE {
-		return f
-	}
-	if f.Options == nil {
-		f.Options = make(map[string]interface{})
-	}
-	f.Options["rowActions"] = actions
-	return f
-}
-
-// ValidateTableField validates table field configuration
-func (f Field) ValidateTableField() error {
-	if f.Type != TYPE_TABLE {
-		return nil
-	}
-
-	if f.Options == nil {
-		return fmt.Errorf("table field %s must have options configured", f.Name)
-	}
-
-	// Validate data source configuration
-	dataSource, ok := f.Options["dataSource"].(string)
-	if !ok {
-		dataSource = "static"
-	}
-
-	switch dataSource {
-	case "database":
-		if _, hasSourceTable := f.Options["sourceTable"]; !hasSourceTable {
-			return fmt.Errorf("database table field %s requires sourceTable configuration", f.Name)
-		}
-	case "query":
-		if _, hasQuery := f.Options["query"]; !hasQuery {
-			return fmt.Errorf("query table field %s requires query configuration", f.Name)
-		}
-	case "static":
-		// Static data is optional, can be set later
-	default:
-		return fmt.Errorf("invalid dataSource %s for table field %s", dataSource, f.Name)
-	}
-
-	// Check if editable is true but no submit function
-	if editable, ok := f.Options["editable"].(bool); ok && editable {
-		if _, hasSubmitFunc := f.Options["submitFunction"]; !hasSubmitFunc {
-			return fmt.Errorf("editable table field %s requires a submit function", f.Name)
-		}
-	}
-
-	return nil
 }
 
 type Filedset struct {

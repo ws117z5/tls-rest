@@ -34,38 +34,6 @@ func NewBaseController(module *ModuleAbstract[interface{}], tableName string) *B
 	}
 }
 
-// createFieldsetMap creates a fieldset map for frontend compatibility, filtered
-// to the fields the requesting user may see (system fields are admin-only;
-// access-gated fields are hidden from lower levels).
-func (bc *BaseController) createFieldsetMap(r *http.Request) map[string]interface{} {
-	v := viewerForModule(r, bc.Module.ID)
-	fieldset := make(map[string]interface{})
-
-	for _, field := range bc.Module.Fields {
-		if field.Type == TYPE_TABLE || !v.fieldVisibleInSchema(field) {
-			continue
-		}
-		fieldset[field.Name] = map[string]interface{}{
-			"name":       field.Name,
-			"type":       field.Type,
-			"label":      field.Label,
-			"required":   field.Required,
-			"readonly":   field.ReadOnly,
-			"virtual":    field.Virtual,
-			"filterable": field.Filterable,
-			"sortable":   field.Sortable,
-			"searchable": field.Searchable,
-			"mode":       field.Mode,
-			"access":     field.Access,
-			// Resolved so list cells can render a select value's label (e.g. the
-			// user's group name instead of its id).
-			"options": resolveFieldOptions(field).Options,
-		}
-	}
-
-	return fieldset
-}
-
 // createFiltersMap describes the module's declared list filters so the frontend
 // can render filter controls. Filters the viewer may not see (per field access)
 // are omitted, mirroring the fieldset visibility rules.
@@ -122,16 +90,23 @@ func (bc *BaseController) respondError(w http.ResponseWriter, status int, messag
 	})
 }
 
-// List handles GET requests for listing records with pagination and filtering
-func (bc *BaseController) List(w http.ResponseWriter, r *http.Request) {
-	// Set CORS headers for API calls
+// writeCORS sets the CORS headers shared by the module data endpoints and
+// reports whether the request was a preflight that has now been answered in full
+// (the caller should return immediately when it is).
+func writeCORS(w http.ResponseWriter, r *http.Request) (preflight bool) {
 	httpx.AllowOrigin(w, r) // reflect only allowlisted origins (credentialed CORS)
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-Type, Accept")
-
-	// Handle preflight OPTIONS request
-	if r.Method == "OPTIONS" {
+	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusOK)
+		return true
+	}
+	return false
+}
+
+// List handles GET requests for listing records with pagination and filtering
+func (bc *BaseController) List(w http.ResponseWriter, r *http.Request) {
+	if writeCORS(w, r) {
 		return
 	}
 
@@ -156,9 +131,8 @@ func (bc *BaseController) List(w http.ResponseWriter, r *http.Request) {
 		"TotalPages": result.TotalPages,
 	}
 
-	// Log the response for debugging
 	if data, ok := result.Data.([]map[string]interface{}); ok {
-		fmt.Printf("API Response for %s: Data count: %d, Total: %d\n", bc.Module.ID, len(data), result.Total)
+		ModuleLog.Debugf("list %s: %d rows of %d total", bc.Module.ID, len(data), result.Total)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -176,14 +150,7 @@ func (bc *BaseController) keyField() string {
 }
 
 func (bc *BaseController) View(w http.ResponseWriter, r *http.Request) {
-	// Set CORS headers for API calls
-	httpx.AllowOrigin(w, r) // reflect only allowlisted origins (credentialed CORS)
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Request-Type, Accept")
-
-	// Handle preflight OPTIONS request
-	if r.Method == "OPTIONS" {
-		w.WriteHeader(http.StatusOK)
+	if writeCORS(w, r) {
 		return
 	}
 
@@ -494,20 +461,26 @@ func (bc *BaseController) insertRecord(data map[string]interface{}) (int64, erro
 	return db.InsertRow(bc.TableName, data)
 }
 
+// recordKey resolves the addressing column and its bound value for a single
+// record. The numeric "id" key is parsed to an int so it binds as an integer;
+// any other key (e.g. uuid) binds as the raw string.
+func (bc *BaseController) recordKey(id string) (key string, value interface{}) {
+	key = bc.keyField()
+	if key == "id" {
+		if idInt, err := strconv.ParseInt(id, 10, 64); err == nil {
+			return key, idInt
+		}
+	}
+	return key, id
+}
+
 func (bc *BaseController) updateRecord(id string, data map[string]interface{}) error {
 	db, err := bc.Engine.Module.getDB()
 	if err != nil {
 		return err
 	}
 
-	key := bc.keyField()
-	var keyValue interface{} = id
-	if key == "id" {
-		if idInt, err := strconv.ParseInt(id, 10, 64); err == nil {
-			keyValue = idInt
-		}
-	}
-
+	key, keyValue := bc.recordKey(id)
 	_, err = db.UpdateRow(bc.TableName, data, key, keyValue)
 	return err
 }
@@ -518,13 +491,7 @@ func (bc *BaseController) deleteRecord(id string) error {
 		return err
 	}
 
-	key := bc.keyField()
-	var keyValue interface{} = id
-	if key == "id" {
-		if idInt, err := strconv.ParseInt(id, 10, 64); err == nil {
-			keyValue = idInt
-		}
-	}
+	key, keyValue := bc.recordKey(id)
 
 	// Soft delete: flag the row instead of removing it.
 	if bc.Module != nil && bc.Module.SoftDelete {

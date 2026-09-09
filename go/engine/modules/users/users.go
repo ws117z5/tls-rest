@@ -8,6 +8,36 @@ import (
 	. "tls-rest/go/engine/controllers/field"
 )
 
+// assignableGroups lists the groups the requesting user may grant, calculated
+// from their own authority (passed in by the engine): an admin may assign any
+// group; anyone else only groups at or below their access level, and never an
+// admin group. Change this closure to change the policy — the engine has no
+// knowledge of it.
+func assignableGroups(ctx map[string]interface{}) []map[string]interface{} {
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		return nil
+	}
+	isAdmin, _ := ctx["isAdmin"].(bool)
+	level := functions.Int(ctx["level"])
+	rows, err := db.GetAll(
+		`SELECT id AS value, name FROM user_groups
+		 WHERE $1 OR (id <= $2 AND NOT is_admin)
+		 ORDER BY name`,
+		isAdmin, level)
+	if err != nil {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, map[string]interface{}{
+			"value": r["value"],
+			"name":  functions.Coerce[string](r["name"]),
+		})
+	}
+	return out
+}
+
 // fieldset defines the module's fields (default system fields are added
 // automatically by Initialize()).
 func (u *Users) fieldset() []Field {
@@ -41,29 +71,31 @@ func (u *Users) fieldset() []Field {
 			NonSearchable().
 			WithMode(MODE_VIEW | MODE_EDIT),
 
-		// Single group membership, stored as an integer FK on the user
-		// (users.user_group -> user_groups.id). The group id is the user's
-		// access level; the group's is_admin flag confers admin. Rendered as a
-		// select; stored as an integer.
-		NewField("user_group", TYPE_INT, false).
-			WithLabel("Primary Group").
-			WithDescription("The user's primary group (access level). Additional groups are managed under Group Members and shown below.").
-			WithOption("widget", "select").
-			WithOption("dataSource", "user_groups").
-			WithOption("valueField", "id").
-			WithOption("displayField", "name"),
-
-		// All groups this user belongs to (primary + additional memberships),
-		// shown as a table. Read-only here; edit memberships via the Group Members
-		// module. Rows are provided server-side from the id posted in ctx.
+		// Group membership: a jsonb array of user_groups ids stored in
+		// users.groups (see init/sql/2026.09.08.sql — the engine skips this
+		// column because the field carries an SQL expression). The highest id is
+		// the user's access level; membership of an is_admin group grants admin.
+		//
+		//   list/view — WithSQL resolves the ids to names for display.
+		//   edit      — an addable table of group selects; TableData loads the
+		//               current ids, TableOnSubmit writes the array back.
+		//
+		// The select is authority-scoped (optionsSource "assignable_groups"): a
+		// non-admin editor only sees groups at or below their own level and can
+		// never assign an admin group.
 		NewField("groups", TYPE_TABLE, false).
 			WithLabel("Groups").
-			WithDescription("Every group this user belongs to").
-			AsVirtual().
-			AsReadOnly().
+			WithDescription("Groups this user belongs to (highest id = access level; an admin group grants admin)").
+			WithSQL(`(SELECT COALESCE(json_agg(g.name ORDER BY g.name), '[]'::json)
+			          FROM user_groups g
+			          WHERE g.id IN (SELECT jsonb_array_elements_text(users.groups)::int))`).
 			TableFieldset([]Field{
-				NewField("group", TYPE_STRING, false).WithLabel("Group").AsReadOnly(),
+				NewField("group", TYPE_INT, true).
+					WithLabel("Group").
+					WithOption("widget", "select").
+					WithOptionsCtx(assignableGroups),
 			}).
+			TableRowsAddable("group").
 			TableData(func(ctx map[string]interface{}) []map[string]interface{} {
 				uid := functions.Int(ctx["id"])
 				if uid <= 0 {
@@ -73,20 +105,22 @@ func (u *Users) fieldset() []Field {
 				if err != nil {
 					return nil
 				}
-				rows, err := db.RQuery(`
-					SELECT ug.name AS group
-					FROM user_groups ug
-					WHERE ug.id IN (
-						SELECT user_group FROM users WHERE id = $1 AND user_group IS NOT NULL
-						UNION
-						SELECT group_id FROM user_group_members WHERE user_id = $1
-					)
-					ORDER BY ug.name
-				`, uid)
+				rows, err := db.GetAll(
+					`SELECT jsonb_array_elements_text(groups)::int AS "group" FROM users WHERE id = $1`,
+					uid)
 				if err != nil {
 					return nil
 				}
 				return rows
+			}).
+			TableOnSubmit(func(rows []map[string]interface{}) interface{} {
+				ids := []interface{}{}
+				for _, r := range rows {
+					if id := functions.Int(r["group"]); id > 0 {
+						ids = append(ids, id)
+					}
+				}
+				return ids
 			}),
 	}
 }
