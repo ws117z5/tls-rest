@@ -266,7 +266,7 @@ func (m *ModuleAbstract[T]) SetDefaultPermission(permission int) {
 	RegisterModuleDefaultPermission(m.ID, permission)
 }
 
-// LogModuleEvent logs module events with structured data
+// LogModuleEvent logs module eLogModuleEventvents with structured data
 func LogModuleEvent(event ModuleEvent) {
 	status := "SUCCESS"
 	if !event.Success {
@@ -401,7 +401,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 			},
 			{
 				Name:     "uuid",
-				Type:     TYPE_STRING,
+				Type:     TYPE_UUID,
 				Label:    "UUID",
 				Required: true,
 				ReadOnly: true,
@@ -499,6 +499,17 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		Fields:  m.Fields,
 		Filters: m.Filters,
 		Rights:  m.Rights,
+		// Behaviour the BaseController / FieldsetEngine read off bc.Module /
+		// fe.Module must be carried onto the wrapper or it is silently inert.
+		BeforeFieldset:   m.BeforeFieldset,
+		AfterFieldset:    m.AfterFieldset,
+		KeyField:         m.KeyField,
+		OwnerScoped:      m.OwnerScoped,
+		SoftDelete:       m.SoftDelete,
+		ListAscending:    m.ListAscending,
+		RightsAffecting:  m.RightsAffecting,
+		ConfigAffecting:  m.ConfigAffecting,
+		OmitSystemFields: m.OmitSystemFields,
 	}
 
 	ModuleLog.Debugf("Creating base controller for module: %s", m.ID)
@@ -629,6 +640,21 @@ func (m *ModuleAbstract[T]) Delete(w http.ResponseWriter, r *http.Request) {
 	m.dispatch(w, r, "DELETE", m.Overrides.Delete, custom, controller)
 }
 
+// isStoredColumn reports whether a field is backed by a real table column the
+// engine should create/reconcile. Virtual fields never are. A field with an SQL
+// expression is normally computed (no column) — EXCEPT a TYPE_TABLE field whose
+// SQL is a SELECT projection for display while its rows are still written to a
+// real JSONB column via TableOnSubmit.
+func isStoredColumn(field Field) bool {
+	if field.Virtual {
+		return false
+	}
+	if field.Type == TYPE_TABLE {
+		return field.TableSubmitFunc != nil
+	}
+	return field.SQL == ""
+}
+
 // getDB returns a database instance
 // addMissingColumns brings an existing table up to date with the fieldset by
 // adding any missing stored column. It never drops or alters existing columns.
@@ -640,8 +666,8 @@ func (m *ModuleAbstract[T]) addMissingColumns(db *pgdb.Db) error {
 		return err
 	}
 	for _, field := range m.Fields {
-		if field.Virtual || field.SQL != "" {
-			continue // not a real stored column
+		if !isStoredColumn(field) {
+			continue // computed / virtual — no column to reconcile
 		}
 		if existing[strings.ToLower(field.Name)] {
 			continue
@@ -767,6 +793,8 @@ func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 		sqlType = "NUMERIC"
 	case TYPE_STRING:
 		sqlType = "VARCHAR(255)"
+	case TYPE_UUID:
+		sqlType = "UUID"
 	case TYPE_TEXT, TYPE_HTML, TYPE_MARKDOWN:
 		sqlType = "TEXT"
 	case TYPE_DATE:
@@ -797,8 +825,9 @@ func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 		sqlType += " NOT NULL"
 	}
 
-	// Add default value if specified
-	if field.SQL != "" {
+	// Add default value if specified. A TYPE_TABLE field's SQL is a SELECT
+	// projection for display, not a column default, so it is excluded here.
+	if field.SQL != "" && field.Type != TYPE_TABLE {
 		// If field has custom SQL (like uuid_generate_v4()), use it as default
 		sqlType += fmt.Sprintf(" DEFAULT %s", field.SQL)
 	} else if field.DefaultValue != nil {
@@ -896,8 +925,8 @@ func (m *ModuleAbstract[T]) generateCreateTableSQL() string {
 	var primaryKeys []string
 
 	for _, field := range m.Fields {
-		if field.Virtual {
-			continue // Skip virtual fields
+		if !isStoredColumn(field) {
+			continue // computed / virtual / table-source — no column
 		}
 
 		sqlType := m.fieldTypeToSQL(field)
@@ -915,7 +944,7 @@ func (m *ModuleAbstract[T]) generateCreateTableSQL() string {
 			}
 			primaryKeys = append(primaryKeys, field.Name)
 		case "uuid":
-			if field.Type == TYPE_STRING && field.SQL != "" {
+			if field.Type == TYPE_UUID || (field.Type == TYPE_STRING && field.SQL != "") {
 				columnDef = "uuid UUID NOT NULL DEFAULT uuid_generate_v4()"
 				// If no id field, use uuid as primary key
 			}

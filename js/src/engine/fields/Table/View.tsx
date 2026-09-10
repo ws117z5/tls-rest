@@ -1,26 +1,97 @@
-import React from "react";
+import React, { Component } from "react";
+import axios from "axios";
 
-// TableView renders a TYPE_TABLE field read-only. It accepts every shape the
-// backend may hand back:
-//   - a scalar array (e.g. group names resolved by an SQL subselect) -> chips
-//   - a row array [{col: val}] with column defs -> a table
-//   - a checkbox map {"title": ["view","edit"]} -> "field: modes" list
-//   - a JSON string of any of the above
+// TableView renders a TYPE_TABLE field read-only.
+//
+//   - When the field has an inline value (e.g. group names resolved by an SQL
+//     subselect) it is rendered directly: a scalar array as chips, a row array
+//     as a table, a {field:[modes]} map as a list.
+//   - When there is no inline value but the field is server-backed (module +
+//     field name known, e.g. an attached comments thread), the rows are fetched
+//     from /api/modules/{module}/table/{field} and shown read-only.
 
 interface ColumnDef {
   name: string;
   label?: string;
   type?: string;
+  options?: any;
 }
 
-interface TableFieldMeta {
+// cellText renders one read-only cell. A select column's stored value (an id) is
+// resolved to its option label so the view shows names, not ids.
+function cellText(col: ColumnDef, cell: any): string {
+  if (typeof cell === "boolean") return cell ? "✓" : "";
+  if (cell === undefined || cell === null || cell === "") return "";
+  const opts = col.options && col.options.options;
+  if (Array.isArray(opts)) {
+    const hit = opts.find((o: any) => String(o && o.value !== undefined ? o.value : o) === String(cell));
+    if (hit) return String(hit.name ?? hit.label ?? hit.value ?? cell);
+  }
+  return String(cell);
+}
+
+interface FieldMeta {
+  name?: string;
   tableFieldset?: ColumnDef[];
 }
 
 interface TableViewProps {
-  field?: TableFieldMeta;
+  field?: FieldMeta;
   tableFieldset?: ColumnDef[];
+  module?: string;
+  formValues?: Record<string, any>;
   value?: any;
+}
+
+interface TableViewState {
+  rows: any[] | null; // null = not fetched
+  loading: boolean;
+}
+
+class TableView extends Component<TableViewProps, TableViewState> {
+  state: TableViewState = { rows: null, loading: false };
+
+  componentDidMount() {
+    if (this.shouldFetch()) this.load();
+  }
+
+  private columns(): ColumnDef[] {
+    return this.props.field?.tableFieldset || this.props.tableFieldset || [];
+  }
+
+  private fieldName(): string {
+    return this.props.field?.name || "";
+  }
+
+  private shouldFetch(): boolean {
+    const v = this.props.value;
+    const hasValue = v !== undefined && v !== null && v !== "";
+    return !hasValue && !!this.props.module && !!this.fieldName();
+  }
+
+  private async load() {
+    this.setState({ loading: true });
+    try {
+      const res = await axios.post(
+        `/api/modules/${this.props.module}/table/${this.fieldName()}`,
+        this.props.formValues || {}
+      );
+      const rows = (res.data && res.data.rows) || [];
+      this.setState({ rows: Array.isArray(rows) ? rows : [], loading: false });
+    } catch {
+      this.setState({ rows: [], loading: false });
+    }
+  }
+
+  render() {
+    if (this.state.rows !== null) {
+      return renderValue(this.state.rows, this.columns());
+    }
+    if (this.state.loading) {
+      return <span className="text-muted">…</span>;
+    }
+    return renderValue(this.props.value, this.columns());
+  }
 }
 
 function parse(value: any): any {
@@ -34,9 +105,8 @@ function parse(value: any): any {
   }
 }
 
-const TableView: React.FC<TableViewProps> = ({ field, tableFieldset, value }) => {
+function renderValue(value: any, columns: ColumnDef[]): React.ReactElement {
   const v = parse(value);
-  const columns = field?.tableFieldset || tableFieldset || [];
 
   if (v === null || v === undefined || v === "") {
     return <span className="text-muted">—</span>;
@@ -88,20 +158,9 @@ const TableView: React.FC<TableViewProps> = ({ field, tableFieldset, value }) =>
           <tbody>
             {v.map((row: any, i: number) => (
               <tr key={i}>
-                {cols.map((c) => {
-                  const cell = row ? row[c.name] : undefined;
-                  return (
-                    <td key={c.name}>
-                      {typeof cell === "boolean"
-                        ? cell
-                          ? "✓"
-                          : ""
-                        : cell === undefined || cell === null || cell === ""
-                          ? ""
-                          : String(cell)}
-                    </td>
-                  );
-                })}
+                {cols.map((c) => (
+                  <td key={c.name}>{cellText(c, row ? row[c.name] : undefined)}</td>
+                ))}
               </tr>
             ))}
           </tbody>
@@ -128,6 +187,6 @@ const TableView: React.FC<TableViewProps> = ({ field, tableFieldset, value }) =>
   }
 
   return <span>{String(v)}</span>;
-};
+}
 
 export default TableView;

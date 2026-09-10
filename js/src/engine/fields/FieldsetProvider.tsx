@@ -25,6 +25,7 @@ export const FIELD_TYPES = {
   CHECKBOX_SET: 'CheckboxSet', 
   CHECKBOX_AJAX: 'CheckboxAjax',
   STRING: 'String',
+  UUID: 'Uuid',
   AUTOCOMPLETE: 'Autocomplete',
   TEXT: 'Text',
   JSON: 'Json',

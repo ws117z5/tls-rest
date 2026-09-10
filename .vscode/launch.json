@@ -1,7 +1,11 @@
 {
-    // Используйте IntelliSense, чтобы узнать о возможных атрибутах.
-    // Наведите указатель мыши, чтобы просмотреть описания существующих атрибутов.
-    // Для получения дополнительной информации посетите: https://go.microsoft.com/fwlink/?linkid=830387
+    // F5 launches the server directly — no manual `go build` / `go run` needed.
+    //
+    // Asset cache-buster (?v=…): the "stamp version" preLaunchTask writes the
+    // current git HEAD short hash to .vscode/version.env; "envFile" loads it as
+    // APP_VERSION, which constants.GetProjectVersion reads. Same mechanism as the
+    // container's `ENV APP_VERSION`. "cwd" must be the repo root so ./js/dist and
+    // the git fallback resolve.
     "version": "0.2.0",
     "configurations": [
         {
@@ -10,12 +14,14 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}/main.go",
+            "cwd": "${workspaceFolder}",
+            "preLaunchTask": "stamp version",
+            "envFile": "${workspaceFolder}/.vscode/version.env",
             "env": {
                 "PKG_CONFIG_PATH": "/opt/homebrew/opt/opencv@4/lib/pkgconfig",
                 "DYLD_LIBRARY_PATH": "/opt/homebrew/opt/opencv@4/lib"
             },
-            "args": [],
-            
+            "args": []
         }
     ]
 }

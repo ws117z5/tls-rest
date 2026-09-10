@@ -4,12 +4,15 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/controllers/request"
 
 	"github.com/go-pg/urlstruct"
 )
@@ -137,6 +140,27 @@ func tableColumns(db *pgdb.Db, table string) (map[string]bool, error) {
 	return cols, nil
 }
 
+// UnmarshalURL satisfies the urlstruct interface
+func (p *QueryParams) UnmarshalURL(values url.Values) error {
+	if p.Filters == nil {
+		p.Filters = make(map[string]interface{})
+	}
+
+	for key, vals := range values {
+		if len(vals) == 0 || vals[0] == "" {
+			continue
+		}
+
+		// Parse filters.key=value
+		if strings.HasPrefix(key, "filters.") {
+			filterKey := strings.TrimPrefix(key, "filters.")
+			p.Filters[filterKey] = vals[0]
+		}
+	}
+
+	return nil
+}
+
 func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (string, []interface{}, error) {
 	var selectFields []string
 	var whereConditions []string
@@ -196,6 +220,21 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 // with the rows actually returned.
 func (fe *FieldsetEngine) buildScopeConditions(params *QueryParams, v viewer, argIndex *int, args *[]interface{}) []string {
 	var conds []string
+
+	// Single-record addressing: View/Edit/Delete put the key value in the request
+	// bag (request.From(r).Set(keyField, id)); scope the query to that row. Absent
+	// on a plain list request.
+	if fe.Request != nil {
+		if kv := request.From(fe.Request).String(fe.keyField()); kv != "" {
+			var bind interface{} = kv
+			if n, err := strconv.ParseInt(kv, 10, 64); err == nil {
+				bind = n // numeric id binds as an integer, not text
+			}
+			conds = append(conds, fmt.Sprintf("%s = $%d", fe.keyField(), *argIndex))
+			*args = append(*args, bind)
+			*argIndex++
+		}
+	}
 
 	// Free-text search across searchable columns.
 	if params.Search != "" && fe.hasSearchableFields() {
@@ -415,4 +454,13 @@ func (fe *FieldsetEngine) getFieldByName(name string) *Field {
 // hasField reports whether the module declares a field with the given name.
 func (fe *FieldsetEngine) hasField(name string) bool {
 	return fe.getFieldByName(name) != nil
+}
+
+// keyField is the column that addresses a single record (module KeyField, else
+// "id") — mirrors BaseController.keyField.
+func (fe *FieldsetEngine) keyField() string {
+	if fe.Module != nil && fe.Module.KeyField != "" {
+		return fe.Module.KeyField
+	}
+	return "id"
 }

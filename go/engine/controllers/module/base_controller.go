@@ -13,6 +13,7 @@ import (
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/httpx"
 	"tls-rest/go/engine/controllers/log"
+	"tls-rest/go/engine/controllers/request"
 
 	"github.com/gorilla/mux"
 )
@@ -154,22 +155,17 @@ func (bc *BaseController) View(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	vars := mux.Vars(r)
-	id := vars["id"]
-
+	id := mux.Vars(r)["id"]
 	if id == "" {
 		http.Error(w, "ID is required", http.StatusBadRequest)
 		return
 	}
 
-	// Create a temporary fieldset engine with ID filter
+	// Scope the query to this record: inject the key value into the shared
+	// request bag; the fieldset engine reads it (see BuildSelectQuery).
+	request.From(r).Set(bc.keyField(), id)
+
 	engine := bc.Engine.WithRequest(r)
-
-	// Manually add ID filter to the request URL query
-	q := r.URL.Query()
-	q.Set("filters["+bc.keyField()+"]", id)
-	r.URL.RawQuery = q.Encode()
-
 	result, err := engine.ExecuteQuery(MODE_VIEW)
 	if err != nil {
 		bc.respondError(w, http.StatusInternalServerError, "Failed to fetch record", err)
@@ -190,12 +186,13 @@ func (bc *BaseController) View(w http.ResponseWriter, r *http.Request) {
 
 // Create handles POST requests for creating new records
 func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
-	// Parse request body
-	var data map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+	// Body from the shared request bag (JSON / form / multipart, parsed once).
+	rq := request.From(r)
+	if rq.BodyErr() != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
+	data := rq.Body()
 
 	// BeforeFieldset hook: transform the raw body before any field processing.
 	if bc.Module != nil && bc.Module.BeforeFieldset != nil {
@@ -281,20 +278,19 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 
 // Edit handles PUT requests for updating existing records
 func (bc *BaseController) Edit(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
-
+	id := mux.Vars(r)["id"]
 	if id == "" {
 		http.Error(w, "ID is required", http.StatusBadRequest)
 		return
 	}
 
-	// Parse request body
-	var data map[string]interface{}
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		http.Error(w, "Invalid JSON payload", http.StatusBadRequest)
+	// Body from the shared request bag (JSON / form / multipart, parsed once).
+	rq := request.From(r)
+	if rq.BodyErr() != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
+	data := rq.Body()
 
 	// BeforeFieldset hook: transform the raw body before any field processing.
 	if bc.Module != nil && bc.Module.BeforeFieldset != nil {

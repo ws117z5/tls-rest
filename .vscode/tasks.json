@@ -13,6 +13,16 @@
       "dependsOn": ["Generate FuncMap"],
       "command": "go run main.go",
       "problemMatcher": []
+    },
+    {
+      // Writes APP_VERSION=<git HEAD short hash> to .vscode/version.env, which
+      // the Launch config loads via "envFile". This is the local equivalent of
+      // the container's `ENV APP_VERSION` — constants.GetProjectVersion reads it
+      // for the ?v=… asset cache-buster.
+      "label": "stamp version",
+      "type": "shell",
+      "command": "echo \"APP_VERSION=$(git rev-parse --short=8 HEAD)\" > \"${workspaceFolder}/.vscode/version.env\"",
+      "problemMatcher": []
     }
   ]
 }

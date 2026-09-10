@@ -1,7 +1,10 @@
 package modulerights
 
 import (
+	"encoding/json"
+
 	"tls-rest/go/engine/controllers/auth"
+	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/functions"
 	. "tls-rest/go/engine/controllers/module"
@@ -52,15 +55,42 @@ func moduleField() Field {
 		WithOption("optionsSource", "modules")
 }
 
+// parseFieldGrants unmarshals a stored `fields` grant value (a JSON string or
+// []byte holding {"<field>": ["view","edit", ...]}) into a map. Anything it
+// can't parse yields an empty map, meaning "no per-field grants recorded".
+func parseFieldGrants(v interface{}) map[string][]string {
+	out := map[string][]string{}
+	var raw []byte
+	switch t := v.(type) {
+	case nil:
+		return out
+	case string:
+		raw = []byte(t)
+	case []byte:
+		raw = t
+	default:
+		return out
+	}
+	if len(raw) == 0 {
+		return out
+	}
+	_ = json.Unmarshal(raw, &out)
+	return out
+}
+
 // fieldsField builds the shared per-field access control as a TYPE_TABLE.
 // Columns are a fieldset: a read-only "field" name plus one checkbox per mode.
-// Rows are the fields of the module named by the sibling "module" select. On
-// submit, the checkbox rows are folded into the stored JSON
-// {"<field>": ["view","edit", ...]} — see auth.ResolveModuleFieldRights.
-func fieldsField() Field {
+// Rows are the fields of the module named by the sibling "module" select, with
+// each mode checkbox pre-filled from the record's stored grants (loaded from
+// rightsTable by row id). On submit, the checkbox rows are folded back into the
+// stored JSON {"<field>": ["view","edit", ...]} — see auth.ResolveModuleFieldRights.
+func fieldsField(rightsTable string) Field {
 	return NewField("fields", TYPE_TABLE, false).
 		WithLabel("Field Access").
 		WithDescription("Per-field mode access; leave empty to allow all fields").
+		// Checking a mode in the sibling "modes" (Allowed Modes) bitmask checks
+		// that column for every field row here; unchecking clears them.
+		WithOption("syncColumnsFromBitmask", "modes").
 		TableFieldset([]Field{
 			NewField("field", TYPE_STRING, false).WithLabel("Field").AsReadOnly(),
 			NewField("list", TYPE_CHECKBOX, false).WithLabel("List"),
@@ -70,7 +100,8 @@ func fieldsField() Field {
 			NewField("delete", TYPE_CHECKBOX, false).WithLabel("Delete"),
 		}).
 		// Rows are provided server-side by TableData: the fields of the module
-		// chosen in the sibling "module" select (passed as context).
+		// chosen in the sibling "module" select (passed as context), each with
+		// its mode checkboxes filled from this record's stored grants.
 		TableData(func(ctx map[string]interface{}) []map[string]interface{} {
 			modID, _ := ctx["module"].(string)
 			if modID == "" {
@@ -80,12 +111,40 @@ func fieldsField() Field {
 			if !ok {
 				return nil
 			}
+
+			// Load the record's stored per-field grants, if it's an existing row.
+			stored := map[string][]string{}
+			if recID := functions.Int(ctx["id"]); recID > 0 {
+				if db, err := pgdb.GetInstance(); err == nil {
+					if row, e := db.GetOne(
+						"SELECT fields FROM "+rightsTable+" WHERE id = $1", recID,
+					); e == nil && row != nil {
+						stored = parseFieldGrants(row["fields"])
+					}
+				}
+			}
+			has := func(field, mode string) bool {
+				for _, g := range stored[field] {
+					if g == mode {
+						return true
+					}
+				}
+				return false
+			}
+
 			rows := []map[string]interface{}{}
 			for _, f := range m.GetFields() {
 				if f.Name == "id" {
 					continue
 				}
-				rows = append(rows, map[string]interface{}{"field": f.Name})
+				rows = append(rows, map[string]interface{}{
+					"field":  f.Name,
+					"list":   has(f.Name, "list"),
+					"view":   has(f.Name, "view"),
+					"create": has(f.Name, "create"),
+					"edit":   has(f.Name, "edit"),
+					"delete": has(f.Name, "delete"),
+				})
 			}
 			return rows
 		}).
@@ -127,7 +186,7 @@ var GroupRightsModule = &ModuleAbstract[interface{}]{
 			WithOption("displayField", "name"),
 		moduleField(),
 		modesField(),
-		fieldsField(),
+		fieldsField("user_group_rights"),
 	},
 	// Administration module: no access unless explicitly granted (or admin).
 	DefaultPermission:    PERMISSION_DENY,
@@ -152,7 +211,7 @@ var UserRightsModule = &ModuleAbstract[interface{}]{
 			WithOption("displayField", "user_name"),
 		moduleField(),
 		modesField(),
-		fieldsField(),
+		fieldsField("user_rights"),
 	},
 	// Administration module: no access unless explicitly granted (or admin).
 	DefaultPermission:    PERMISSION_DENY,

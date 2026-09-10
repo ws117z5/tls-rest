@@ -94,9 +94,15 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
 
   validateField = (field: any, value: any): string => {
     const { validation = {}, required, type } = field;
-    
-    // Required validation
-    if (required && (value === null || value === undefined || value === '')) {
+
+    // Required validation. A field that declares a default_value is never
+    // "missing": if the user leaves it untouched the default stands in (and the
+    // backend seeds it on create), so don't flag it.
+    const hasDefault =
+      field.default_value !== undefined &&
+      field.default_value !== null &&
+      field.default_value !== '';
+    if (required && !hasDefault && (value === null || value === undefined || value === '')) {
       return `${field.label} is required`;
     }
 
@@ -251,7 +257,9 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
 
     const fieldProps: BaseFieldProps = {
       field,
-      value: formData[field.name] || field.default_value,
+      // Nullish, not falsy: 0 / "" / false are valid stored values (e.g. a
+      // foreign-key select whose id is 0) and must not be swapped for the default.
+      value: formData[field.name] ?? field.default_value,
       onChange: (value) => this.handleFieldChange(field.name, value),
       mode: mode || MODES.EDIT,
       disabled: disabled || field.readonly || immutable,

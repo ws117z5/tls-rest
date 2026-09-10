@@ -66,6 +66,9 @@ func NewPosts() *Posts {
 	m.ModuleAbstract.Fields = m.fieldset()
 	m.ModuleAbstract.Filters = m.filters()
 
+	// The post view renders a comments thread (engine/modules/comments) via its
+	// custom layout, talking to the /api/comments REST API directly.
+
 	/** just an example of BeforeFieldset and AfterFieldset methods
 	slugify := func(value string) string {
 		return value[0:len(value)-2]

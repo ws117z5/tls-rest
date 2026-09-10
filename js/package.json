@@ -5,8 +5,8 @@
   "main": "app.tsx",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build:dev": "webpack --mode development",
-    "build:prod": "webpack --mode production"
+    "build:dev": "webpack --config-name dev --mode development",
+    "build:prod": "webpack --config-name prod --mode production"
   },
   "keywords": [],
   "author": "",

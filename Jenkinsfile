@@ -11,7 +11,10 @@ pipeline {
         }
         stage('Build & Test') {
             steps {
-                sh "docker build --no-cache -t ${APP_NAME}:latest ."
+                // APP_VERSION (git HEAD) -> Dockerfile ARG -> ENV APP_VERSION ->
+                // os.Getenv in the app -> ?v=… asset cache-buster.
+                // \$(...) is escaped so the shell — not Groovy — runs it.
+                sh "docker build --no-cache --build-arg APP_VERSION=\$(git rev-parse --short=8 HEAD) -t ${APP_NAME}:latest ."
             }
         }
         stage('Deploy') {

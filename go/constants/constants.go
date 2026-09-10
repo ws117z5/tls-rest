@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // ConfigType is the parsed go.config.json — the app's declared modules. The
@@ -123,30 +125,60 @@ var (
 	Config = new(ConfigType)
 )
 
-// GetProjectVersion extracts the version from go.mod build info,
-// falling back to a default version string if unavailable.
+// GetProjectVersion returns the string appended to static asset URLs as ?v=…
+// for cache-busting. Resolution order (resolved once):
+//  1. the APP_VERSION env var — set by `ENV APP_VERSION` in the container image
+//     (Dockerfile ARG -> ENV, fed by Jenkins --build-arg), and by the VS Code
+//     preLaunchTask (.vscode/version.env, loaded via the launch config's
+//     envFile) for local runs;
+//  2. the current git HEAD short hash, for a plain `go run` from the checkout;
+//  3. the VCS revision embedded by `go build` when it can see .git;
+//  4. a static default.
 func GetProjectVersion() string {
+	return projectVersion()
+}
+
+var projectVersion = sync.OnceValue(func() string {
+	if v := strings.TrimSpace(os.Getenv("APP_VERSION")); v != "" {
+		return v
+	}
+
+	if v := gitHeadVersion(); v != "" {
+		return v
+	}
+
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "1.0.0"
 	}
 
-	// 1. If built via go install/module release, Main.Version contains the tag (e.g., "v1.2.3")
+	// Built via go install / module release: Main.Version is the tag (e.g. "v1.2.3").
 	if info.Main.Version != "" && info.Main.Version != "(devel)" {
 		return info.Main.Version
 	}
 
-	// 2. If built from source/Git, extract the VCS revision (commit hash)
+	// Built from source with VCS stamping: the embedded commit hash.
 	for _, setting := range info.Settings {
 		if setting.Key == "vcs.revision" {
 			if len(setting.Value) >= 8 {
-				return setting.Value[:8] // Short commit hash (e.g., "a1b2c3d4")
+				return setting.Value[:8]
 			}
 			return setting.Value
 		}
 	}
 
 	return "1.0.0"
+})
+
+// gitHeadVersion returns the short hash of the current git HEAD (run from the
+// process working directory, which is the repo root), or "" when git is not
+// installed or this is not a git checkout.
+func gitHeadVersion() string {
+	out, err := exec.Command("git", "rev-parse", "--short=8", "HEAD").Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // GetFiles scans ./js/dist and returns relative web paths with version parameters.

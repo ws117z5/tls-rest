@@ -67,7 +67,7 @@ const COMPONENT_KEY = /^\.\/([A-Za-z0-9]+)\/(Edit|View|List)\.tsx$/;
 // directory name -> { [mode]: Component }
 const COMPONENTS: Record<string, ModeMap> = {};
 
-const fieldCtx = wpMeta.webpackContext('.', { recursive: true, regExp: COMPONENT_KEY });
+const fieldCtx = (import.meta as any).webpackContext('.', { recursive: true, regExp: /^\.\/([A-Za-z0-9]+)\/(Edit|View|List)\.tsx$/ });
 fieldCtx.keys().forEach((key: string) => {
   const m = COMPONENT_KEY.exec(key);
   if (!m) return;

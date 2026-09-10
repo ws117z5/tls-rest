@@ -24,7 +24,12 @@ const SelectView: React.FC<SelectViewProps> = ({
     fontSize = "1rem",
     style = {},
 }) => {
-    const selected = options.find(opt => opt.value === value);
+    // Compare as strings: a FK id may arrive as a number from the record but as
+    // a string in the option list (or vice versa), and 0 is a valid id.
+    const selected =
+        value === undefined || value === null || value === ""
+            ? undefined
+            : options.find(opt => String(opt.value ?? "") === String(value));
     return (
         <div
             style={{

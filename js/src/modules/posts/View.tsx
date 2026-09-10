@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { Field } from "@engine/fields/FormLayout";
+import CommentsThread from "@engine/modules/comments/CommentsThread";
 import Auth from "@controllers/auth";
 
 // Params injected by ModulePage/WithLayout into custom containers.
@@ -19,10 +20,17 @@ interface CustomContainerProps {
   modes: string[];
 }
 
+// Fields shown in the foldable admin metadata panel, in display order.
+const META_FIELDS = ["id", "uuid", "created_by", "access", "created", "updated"];
+
 // Custom VIEW layout for the "posts" module. The parent chrome (ModulePage) owns
 // the module name / Back / Edit; this only lays out the fields.
-const PostsView: React.FC<CustomContainerProps> = (_props) => {
+const PostsView: React.FC<CustomContainerProps> = (props) => {
   const [metaOpen, setMetaOpen] = useState(false);
+
+  const title = props.getValue("title");
+  const author = props.getValue("author");
+  const postId = props.record?.id ?? props.getValue("id");
 
   return (
     <div className="posts-view">
@@ -55,14 +63,32 @@ const PostsView: React.FC<CustomContainerProps> = (_props) => {
 
             {metaOpen && (
               <div className="bg-light text-secondary small p-3 border-top">
-                <div className="row g-2">
-                  <div className="col-6 col-md-3"><Field name="id" /></div>
-                  <div className="col-6 col-md-3"><Field name="uuid" /></div>
-                  <div className="col-6 col-md-3"><Field name="created_by" /></div>
-                  <div className="col-6 col-md-3"><Field name="access" /></div>
-                  <div className="col-6 col-md-6"><Field name="created" /></div>
-                  <div className="col-6 col-md-6"><Field name="updated" /></div>
-                </div>
+                <table className="table table-sm mb-0 align-middle">
+                  <tbody>
+                    {META_FIELDS.map((name) => {
+                      const f = props.getField(name);
+                      if (!f) return null;
+                      return (
+                        <tr key={name}>
+                          <th
+                            className="fw-semibold text-nowrap"
+                            style={{ width: "30%", whiteSpace: "nowrap" }}
+                          >
+                            {f.label || name}
+                            {f.description && (
+                              <div className="text-muted fw-normal">
+                                {f.description}
+                              </div>
+                            )}
+                          </th>
+                          <td>
+                            <Field name={name} label="" />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
             )}
           </div>
@@ -70,13 +96,52 @@ const PostsView: React.FC<CustomContainerProps> = (_props) => {
 
         {/* Main content body */}
         <div className="card-body">
-          <div className="mb-3 border-bottom pb-2">
-            <h3 className="card-title h4 mb-1"><Field name="title" /></h3>
-            <p className="card-subtitle text-muted fs-6">By <Field name="author" /></p>
-          </div>
+          <header className="posts-hero mb-4 pb-3 border-bottom">
+            <h1
+              className="mb-2"
+              style={{
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                fontSize: "2.75rem",
+                fontWeight: 700,
+                lineHeight: 1.15,
+                letterSpacing: "-0.015em",
+              }}
+            >
+              {title || <span className="text-muted">Untitled</span>}
+            </h1>
+            <div
+              style={{
+                fontSize: "1.15rem",
+                fontStyle: "italic",
+                color: "#6c757d",
+              }}
+            >
+              by{" "}
+              <span style={{ color: "#343a40", fontWeight: 600 }}>
+                {author || "Unknown"}
+              </span>
+            </div>
+            <div
+              aria-hidden
+              style={{
+                height: 3,
+                width: 64,
+                marginTop: "1rem",
+                borderRadius: 2,
+                background: "linear-gradient(90deg, #0d6efd, #6610f2)",
+              }}
+            />
+          </header>
+
           <div className="card-text text-dark">
             <Field name="content" />
           </div>
+        </div>
+
+        {/* Threaded comments (engine/modules/comments), loaded from the
+            /api/comments REST API for this post. */}
+        <div className="card-footer bg-white border-top">
+          <CommentsThread module="posts" row={postId} />
         </div>
 
       </div>

@@ -27,6 +27,7 @@ interface TableFieldMeta {
   tableFieldset?: ColumnDef[];
   tableRowsAddable?: boolean;
   tableRowKey?: string;
+  options?: Record<string, any>;
 }
 
 interface TableEditProps {
@@ -58,8 +59,34 @@ const NUMBER_TYPES = new Set(["Int", "Float", "Money", "MoneyWithCurrency"]);
 const DATE_TYPES = new Set(["Date", "DateTime"]);
 const SELECT_TYPES = new Set(["Select", "SelectAddNew"]);
 
+// Column name -> bitmask bit, for the "sync a checkbox column from a sibling
+// bitmask field" behaviour (field option syncColumnsFromBitmask). Matches
+// auth.MODE_* and the rights modules' list/view/create/edit/delete columns.
+const BITMASK_BITS: Record<string, number> = {
+  list: 1,
+  view: 2,
+  create: 4,
+  edit: 8,
+  delete: 16,
+};
+
 function truthy(v: any): boolean {
   return v === true || v === 1 || v === "1" || v === "true" || v === "yes";
+}
+
+// coerceCell normalizes a cell to its column's native type before emit, so rows
+// loaded from the server (numbers) and rows the user picked/typed (strings from
+// <select>/<input>) go over the wire as the same type — e.g. an Int/select
+// column always emits a number.
+function coerceCell(col: ColumnDef, v: any): any {
+  if (v === null || v === undefined || v === "") return v;
+  const t = col.type || "String";
+  if (NUMBER_TYPES.has(t)) {
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? n : v;
+  }
+  if (CHECKBOX_TYPES.has(t)) return truthy(v);
+  return v;
 }
 
 class TableEdit extends Component<TableEditProps, TableEditState> {
@@ -79,12 +106,52 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
   }
 
   componentDidUpdate(prev: TableEditProps) {
+    // Sync a checkbox column from a sibling bitmask field: e.g. checking "list"
+    // in "Allowed Modes" checks the "list" cell for every field row (and
+    // unchecking clears them). Only reacts to an actual change of that sibling —
+    // never on first populate — so stored per-field values aren't wiped on load.
+    const sync = this.syncFrom();
+    if (sync && sync in (prev.formValues || {})) {
+      const before = Number((prev.formValues || {})[sync]) || 0;
+      const after = Number((this.props.formValues || {})[sync]) || 0;
+      if (before !== after) {
+        this.applyBitmaskSync(after);
+        return;
+      }
+    }
+
     if (this.contextSig(prev) !== this.contextSig()) {
       this.touched = false;
       this.loadServerRows();
     } else if (this.touched && prev.value !== this.props.value) {
       this.setState({ rows: this.computeRows(this.state.serverRows) });
     }
+  }
+
+  // syncFrom returns the sibling bitmask field name whose bits drive this table's
+  // matching checkbox columns, or "".
+  private syncFrom(): string {
+    return (
+      this.props.field?.options?.syncColumnsFromBitmask ||
+      (this.props as any).syncColumnsFromBitmask ||
+      ""
+    );
+  }
+
+  private applyBitmaskSync(mask: number) {
+    const cols = this.columns()
+      .map((c) => c.name)
+      .filter((n) => n in BITMASK_BITS);
+    if (!cols.length) return;
+    const rows = this.state.rows.map((r) => {
+      const nr = { ...r };
+      cols.forEach((n) => {
+        nr[n] = (mask & BITMASK_BITS[n]) !== 0;
+      });
+      return nr;
+    });
+    this.setState({ rows });
+    this.emit(rows);
   }
 
   // --- config ---------------------------------------------------------------
@@ -117,9 +184,10 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
   private contextSig(props: TableEditProps = this.props): string {
     const fv = props.formValues || {};
     const self = this.fieldName();
+    const sync = this.syncFrom(); // handled by applyBitmaskSync, not a reload
     const ctx: Record<string, any> = {};
     Object.keys(fv).forEach((k) => {
-      if (k !== self) ctx[k] = fv[k];
+      if (k !== self && k !== sync) ctx[k] = fv[k];
     });
     return JSON.stringify(ctx);
   }
@@ -179,11 +247,11 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
   private emit(rows: Row[]) {
     this.touched = true;
     if (!this.props.onChange) return;
-    const names = this.columns().map((c) => c.name);
+    const cols = this.columns();
     const out = rows.map((r) => {
       const o: Row = {};
-      names.forEach((n) => {
-        o[n] = r[n];
+      cols.forEach((c) => {
+        o[c.name] = coerceCell(c, r[c.name]);
       });
       return o;
     });

@@ -14,7 +14,7 @@ import (
 )
 
 func init() {
-	color.NoColor = false
+	color.NoColor = false // force color output even if stdout is not a TTY (e.g. in Docker)
 }
 
 // Output sinks, combined as a bitmask.
@@ -69,6 +69,7 @@ func levelByName(name string) level {
 // here and the structured event logger in events.go, so console output looks the
 // same everywhere. source ("pkg/file.go:line") and module are optional.
 func printLine(l level, module, source, msg string) {
+	ts := time.Now().Format("02.01.06 15:04:05") // DD.MM.YY HH:mm:ss
 	prefix := source
 	if module != "" {
 		if prefix != "" {
@@ -78,9 +79,9 @@ func printLine(l level, module, source, msg string) {
 		}
 	}
 	if prefix != "" {
-		l.color.Printf("[%s] %s: %s\n", l.name, prefix, msg)
+		l.color.Printf("[%s][%s] %s: %s\n", ts, l.name, prefix, msg)
 	} else {
-		l.color.Printf("[%s] %s\n", l.name, msg)
+		l.color.Printf("[%s][%s] %s\n", ts, l.name, msg)
 	}
 }
 

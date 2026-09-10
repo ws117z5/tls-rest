@@ -4,6 +4,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      # Pass a version for the ?v=… asset cache-buster on a local `compose build`:
+      #   APP_VERSION=$(git rev-parse --short=8 HEAD) docker compose up --build
+      # Jenkins builds the image itself with --build-arg and deploys --no-build.
+      args:
+        APP_VERSION: ${APP_VERSION:-dev}
     container_name: tls-rest
     restart: always
     stdin_open: true

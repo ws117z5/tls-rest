@@ -36,11 +36,19 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN CGO_ENABLED=1 GOOS=linux go build -tags "opencv netmap_pcap" \
-        -trimpath -ldflags="-s -w" -o /out/tls-rest 
+        -trimpath -ldflags="-s -w" -o /out/tls-rest
 
 
 # ---- Stage 3: runtime -------------------------------------------------------
 FROM ghcr.io/hybridgroup/opencv:4.13.0
+
+# App version for the ?v=… static-asset cache-buster, read at runtime as
+# os.Getenv("APP_VERSION"). Jenkins passes the git HEAD short hash
+# (--build-arg APP_VERSION=$(git rev-parse --short=8 HEAD)); .git is not in the
+# build context, so it must arrive as a build-arg. Re-declared here because ARGs
+# do not cross build stages.
+ARG APP_VERSION=dev
+ENV APP_VERSION=${APP_VERSION}
 
 # Install runtime tools required by your Go app (libpcap for network capture, ca-certificates for TLS)
 RUN apt-get update \

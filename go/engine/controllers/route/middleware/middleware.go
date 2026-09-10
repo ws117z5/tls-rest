@@ -1,10 +1,7 @@
 package middleware
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
-	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -14,6 +11,7 @@ import (
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/log"
 	"tls-rest/go/engine/controllers/module"
+	"tls-rest/go/engine/controllers/request"
 
 	. "tls-rest/go/engine/controllers/auth"
 )
@@ -169,18 +167,13 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 		})
 
 		if isAPICall(r) {
-			//Parse JSON body and pass json params into further handlers in the context
-			bodyBytes, err := io.ReadAll(r.Body)
-			if err == nil && len(bodyBytes) > 0 {
-				r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
-
-				params := make(map[string]interface{})
-				if err := json.Unmarshal(bodyBytes, &params); err == nil {
-
-					// 3. Chain the JSON params into the exact same context
-					ctx = context.WithValue(ctx, http.MethodPost, params)
-				}
-			}
+			// Parse every parameter source once — URL query + body (JSON object,
+			// x-www-form-urlencoded, or multipart) — into a shared request-scoped
+			// bag. It reads and restores r.Body, so direct readers still work.
+			rq := request.New(r)
+			ctx = request.ContextWith(ctx, rq)
+			// Back-compat: functions.PostParam still reads this context key.
+			ctx = context.WithValue(ctx, http.MethodPost, rq.Body())
 
 			// --- Module rights check (per-mode, group-resolved) ---
 			allowed, moduleName, action := authorizeAPIRequest(ci, r)

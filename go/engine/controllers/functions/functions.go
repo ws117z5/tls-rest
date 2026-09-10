@@ -171,9 +171,9 @@ func Int(v interface{}) int {
 		val, _ := strconv.Atoi(n)
 		return val
 	case nil:
-		return 0
+		return -1
 	default:
-		return 0
+		return -1
 	}
 }
 

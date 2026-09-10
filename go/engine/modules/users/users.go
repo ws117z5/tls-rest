@@ -71,24 +71,20 @@ func (u *Users) fieldset() []Field {
 			NonSearchable().
 			WithMode(MODE_VIEW | MODE_EDIT),
 
-		// Group membership: a jsonb array of user_groups ids stored in
-		// users.groups (see init/sql/2026.09.08.sql — the engine skips this
-		// column because the field carries an SQL expression). The highest id is
-		// the user's access level; membership of an is_admin group grants admin.
+		// Group membership: a jsonb array of user_groups ids stored in the real
+		// users.groups column (created by the engine because this TYPE_TABLE
+		// field has a submit hook). The highest id is the user's access level;
+		// membership of an is_admin group grants admin.
 		//
-		//   list/view — WithSQL resolves the ids to names for display.
-		//   edit      — an addable table of group selects; TableData loads the
-		//               current ids, TableOnSubmit writes the array back.
-		//
-		// The select is authority-scoped (optionsSource "assignable_groups"): a
-		// non-admin editor only sees groups at or below their own level and can
-		// never assign an admin group.
+		// It is deliberately NOT in any SELECT — both the view and the edit form
+		// load the current rows from the TableData endpoint, so an untouched save
+		// leaves the column alone instead of overwriting it with a projection.
+		// The select is authority-scoped (assignableGroups): a non-admin editor
+		// only sees groups at or below their own level, never an admin group.
 		NewField("groups", TYPE_TABLE, false).
 			WithLabel("Groups").
 			WithDescription("Groups this user belongs to (highest id = access level; an admin group grants admin)").
-			WithSQL(`(SELECT COALESCE(json_agg(g.name ORDER BY g.name), '[]'::json)
-			          FROM user_groups g
-			          WHERE g.id IN (SELECT jsonb_array_elements_text(users.groups)::int))`).
+			InModes(MODE_VIEW | MODE_EDIT). // not in any SELECT, so a list column would only ever show "—"
 			TableFieldset([]Field{
 				NewField("group", TYPE_INT, true).
 					WithLabel("Group").
@@ -116,7 +112,7 @@ func (u *Users) fieldset() []Field {
 			TableOnSubmit(func(rows []map[string]interface{}) interface{} {
 				ids := []interface{}{}
 				for _, r := range rows {
-					if id := functions.Int(r["group"]); id > 0 {
+					if id := functions.Int(r["group"]); id != -1 {
 						ids = append(ids, id)
 					}
 				}

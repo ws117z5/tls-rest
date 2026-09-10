@@ -1,0 +1,18 @@
+-- 2026.09.10 — comments: one polymorphic discussion table for every module.
+-- A comment is attached to a record by (module_id, row_id). The engine also
+-- auto-creates these columns from the comments module fieldset; this file pins
+-- the types and adds the lookup index.
+
+CREATE TABLE IF NOT EXISTS public.comments (
+    id         bigserial   PRIMARY KEY,
+    uuid       uuid        NOT NULL DEFAULT uuid_generate_v4(),
+    module_id  text        NOT NULL,
+    row_id     bigint      NOT NULL,
+    body       text        NOT NULL,
+    created_by integer,
+    created    timestamptz NOT NULL DEFAULT now(),
+    updated    timestamptz NOT NULL DEFAULT now(),
+    access     integer     NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_comments_target ON public.comments (module_id, row_id);

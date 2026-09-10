@@ -19,6 +19,7 @@ const TYPE_CHECKBOX_SET = "CheckboxSet"
 const TYPE_CHECKBOX_AJAX = "CheckboxAjax"
 
 const TYPE_STRING = "String"
+const TYPE_UUID = "Uuid"
 const TYPE_AUTOCOMPLETE = "Autocomplete"
 
 const TYPE_TEXT = "Text"

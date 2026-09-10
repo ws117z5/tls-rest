@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"reflect"
 	"strings"
 	"sync"
 	"time"
@@ -121,6 +122,35 @@ func (db *Db) Close() error {
 
 // Query executes a statement that returns no rows (INSERT/UPDATE/DELETE/DDL) and
 // returns the command tag. Alias kept for callers that used the old name.
+
+// interpolate substitutes $1,$2,... with the actual argument values for LOGGING
+// ONLY (never for execution). Replaces highest indices first so $11 isn't hit by
+// the $1 pattern. Byte slices are summarised to avoid dumping large blobs.
+func interpolate(query string, args []interface{}) string {
+	out := query
+	for i := len(args) - 1; i >= 0; i-- {
+		out = strings.ReplaceAll(out, fmt.Sprintf("$%d", i+1), formatArg(args[i]))
+	}
+	return out
+}
+
+func formatArg(a interface{}) string {
+	switch v := a.(type) {
+	case nil:
+		return "NULL"
+	case string:
+		return "'" + strings.ReplaceAll(v, "'", "''") + "'"
+	case []byte:
+		return fmt.Sprintf("[%d bytes]", len(v))
+	case bool:
+		return fmt.Sprintf("%t", v)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// Query executes a statement that returns no rows (INSERT/UPDATE/DELETE/DDL) and
+// returns the command tag. Alias kept for callers that used the old name.
 func (db *Db) Query(query string, args ...interface{}) (pgconn.CommandTag, error) {
 	return db.Exec(query, args...)
 }
@@ -131,7 +161,7 @@ func (db *Db) Exec(query string, args ...interface{}) (pgconn.CommandTag, error)
 	tag, err := db.pool.Exec(context.Background(), query, args...)
 	db.track(start)
 	if err != nil {
-		log.Printf("SQL error: %s\nError: %v", query, err)
+		log.Printf("SQL error: %s\nError: %v", interpolate(query, args), err)
 		return tag, err
 	}
 	return tag, nil
@@ -143,16 +173,30 @@ func (db *Db) RQuery(query string, args ...interface{}) ([]map[string]interface{
 	rows, err := db.pool.Query(context.Background(), query, args...)
 	if err != nil {
 		db.track(start)
-		log.Printf("SQL error: %s\nError: %v", query, err)
+		log.Printf("SQL error: %s\nError: %v", interpolate(query, args), err)
 		return nil, err
 	}
 	results, err := pgx.CollectRows(rows, pgx.RowToMap)
 	db.track(start)
 	if err != nil {
-		log.Printf("SQL error: %s\nError: %v", query, err)
+		log.Printf("SQL error: %s\nError: %v", interpolate(query, args), err)
 		return nil, err
 	}
+	normalizeUUIDs(results)
 	return results, nil
+}
+
+// normalizeUUIDs rewrites pgx's raw 16-byte UUID column values (any column, not
+// just "uuid") to the canonical 8-4-4-4-12 string, so callers and JSON responses
+// never see a byte array.
+func normalizeUUIDs(rows []map[string]interface{}) {
+	for _, row := range rows {
+		for k, v := range row {
+			if b, ok := v.([16]uint8); ok {
+				row[k] = uuid.UUID(b).String()
+			}
+		}
+	}
 }
 
 // GetInsertID returns the id of the most recent InsertRow (pgx has no implicit
@@ -166,31 +210,10 @@ func (db *Db) GetAffectedRows(result pgconn.CommandTag) (int64, error) {
 	return result.RowsAffected(), nil
 }
 
-// GetAll fetches all rows as a slice of maps.
+// GetAll fetches all rows as a slice of maps. UUID normalization is handled by
+// RQuery.
 func (db *Db) GetAll(query string, args ...interface{}) ([]map[string]interface{}, error) {
-
-	data, err := db.RQuery(query, args...)
-
-	if err != nil {
-		return nil, err
-	}
-
-	//fix for uuid
-	for _, row := range data {
-		if rawVal, exists := row["uuid"]; exists {
-
-			// 1. Assert the interface{} down to the []byte slice
-			byteArray, ok := rawVal.([16]uint8)
-			if !ok {
-				return nil, fmt.Errorf("Error: value is not a [16]uint8 array")
-			}
-
-			// 3. Update the map with the string representation or the native object
-			row["uuid"] = uuid.UUID(byteArray).String()
-		}
-	}
-
-	return data, nil
+	return db.RQuery(query, args...)
 }
 
 // GetOne fetches the first row as a map. Returns an error if no rows match.
@@ -229,9 +252,22 @@ func (db *Db) Escape(value string) string {
 // text/jsonb column by the driver, so they are JSON-marshaled to a string first.
 // Everything else (scalars, time.Time, and binary []byte for BYTEA) is left
 // untouched.
+// encodeParam prepares a Go value for a SQL bind. pgx can't encode arbitrary
+// composite Go types (maps, slices, structs from a decoded JSON body or a
+// TableOnSubmit hook) into text/jsonb columns, so any composite is JSON-
+// marshalled to a string first. Scalars, []byte (BYTEA), and time.Time are
+// passed through untouched.
 func encodeParam(v interface{}) interface{} {
 	switch v.(type) {
-	case map[string]interface{}, []interface{}:
+	case nil, bool, string, []byte,
+		int, int8, int16, int32, int64,
+		uint, uint8, uint16, uint32, uint64,
+		float32, float64,
+		time.Time, *time.Time:
+		return v
+	}
+	switch reflect.TypeOf(v).Kind() {
+	case reflect.Map, reflect.Slice, reflect.Array, reflect.Struct:
 		if b, err := json.Marshal(v); err == nil {
 			return string(b)
 		}
@@ -263,7 +299,7 @@ func (db *Db) InsertRow(table string, fieldValues map[string]interface{}) (int64
 	err := db.pool.QueryRow(context.Background(), query, values...).Scan(&id)
 	db.track(start)
 	if err != nil {
-		log.Printf("SQL error: %s\nError: %v", query, err)
+		log.Printf("SQL error: %s\nError: %v", interpolate(query, values), err)
 		return 0, err
 	}
 
@@ -308,6 +344,7 @@ func (db *Db) DeleteRow(table string, keyField string, keyValue interface{}) (in
 	)
 	tag, err := db.Exec(query, keyValue)
 	if err != nil {
+		log.Printf("SQL error: %s\nError: %v", interpolate(query, []interface{}{keyValue}), err)
 		return 0, err
 	}
 	return tag.RowsAffected(), nil

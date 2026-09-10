@@ -46,20 +46,24 @@ export default class SelectEdit extends Component<SelectEditProps, SelectEditSta
     };
 
     render() {
-        const { options } = this.props;
+        const { options = [] } = this.props;
         const { value } = this.state;
 
+        // Show an explicit blank option whenever the current value matches no
+        // option (i.e. nothing has been picked), so the control honestly reads
+        // "—" instead of silently showing the first option as if selected.
+        const hasMatch = options.some(
+            (o) => String(o.value ?? "") === String(value ?? "")
+        );
+        const opts = hasMatch ? options : [{ name: "—", value: "" }, ...options];
+
         return (
-            <select value={value} onChange={this.handleChange}>
-                {options &&
-                    options.map((option, idx) => (
-                        <option
-                            key={option.value ?? idx}
-                            value={option.value ?? idx}
-                        >
-                            {option.name}
-                        </option>
-                    ))}
+            <select value={value ?? ""} onChange={this.handleChange}>
+                {opts.map((option, idx) => (
+                    <option key={option.value ?? idx} value={option.value ?? idx}>
+                        {option.name}
+                    </option>
+                ))}
             </select>
         );
     }
