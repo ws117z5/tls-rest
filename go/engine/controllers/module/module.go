@@ -681,50 +681,13 @@ func (m *ModuleAbstract[T]) addMissingColumns(db *pgdb.Db) error {
 			sqlType = t
 		} else if field.Name == "access" {
 			sqlType = "INTEGER DEFAULT 0"
-		} else if field.Name == "uuid" && (field.Type == TYPE_UUID || field.SQL != "") {
-			// Mirror generateCreateTableSQL: the app never supplies uuid on
-			// insert, so the column must generate its own.
-			sqlType = "UUID DEFAULT uuid_generate_v4()"
 		}
 		alter := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s", m.ID, field.Name, sqlType)
 		if _, err := db.Query(alter); err != nil {
 			return fmt.Errorf("add column %s.%s: %w", m.ID, field.Name, err)
 		}
 	}
-
-	// System-uuid integrity: a table created before its uuid column became a
-	// generated UUID (e.g. an early fieldset, or a column added by a prior
-	// version of this reconciler) can have a `uuid` column with no default.
-	// Nothing supplies uuid on insert, so backfill NULLs and set the default.
-	if existing["uuid"] {
-		if err := ensureUUIDDefault(db, m.ID); err != nil {
-			ModuleLog.Warnf("ensure uuid default for %s: %v", m.ID, err)
-		}
-	}
 	return nil
-}
-
-// ensureUUIDDefault makes the table's `uuid` column self-generating: if it has
-// no uuid_generate_v4()/gen_random_uuid() default, fill existing NULLs and add
-// the default. Idempotent — a no-op once the default is in place.
-func ensureUUIDDefault(db *pgdb.Db, table string) error {
-	rows, err := db.RQuery(
-		`SELECT column_default FROM information_schema.columns
-		 WHERE table_name = $1 AND column_name = 'uuid'`, table)
-	if err != nil || len(rows) == 0 {
-		return err
-	}
-	def, _ := rows[0]["column_default"].(string)
-	if strings.Contains(def, "uuid_generate_v4") || strings.Contains(def, "gen_random_uuid") {
-		return nil
-	}
-	if _, err := db.Query(
-		fmt.Sprintf("UPDATE %s SET uuid = uuid_generate_v4() WHERE uuid IS NULL", table)); err != nil {
-		return err
-	}
-	_, err = db.Query(
-		fmt.Sprintf("ALTER TABLE %s ALTER COLUMN uuid SET DEFAULT uuid_generate_v4()", table))
-	return err
 }
 
 func (m *ModuleAbstract[T]) getDB() (*pgdb.Db, error) {
@@ -877,6 +840,10 @@ func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 		case bool:
 			sqlType += fmt.Sprintf(" DEFAULT %t", v)
 		}
+	} else if field.Type == TYPE_UUID {
+		// Every auto-created UUID column generates its own value, so inserts that
+		// omit it (and columns reconciled onto an existing table) still get one.
+		sqlType += " DEFAULT uuid_generate_v4()"
 	}
 
 	return sqlType

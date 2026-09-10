@@ -9,6 +9,7 @@ import (
 	accesslog "tls-rest/go/engine/modules/accesslog"
 	accessrules "tls-rest/go/engine/modules/accessrules"
 	comments "tls-rest/go/engine/modules/comments"
+	contact "tls-rest/go/engine/modules/contact"
 	images "tls-rest/go/engine/modules/images"
 	modulerights "tls-rest/go/engine/modules/modulerights"
 	usergroups "tls-rest/go/engine/modules/usergroups"
@@ -49,6 +50,7 @@ func InitAll() {
 	accessrules.Init()
 	images.Init()
 	comments.Init()
+	contact.Init()
 
 	// --- Pages ---
 	login.Init()
