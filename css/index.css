@@ -8,6 +8,10 @@ html {
 body {
     padding: 0;
     margin: 0;
+    /* Matches .module-page's light-gray card background (fieldset.css) so the
+       rest of the site isn't stark white next to it. theme-dark.css overrides
+       this with a more specific html[data-theme="dark"] body rule. */
+    background-color: #f4f6f5;
 }
 
 canvas#background {
