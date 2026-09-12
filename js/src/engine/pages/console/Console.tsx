@@ -1,6 +1,7 @@
 import React from "react";
 import axios from "axios";
 import PageComponent from "@engine/containers/PageComponent";
+import { t, subscribe } from "@engine/i18n";
 
 interface ConsoleState {
 	command: string;
@@ -20,6 +21,15 @@ class Console extends PageComponent<{}, ConsoleState> {
 		this.requiresAuth = true;
 		this.requiresAdmin = true;
 		this.state = { command: "", history: [], busy: false };
+	}
+
+	private unsubscribeI18n?: () => void;
+	async componentDidMount() {
+		await super.componentDidMount();
+		this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+	}
+	componentWillUnmount() {
+		this.unsubscribeI18n?.();
 	}
 
 	run = async () => {
@@ -57,9 +67,9 @@ class Console extends PageComponent<{}, ConsoleState> {
 		};
 		return (
 			<div style={{ padding: 16, ...mono }}>
-				<h2 style={{ marginBottom: 8 }}>Console</h2>
+				<h2 style={{ marginBottom: 8 }}>{t("Console")}</h2>
 				<div style={{ color: "#888", marginBottom: 12 }}>
-					Admin actions console. Type <code>help</code> for commands.
+					{t("Admin actions console. Type")} <code>help</code> {t("for commands.")}
 				</div>
 
 				<div
@@ -76,13 +86,13 @@ class Console extends PageComponent<{}, ConsoleState> {
 					}}
 				>
 					{this.state.history.length === 0 && (
-						<div style={{ color: "#666" }}>No output yet.</div>
+						<div style={{ color: "#666" }}>{t("No output yet.")}</div>
 					)}
 					{this.state.history.map((h, i) => (
 						<div key={i} style={{ marginBottom: 10 }}>
 							<div style={{ color: "#7fd" }}>&gt; {h.cmd}</div>
 							{h.out && <div>{h.out}</div>}
-							{h.err && <div style={{ color: "#f77" }}>error: {h.err}</div>}
+							{h.err && <div style={{ color: "#f77" }}>{t("error:")} {h.err}</div>}
 						</div>
 					))}
 				</div>
@@ -97,7 +107,7 @@ class Console extends PageComponent<{}, ConsoleState> {
 						autoFocus
 					/>
 					<button onClick={this.run} disabled={this.state.busy} style={{ padding: "8px 16px" }}>
-						{this.state.busy ? "…" : "Run"}
+						{this.state.busy ? "…" : t("Run")}
 					</button>
 				</div>
 			</div>

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import axios from "axios";
 import PageComponent from "@engine/containers/PageComponent";
+import useT from "@engine/useT";
+import { t, subscribe } from "@engine/i18n";
 
 // Contact form. Posts to /api/contact, which stores the message server-side —
 // no email address is exposed anywhere on the site.
@@ -10,6 +12,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 type Status = "idle" | "sending" | "sent" | "error";
 
 const ContactForm: React.FC = () => {
+  const t = useT();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState("");
@@ -43,15 +46,14 @@ const ContactForm: React.FC = () => {
       setMessage("");
     } catch {
       setStatus("error");
-      setError("Sorry — the message could not be sent. Please try again later.");
+      setError(t("Sorry — the message could not be sent. Please try again later."));
     }
   };
 
   if (status === "sent") {
     return (
       <div className="alert alert-success" role="status">
-        Thanks — your message has been received. We'll get back to you at the
-        address you provided.
+        {t("Thanks — your message has been received. We'll get back to you at the address you provided.")}
       </div>
     );
   }
@@ -60,7 +62,7 @@ const ContactForm: React.FC = () => {
     <form onSubmit={submit} noValidate>
       <div className="mb-3">
         <label className="form-label" htmlFor="cf-name">
-          Name
+          {t("Name")}
         </label>
         <input
           id="cf-name"
@@ -74,7 +76,7 @@ const ContactForm: React.FC = () => {
 
       <div className="mb-3">
         <label className="form-label" htmlFor="cf-email">
-          Email
+          {t("Email")}
         </label>
         <input
           id="cf-email"
@@ -85,12 +87,12 @@ const ContactForm: React.FC = () => {
           onChange={(e) => setEmail(e.target.value)}
           required
         />
-        <div className="form-text">So we can reply to you.</div>
+        <div className="form-text">{t("So we can reply to you.")}</div>
       </div>
 
       <div className="mb-3">
         <label className="form-label" htmlFor="cf-subject">
-          Subject <span className="text-muted">(optional)</span>
+          {t("Subject")} <span className="text-muted">({t("optional")})</span>
         </label>
         <input
           id="cf-subject"
@@ -103,7 +105,7 @@ const ContactForm: React.FC = () => {
 
       <div className="mb-3">
         <label className="form-label" htmlFor="cf-message">
-          Message
+          {t("Message")}
         </label>
         <textarea
           id="cf-message"
@@ -137,7 +139,7 @@ const ContactForm: React.FC = () => {
         className="btn btn-primary"
         disabled={!valid || status === "sending"}
       >
-        {status === "sending" ? "Sending…" : "Send message"}
+        {status === "sending" ? t("Sending…") : t("Send message")}
       </button>
     </form>
   );
@@ -149,14 +151,22 @@ export class ContactPage extends PageComponent<{}, {}> {
   protected icon = "messages-sm";
   protected isPage = true;
   protected submenu = "Legal";
+  private unsubscribeI18n?: () => void;
+
+  async componentDidMount() {
+    await super.componentDidMount();
+    this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+  }
+  componentWillUnmount() {
+    this.unsubscribeI18n?.();
+  }
 
   render() {
     return (
       <div className="container py-5" style={{ maxWidth: 720 }}>
-        <h1 className="h2 mb-2">Contact</h1>
+        <h1 className="h2 mb-2">{t("Contact")}</h1>
         <p className="text-muted mb-4">
-          Use the form below to get in touch. Your message is delivered privately
-          — no email address is published on this site.
+          {t("Use the form below to get in touch. Your message is delivered privately — no email address is published on this site.")}
         </p>
         <ContactForm />
       </div>

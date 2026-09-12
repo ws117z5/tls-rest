@@ -1,6 +1,7 @@
 import React, { Component } from "react";
 import axios from "axios";
 import { TextEdit, FloatEdit, SelectEdit, SelectView, CheckboxEdit } from "../index";
+import { t as translate, subscribe } from "@engine/i18n";
 
 // TableEdit renders a TYPE_TABLE field as a real sub-fieldset: every column is a
 // Field definition (name/type/label/options/readonly) coming from the backend's
@@ -101,8 +102,13 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
     this.state = { serverRows: [], rows: [], loading: false };
   }
 
+  private unsubscribeI18n?: () => void;
   componentDidMount() {
     this.loadServerRows();
+    this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+  }
+  componentWillUnmount() {
+    this.unsubscribeI18n?.();
   }
 
   componentDidUpdate(prev: TableEditProps) {
@@ -328,10 +334,10 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
     const { rows, loading } = this.state;
 
     if (!cols.length) {
-      return <div className="text-muted">This table has no columns configured.</div>;
+      return <div className="text-muted">{translate("This table has no columns configured.")}</div>;
     }
     if (loading) {
-      return <div className="text-muted">Loading…</div>;
+      return <div className="text-muted">{translate("Loading…")}</div>;
     }
 
     return (
@@ -345,7 +351,7 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
             <tr>
               {cols.map((c) => (
                 <th key={c.name} className="text-nowrap">
-                  {c.label || c.name}
+                  {c.label ? translate(c.label) : c.name}
                 </th>
               ))}
               {this.addable() && <th />}
@@ -355,7 +361,7 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
             {rows.length === 0 && (
               <tr>
                 <td colSpan={cols.length + (this.addable() ? 1 : 0)} className="text-muted">
-                  No rows.
+                  {translate("No rows.")}
                 </td>
               </tr>
             )}
@@ -371,7 +377,7 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
                       className="btn btn-sm btn-outline-danger"
                       disabled={this.props.disabled}
                       onClick={() => this.removeRow(i)}
-                      aria-label="Remove row"
+                      aria-label={translate("Remove row")}
                     >
                       ×
                     </button>
@@ -388,7 +394,7 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
             disabled={this.props.disabled}
             onClick={this.addRow}
           >
-            + Add row
+            + {translate("Add row")}
           </button>
         )}
       </div>

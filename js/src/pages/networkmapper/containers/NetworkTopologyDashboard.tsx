@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from "react";
 import ForceGraph2D from "react-force-graph-2d";
+import useT from "@engine/useT";
 
 // Live force-directed topology graph for the admin Network Mapper page. Ported
 // from the standalone netmapper tool. Styling is inline (this app uses Bootstrap,
@@ -36,6 +37,7 @@ interface Props {
 }
 
 export default function NetworkTopologyDashboard({ data, height = 640 }: Props) {
+  const t = useT();
   const fgRef = useRef<any>(null);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export default function NetworkTopologyDashboard({ data, height = 640 }: Props) 
   if (!data) {
     return (
       <div style={{ padding: 48, background: "#0b0f14", color: "#22d3ee", fontFamily: "monospace" }}>
-        Initializing Network Mesh Engine...
+        {t("Initializing Network Mesh Engine...")}
       </div>
     );
   }
@@ -99,8 +101,8 @@ export default function NetworkTopologyDashboard({ data, height = 640 }: Props) 
   return (
     <div style={{ position: "relative", background: "#030712", borderRadius: 8, overflow: "hidden" }}>
       <div style={{ position: "absolute", top: 12, left: 0, right: 0, textAlign: "center", zIndex: 10, pointerEvents: "none" }}>
-        <div style={{ fontSize: 20, fontWeight: 800, color: "#22d3ee", letterSpacing: 1 }}>Live Network Mesh Graph</div>
-        <div style={{ fontSize: 11, color: "#9ca3af", fontFamily: "monospace" }}>Drag nodes, scroll to zoom, hover to inspect</div>
+        <div style={{ fontSize: 20, fontWeight: 800, color: "#22d3ee", letterSpacing: 1 }}>{t("Live Network Mesh Graph")}</div>
+        <div style={{ fontSize: 11, color: "#9ca3af", fontFamily: "monospace" }}>{t("Drag nodes, scroll to zoom, hover to inspect")}</div>
       </div>
 
       <div style={{ width: "100%", height, cursor: "grab" }}>

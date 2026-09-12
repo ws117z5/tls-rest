@@ -217,6 +217,24 @@ func TurnAction(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+	case "guessed":
+		// Creator confirms (over video) that the active player correctly said
+		// their word: record the finish and hand the turn to whoever's next.
+		if st.Started && st.ActiveIx >= 0 && st.ActiveIx < len(st.Order) {
+			key := st.Order[st.ActiveIx]
+			if !isFinished(&st, key) {
+				st.Finished = append(st.Finished, key)
+			}
+			st.Started = false
+			st.Wrong = 0
+			st.Deadline = time.Time{}
+			if next := nextActiveIx(&st, st.ActiveIx+1); next >= 0 {
+				st.ActiveIx = next
+			} else {
+				st.ActiveIx = len(st.Order) // out of range: nobody left to play
+			}
+		}
+
 	case "restart":
 		// New round: clear words + assignments + the scoreboard, players
 		// re-prompted to submit.
@@ -248,46 +266,6 @@ func TurnAction(w http.ResponseWriter, r *http.Request) {
 	SetRoomState(st)
 	hub.notify(roomUUID)
 	writeState(w, roomUUID, playerKey(r), true)
-}
-
-// GuessWord lets any player mark themselves as having correctly guessed their
-// word — self-reported, since the server has no way to verify a word spoken
-// aloud over the video call. Unlike TurnAction this is NOT creator-gated: it's
-// the guesser reporting their own result. It removes them from the active-turn
-// rotation for the rest of the round and appends them to the scoreboard (first
-// to guess is index 0). POST /papers/{roomId}/game/guess
-func GuessWord(w http.ResponseWriter, r *http.Request) {
-	roomUUID := mux.Vars(r)["roomId"]
-	key := playerKey(r)
-	if key == "" {
-		functions.JSONError(w, http.StatusUnauthorized, "no session")
-		return
-	}
-
-	st, _ := GetRoomState(roomUUID)
-	if _, seen := st.Players[key]; !seen {
-		functions.JSONError(w, http.StatusBadRequest, "join the room first")
-		return
-	}
-	if !isFinished(&st, key) {
-		st.Finished = append(st.Finished, key)
-	}
-	// If it was their turn, end it immediately and hand off to whoever's next.
-	if st.ActiveIx >= 0 && st.ActiveIx < len(st.Order) && st.Order[st.ActiveIx] == key {
-		st.Started = false
-		st.Wrong = 0
-		st.Deadline = time.Time{}
-		if next := nextActiveIx(&st, st.ActiveIx+1); next >= 0 {
-			st.ActiveIx = next
-		} else {
-			st.ActiveIx = len(st.Order) // out of range: nobody left to play
-		}
-	}
-	SetRoomState(st)
-	hub.notify(roomUUID)
-
-	cb, _, _, _ := roomInfo(roomUUID)
-	writeState(w, roomUUID, key, isRoomCreator(r, cb))
 }
 
 // writeState returns the room state as the given caller should see it.
@@ -346,10 +324,13 @@ func writeState(w http.ResponseWriter, roomUUID, selfKey string, isCreator bool)
 		}
 	}
 
+	// selfName comes from the cross-room persisted identity (pre-fills next
+	// time), but selfWord must be room-round-scoped: st.Players' copy, which
+	// "restart" clears, so the frontend knows to ask for a new word again.
 	self, _ := GetGameUser(selfKey)
 	functions.WriteJSON(w, http.StatusOK, map[string]any{
 		"selfName":     self.Name,
-		"selfWord":     self.Word,
+		"selfWord":     st.Players[selfKey].Word,
 		"selfFinished": isFinished(&st, selfKey),
 		"isCreator":    isCreator,
 		"players":      players,
@@ -357,6 +338,7 @@ func writeState(w http.ResponseWriter, roomUUID, selfKey string, isCreator bool)
 		"gameOver":     gameOver,
 		"activeKey":    activeKey,
 		"started":      st.Started,
+		"roundStarted": len(st.Assigned) > 0,
 		"wrong":        st.Wrong,
 		"wrongLimit":   wrongLimit,
 		"timerSecs":    timerSecs,

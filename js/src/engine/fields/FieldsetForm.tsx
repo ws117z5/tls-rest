@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import { Field, BaseFieldProps } from './Field';
 import { useFieldset, MODES, isImmutableField } from './FieldsetProvider';
+import useT from '@engine/useT';
 import '@css/fieldset.css';
 
 // Form data interface
@@ -29,12 +30,14 @@ interface FieldsetFormState {
 // Hook-based wrapper for class component
 const FieldsetFormWrapper: React.FC<FieldsetFormProps> = (props) => {
   const fieldsetContext = useFieldset();
-  return <FieldsetFormClass {...props} fieldsetContext={fieldsetContext} />;
+  const t = useT();
+  return <FieldsetFormClass {...props} fieldsetContext={fieldsetContext} t={t} />;
 };
 
 // Class component with fieldset context
 interface FieldsetFormClassProps extends FieldsetFormProps {
   fieldsetContext: any;
+  t: (text: string) => string;
 }
 
 class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormState> {
@@ -103,8 +106,10 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
       field.default_value !== undefined &&
       field.default_value !== null &&
       field.default_value !== '';
+    const { t } = this.props;
+    const label = t(field.label);
     if (required && !hasDefault && (value === null || value === undefined || value === '')) {
-      return `${field.label} is required`;
+      return `${label} ${t('is required')}`;
     }
 
     // Type-specific validation
@@ -112,10 +117,10 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
       // String length validation
       if (type === 'String' || type === 'Text') {
         if (validation.minLength && value.length < validation.minLength) {
-          return `${field.label} must be at least ${validation.minLength} characters`;
+          return `${label} ${t('must be at least')} ${validation.minLength} ${t('characters')}`;
         }
         if (validation.maxLength && value.length > validation.maxLength) {
-          return `${field.label} must not exceed ${validation.maxLength} characters`;
+          return `${label} ${t('must not exceed')} ${validation.maxLength} ${t('characters')}`;
         }
       }
 
@@ -123,26 +128,26 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
       if (type === 'Int' || type === 'Float') {
         const numValue = parseFloat(value);
         if (isNaN(numValue)) {
-          return `${field.label} must be a valid number`;
+          return `${label} ${t('must be a valid number')}`;
         }
         if (validation.min !== undefined && numValue < validation.min) {
-          return `${field.label} must be at least ${validation.min}`;
+          return `${label} ${t('must be at least')} ${validation.min}`;
         }
         if (validation.max !== undefined && numValue > validation.max) {
-          return `${field.label} must not exceed ${validation.max}`;
+          return `${label} ${t('must not exceed')} ${validation.max}`;
         }
       }
 
       // Email validation
       if (validation.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-        return `${field.label} must be a valid email address`;
+        return `${label} ${t('must be a valid email address')}`;
       }
 
       // Pattern validation
       if (validation.pattern) {
         const regex = new RegExp(validation.pattern);
         if (!regex.test(value)) {
-          return validation.patternMessage || `${field.label} format is invalid`;
+          return validation.patternMessage || `${label} ${t('format is invalid')}`;
         }
       }
     }
@@ -302,10 +307,10 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
           style={{ flex: `0 0 ${layout.descWidth}px`, maxWidth: layout.descWidth }}
         >
           <div className="fw-semibold">
-            {field.label}
+            {this.props.t(field.label)}
           </div>
           {field.description && (
-            <div className="text-muted small">{field.description}</div>
+            <div className="text-muted small">{this.props.t(field.description)}</div>
           )}
         </div>
         {valueCell}
@@ -314,18 +319,19 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
   };
 
   render() {
-    const { 
-      fieldsetContext, 
-      mode, 
-      className, 
-      showRequiredIndicator 
+    const {
+      fieldsetContext,
+      mode,
+      className,
+      showRequiredIndicator,
+      t,
     } = this.props;
 
     if (fieldsetContext.loading) {
       return (
         <div className="d-flex justify-content-center p-4">
           <div className="spinner-border" role="status">
-            <span className="sr-only">Loading fieldset...</span>
+            <span className="sr-only">{t("Loading fieldset...")}</span>
           </div>
         </div>
       );
@@ -334,7 +340,7 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
     if (fieldsetContext.error) {
       return (
         <div className="alert alert-danger">
-          Failed to load form configuration: {fieldsetContext.error}
+          {t("Failed to load form configuration:")} {fieldsetContext.error}
         </div>
       );
     }
@@ -342,7 +348,7 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
     if (!fieldsetContext.fieldset) {
       return (
         <div className="alert alert-warning">
-          No fieldset configuration available
+          {t("No fieldset configuration available")}
         </div>
       );
     }
@@ -355,19 +361,19 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
       <form onSubmit={this.handleSubmit} className={`fieldset-form ${className}`}>
         {showRequiredIndicator && isEditMode && (
           <div className="mb-3 text-muted small">
-            <span className="text-danger">*</span> Required fields
+            <span className="text-danger">*</span> {t("Required fields")}
           </div>
         )}
 
         {fields.map((field: any) => this.renderField(field, layout))}
-        
+
         {isEditMode && this.props.onSubmit && (
           <div className="form-actions mt-4">
             <button type="submit" className="btn btn-primary">
-              Save
+              {t("Save")}
             </button>
-            <button type="button" className="btn btn-secondary ms-2">
-              Cancel
+            <button type="button" className="btn btn-secondary ml-2">
+              {t("Cancel")}
             </button>
           </div>
         )}

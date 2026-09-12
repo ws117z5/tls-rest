@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import { Field } from './Field';
 import { useFieldset, MODES } from './FieldsetProvider';
+import useT from '@engine/useT';
 
 // List data interface
 interface ListData {
@@ -43,12 +44,14 @@ interface FieldsetListState {
 // Hook-based wrapper
 const FieldsetListWrapper: React.FC<FieldsetListProps> = (props) => {
   const fieldsetContext = useFieldset();
-  return <FieldsetListClass {...props} fieldsetContext={fieldsetContext} />;
+  const t = useT();
+  return <FieldsetListClass {...props} fieldsetContext={fieldsetContext} t={t} />;
 };
 
 // Class component
 interface FieldsetListClassProps extends FieldsetListProps {
   fieldsetContext: any;
+  t: (text: string) => string;
 }
 
 class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListState> {
@@ -158,7 +161,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
       if (this.state.selected.has(this.rowId(r, i))) selectedRows.push(r);
     });
     if (selectedRows.length === 0) return;
-    if (!window.confirm(`Delete ${selectedRows.length} selected item(s)?`)) return;
+    if (!window.confirm(`${this.props.t('Delete')} ${selectedRows.length} ${this.props.t('selected item(s)?')}`)) return;
 
     if (onBulkDelete) {
       onBulkDelete(selectedRows);
@@ -214,7 +217,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
   // --- rendering ---
 
   renderToolbar = (allListFields: any[], rows: ListData[]) => {
-    const { selectable } = this.props;
+    const { selectable, t } = this.props;
     const { selected, hiddenColumns, showColumnMenu } = this.state;
 
     return (
@@ -227,10 +230,10 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
                 className="btn btn-danger"
                 onClick={() => this.handleBulkDelete(rows)}
               >
-                Delete ({selected.size})
+                {t('Delete')} ({selected.size})
               </button>
               <button type="button" className="btn btn-outline-secondary" onClick={this.clearSelection}>
-                Clear
+                {t('Clear')}
               </button>
             </div>
           )}
@@ -243,7 +246,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
               className="btn btn-outline-secondary btn-sm"
               onClick={() => this.setState(s => ({ showColumnMenu: !s.showColumnMenu }))}
             >
-              Columns
+              {t('Columns')}
             </button>
             {showColumnMenu && (
               <div
@@ -257,7 +260,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
                       checked={!hiddenColumns.has(f.name)}
                       onChange={() => this.toggleColumn(f.name)}
                     />
-                    {f.label || f.name}
+                    {f.label ? t(f.label) : f.name}
                   </label>
                 ))}
               </div>
@@ -269,7 +272,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
   };
 
   renderTableHeader = (fields: any[], rows: ListData[]) => {
-    const { sortable, showActions, selectable } = this.props;
+    const { sortable, showActions, selectable, t } = this.props;
     const { sortField, sortDirection, selected } = this.state;
 
     const ids = rows.map((r, i) => this.rowId(r, i));
@@ -283,7 +286,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
             <th style={{ width: 36 }}>
               <input
                 type="checkbox"
-                aria-label="Select all"
+                aria-label={t('Select all')}
                 checked={allSelected}
                 ref={el => {
                   if (el) el.indeterminate = someSelected && !allSelected;
@@ -299,20 +302,20 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
               onClick={sortable && field.sortable ? () => this.handleSort(field.name) : undefined}
               style={sortable && field.sortable ? { cursor: 'pointer' } : {}}
             >
-              {field.label}
+              {t(field.label)}
               {sortable && field.sortable && sortField === field.name && (
-                <span className="ms-1">{sortDirection === 'asc' ? '↑' : '↓'}</span>
+                <span className="ml-1">{sortDirection === 'asc' ? '↑' : '↓'}</span>
               )}
             </th>
           ))}
-          {showActions && <th>Actions</th>}
+          {showActions && <th>{t('Actions')}</th>}
         </tr>
       </thead>
     );
   };
 
   renderTableRow = (row: ListData, index: number, fields: any[]) => {
-    const { onRowClick, onRowDoubleClick, onEdit, onDelete, onView, showActions, selectable } = this.props;
+    const { onRowClick, onRowDoubleClick, onEdit, onDelete, onView, showActions, selectable, t } = this.props;
     const id = this.rowId(row, index);
     const isSelected = this.state.selected.has(id);
 
@@ -328,7 +331,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
           <td onClick={e => e.stopPropagation()}>
             <input
               type="checkbox"
-              aria-label="Select row"
+              aria-label={t('Select row')}
               checked={isSelected}
               onChange={() => this.toggleRow(id)}
             />
@@ -351,7 +354,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
                     onView(row, index);
                   }}
                 >
-                  View
+                  {t('View')}
                 </button>
               )}
               {onEdit && (
@@ -363,7 +366,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
                     onEdit(row, index);
                   }}
                 >
-                  Edit
+                  {t('Edit')}
                 </button>
               )}
               {onDelete && (
@@ -372,12 +375,12 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
                   className="btn btn-outline-danger btn-sm"
                   onClick={e => {
                     e.stopPropagation();
-                    if (window.confirm('Are you sure you want to delete this item?')) {
+                    if (window.confirm(t('Are you sure you want to delete this item?'))) {
                       onDelete(row, index);
                     }
                   }}
                 >
-                  Delete
+                  {t('Delete')}
                 </button>
               )}
             </div>
@@ -429,13 +432,13 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
         <ul className="pagination justify-content-center">
           <li className={`page-item ${page === 1 ? 'disabled' : ''}`}>
             <button className="page-link" onClick={() => onPageChange(Math.max(1, page - 1))} disabled={page === 1}>
-              Previous
+              {this.props.t('Previous')}
             </button>
           </li>
           {pages}
           <li className={`page-item ${page === totalPages ? 'disabled' : ''}`}>
             <button className="page-link" onClick={() => onPageChange(Math.min(totalPages, page + 1))} disabled={page === totalPages}>
-              Next
+              {this.props.t('Next')}
             </button>
           </li>
         </ul>
@@ -444,13 +447,13 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
   };
 
   render() {
-    const { fieldsetContext, className, filterable, showActions, selectable } = this.props;
+    const { fieldsetContext, className, filterable, showActions, selectable, t } = this.props;
 
     if (fieldsetContext.loading) {
       return (
         <div className="d-flex justify-content-center p-4">
           <div className="spinner-border" role="status">
-            <span className="sr-only">Loading...</span>
+            <span className="sr-only">{t('Loading...')}</span>
           </div>
         </div>
       );
@@ -459,13 +462,13 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
     if (fieldsetContext.error) {
       return (
         <div className="alert alert-danger">
-          Failed to load list configuration: {fieldsetContext.error}
+          {t('Failed to load list configuration:')} {fieldsetContext.error}
         </div>
       );
     }
 
     if (!fieldsetContext.fieldset) {
-      return <div className="alert alert-warning">No list configuration available</div>;
+      return <div className="alert alert-warning">{t('No list configuration available')}</div>;
     }
 
     const fields = fieldsetContext.getFieldsForMode();
@@ -494,7 +497,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
                     colSpan={listFields.length + leadingCols + (showActions ? 1 : 0)}
                     className="text-center text-muted"
                   >
-                    No data available
+                    {t('No data available')}
                   </td>
                 </tr>
               ) : (

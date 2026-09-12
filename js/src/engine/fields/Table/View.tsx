@@ -1,5 +1,6 @@
 import React, { Component } from "react";
 import axios from "axios";
+import { t, subscribe } from "@engine/i18n";
 
 // TableView renders a TYPE_TABLE field read-only.
 //
@@ -51,8 +52,13 @@ interface TableViewState {
 class TableView extends Component<TableViewProps, TableViewState> {
   state: TableViewState = { rows: null, loading: false };
 
+  private unsubscribeI18n?: () => void;
   componentDidMount() {
     if (this.shouldFetch()) this.load();
+    this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+  }
+  componentWillUnmount() {
+    this.unsubscribeI18n?.();
   }
 
   private columns(): ColumnDef[] {
@@ -150,7 +156,7 @@ function renderValue(value: any, columns: ColumnDef[]): React.ReactElement {
             <tr>
               {cols.map((c) => (
                 <th key={c.name} className="text-nowrap">
-                  {c.label || c.name}
+                  {c.label ? t(c.label) : c.name}
                 </th>
               ))}
             </tr>
@@ -171,14 +177,14 @@ function renderValue(value: any, columns: ColumnDef[]): React.ReactElement {
 
   if (typeof v === "object") {
     const keys = Object.keys(v);
-    if (keys.length === 0) return <span className="text-muted">All fields</span>;
+    if (keys.length === 0) return <span className="text-muted">{t("All fields")}</span>;
     return (
       <ul className="list-unstyled mb-0">
         {keys.map((f) => (
           <li key={f}>
             <span className="fw-medium">{f}</span>:{" "}
             <span className="text-muted">
-              {Array.isArray(v[f]) && v[f].length ? v[f].join(", ") : "denied"}
+              {Array.isArray(v[f]) && v[f].length ? v[f].join(", ") : t("denied")}
             </span>
           </li>
         ))}

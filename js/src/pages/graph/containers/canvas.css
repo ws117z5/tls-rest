@@ -1,6 +1,21 @@
+/* Canvas is drawn at a 700x380 intrinsic resolution (FunctionGraph.tsx); scale
+   it down on narrow screens instead of forcing the old fixed 1200x800 (which
+   made the page absurdly tall) while keeping the aspect ratio. */
+.graph-2d {
+    position: relative;
+    max-width: 700px;
+}
+
 canvas#graphs {
-    width: 1200px;
-    height: 800px;
+    display: block;
+    width: 100%;
+    max-width: 700px;
+    height: auto;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.description {
+    position: relative;
 }
 
 .function-description {

@@ -1,5 +1,5 @@
 import { MeshManager } from "./mesh";
-import type { PlanEvent } from "./types";
+import type { PlanEvent, VideoTier } from "./types";
 
 export interface RoleSummary {
   publishTo: string[];
@@ -18,6 +18,9 @@ export class Planner {
   private desired = new Map<string, Set<string>>();
   private sent = new Map<string, Map<string, Set<string>>>();
   private selfId = "";
+  // Key of the last video tier applied to the local capture track, so a
+  // repeated plan (same tier, next poll) doesn't re-run applyConstraints().
+  private appliedTierKey = "";
 
   onSourceStream: (sourceId: string, stream: MediaStream) => void = () => {};
   onRoles: (r: RoleSummary) => void = () => {};
@@ -28,8 +31,25 @@ export class Planner {
 
   setLocalStream(stream: MediaStream) {
     this.localTracks = stream.getTracks();
+    this.appliedTierKey = ""; // fresh track: force the next plan to (re)apply its tier
     this.onSourceStream(this.selfId, stream);
     this.reconcile(this.selfId);
+  }
+
+  // Applies the coordinator-chosen resolution to our own capture track. The
+  // coordinator (not the client) picks this — see BuildPlanFor server-side —
+  // so a bandwidth-constrained room converges on one tier everyone can
+  // actually sustain instead of each publisher guessing independently and
+  // dropping frames trying to hold a resolution the mesh can't deliver.
+  private applyVideoTier(tier: VideoTier) {
+    const key = `${tier.width}x${tier.height}`;
+    if (key === this.appliedTierKey) return;
+    const track = this.localTracks.find((t) => t.kind === "video");
+    if (!track) return;
+    this.appliedTierKey = key;
+    track
+      .applyConstraints({ width: { ideal: tier.width }, height: { ideal: tier.height } })
+      .catch((e) => console.error("[planner] applyConstraints failed", e));
   }
 
   handleRemoteTrack(_peerId: string, sourceId: string, stream: MediaStream, track: MediaStreamTrack) {
@@ -45,6 +65,8 @@ export class Planner {
 
   applyPlan(msg: PlanEvent) {
     const { order, plan } = msg;
+    const ownTier = msg.videoTiers?.[this.selfId];
+    if (ownTier) this.applyVideoTier(ownTier);
     const selfIdx = order.indexOf(this.selfId);
     if (selfIdx < 0) return;
 

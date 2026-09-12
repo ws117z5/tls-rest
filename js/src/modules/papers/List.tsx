@@ -1,5 +1,6 @@
 import React from "react";
 import { ModuleViewProps } from "@engine/controllers/registry";
+import useT from "@engine/useT";
 
 // Papers list = all active games (rooms). Each row opens the room's view.
 function playerCount(room: any): number {
@@ -12,9 +13,10 @@ function playerCount(room: any): number {
 }
 
 const PapersList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
+  const t = useT();
   const rooms = Array.isArray(data) ? data : [];
   if (rooms.length === 0) {
-    return <div className="text-muted p-4 text-center">No active games right now.</div>;
+    return <div className="text-muted p-4 text-center">{t("No active games right now.")}</div>;
   }
   return (
     <div className="papers-list d-flex flex-column gap-2 p-2">
@@ -31,10 +33,10 @@ const PapersList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
           >
             <div className="card-body d-flex justify-content-between align-items-center py-2">
               <div>
-                <h5 className="mb-0">{room.name || `Room ${room.id}`}</h5>
-                <small className="text-muted">{n} player{n === 1 ? "" : "s"}</small>
+                <h5 className="mb-0">{room.name || `${t("Room")} ${room.id}`}</h5>
+                <small className="text-muted">{n} {n === 1 ? t("player") : t("players")}</small>
               </div>
-              <span className="badge bg-success">Join</span>
+              <span className="badge bg-success">{t("Join")}</span>
             </div>
           </div>
         );

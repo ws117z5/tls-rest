@@ -184,12 +184,14 @@ func Index(w http.ResponseWriter, r *http.Request) {
 func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 	userID := 0
 	isAdmin := false
+	username := ""
 	var rights auth.ModuleModeRights
 
 	if s, ok := r.Context().Value(auth.SESSION_KEY).(*cache.Session); ok && s != nil {
 		userID = s.UserID
 		isAdmin = s.IsAdmin
 		rights = s.ModuleModes
+		username = s.Username
 	}
 	if rights == nil {
 		rights = auth.ResolveModuleModeRights(userID)
@@ -306,6 +308,9 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 	if userID > 0 {
 		if av := userAvatar(userID); av != "" {
 			user["avatar"] = av
+		}
+		if username != "" {
+			user["name"] = username
 		}
 	}
 

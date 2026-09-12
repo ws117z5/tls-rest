@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
- 
+
 import { FieldsetProvider, FieldsetForm, MODES } from "@engine/fields";
+import useT from "@engine/useT";
  
 // A Page is a standalone, non-module screen with a single visual representation
 // and NO modes (no list/create/delete, no per-mode routes). It renders one
@@ -18,6 +19,7 @@ interface FieldsetProps {
 }
  
 const Fieldset: React.FC<FieldsetProps> = ({ endpoint, editable = false, moduleName = "", title }) => {
+    const t = useT();
     const [data, setData] = useState<any>(null);
     const [fieldset, setFieldset] = useState<any>(null);
     const [loading, setLoading] = useState(true);
@@ -33,7 +35,7 @@ const Fieldset: React.FC<FieldsetProps> = ({ endpoint, editable = false, moduleN
             setData(Array.isArray(d) ? d[0] : d ?? {});
             setFieldset(res.data?.Fieldset ?? null);
         } catch (e: any) {
-            setError(e?.message || "Failed to load");
+            setError(e?.message || t("Failed to load"));
         } finally {
             setLoading(false);
         }
@@ -59,7 +61,7 @@ const Fieldset: React.FC<FieldsetProps> = ({ endpoint, editable = false, moduleN
         return (
             <div className="d-flex justify-content-center p-4">
                 <div className="spinner-border" role="status">
-                    <span className="sr-only">Loading...</span>
+                    <span className="sr-only">{t("Loading...")}</span>
                 </div>
             </div>
         );
@@ -72,8 +74,8 @@ const Fieldset: React.FC<FieldsetProps> = ({ endpoint, editable = false, moduleN
  
     return (
         <div className="container-fluid">
-            {title && <h1 className="h4 mb-3">{title}</h1>}
-            {saved && <div className="alert alert-success">Saved.</div>}
+            {title && <h1 className="h4 mb-3">{t(title)}</h1>}
+            {saved && <div className="alert alert-success">{t("Saved.")}</div>}
             <FieldsetProvider module={moduleName} mode={mode} fieldset={fieldset}>
                 <FieldsetForm
                     mode={mode}

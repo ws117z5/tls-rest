@@ -1,6 +1,7 @@
 import React from "react";
 import { FIELD_TYPES } from "./FieldsetProvider";
 import type { ModuleFilterMeta, ModuleFiltersProps } from "@engine/controllers/registry";
+import useT from "@engine/useT";
 
 // FieldsetFilters is the standard list filter bar. It renders one input per
 // filter declared by the backend (the "Filters" array returned by GET /<module>,
@@ -16,7 +17,8 @@ function renderInput(
     meta: ModuleFilterMeta,
     value: any,
     onChange: (value: any) => void,
-    onApply: () => void
+    onApply: () => void,
+    t: (text: string) => string
 ) {
     const common = {
         className: "form-control form-control-sm",
@@ -36,9 +38,9 @@ function renderInput(
                     value={value ?? ""}
                     onChange={(e) => onChange(e.target.value)}
                 >
-                    <option value="">Any</option>
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
+                    <option value="">{t("Any")}</option>
+                    <option value="true">{t("Yes")}</option>
+                    <option value="false">{t("No")}</option>
                 </select>
             );
 
@@ -76,7 +78,7 @@ function renderInput(
             return (
                 <input
                     type="text"
-                    placeholder={meta.label}
+                    placeholder={t(meta.label)}
                     {...common}
                     onChange={(e) => onChange(e.target.value)}
                 />
@@ -91,6 +93,7 @@ const FieldsetFilters: React.FC<ModuleFiltersProps> = ({
     onApply,
     onReset,
 }) => {
+    const t = useT();
     if (!meta || meta.length === 0) return null;
 
     const hasValues = Object.keys(values || {}).some(
@@ -103,19 +106,20 @@ const FieldsetFilters: React.FC<ModuleFiltersProps> = ({
                 {meta.map((f) => (
                     <div className="col-auto" key={f.name}>
                         <label className="form-label mb-1 small text-muted">
-                            {f.label || f.name}
+                            {f.label ? t(f.label) : f.name}
                         </label>
                         {renderInput(
                             f,
                             values ? values[f.name] : "",
                             (value) => onChange(f.name, value),
-                            onApply
+                            onApply,
+                            t
                         )}
                     </div>
                 ))}
                 <div className="col-auto">
                     <button type="button" className="btn btn-primary btn-sm" onClick={onApply}>
-                        Apply
+                        {t("Apply")}
                     </button>
                     {hasValues && (
                         <button
@@ -123,7 +127,7 @@ const FieldsetFilters: React.FC<ModuleFiltersProps> = ({
                             className="btn btn-link btn-sm"
                             onClick={onReset}
                         >
-                            Reset
+                            {t("Reset")}
                         </button>
                     )}
                 </div>

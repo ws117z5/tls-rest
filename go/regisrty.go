@@ -13,6 +13,7 @@ import (
 	deletion "tls-rest/go/engine/modules/deletion"
 	images "tls-rest/go/engine/modules/images"
 	modulerights "tls-rest/go/engine/modules/modulerights"
+	translations "tls-rest/go/engine/modules/translations"
 	usergroups "tls-rest/go/engine/modules/usergroups"
 	users "tls-rest/go/engine/modules/users"
 
@@ -53,6 +54,7 @@ func InitAll() {
 	comments.Init()
 	contact.Init()
 	deletion.Init()
+	translations.Init()
 
 	// --- Pages ---
 	login.Init()

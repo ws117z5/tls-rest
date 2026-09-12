@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from "react";
 import Notify, { Notification } from "@engine/containers/Notify";
+import useT from "@engine/useT";
 
 // Toasts subscribes to the Notify bus and renders a stack of dismissible
 // notifications in the top-right corner. Mount once at the app root.
 const Toasts: React.FC = () => {
+  const t = useT();
   const [items, setItems] = useState<Notification[]>([]);
 
   useEffect(() => {
@@ -27,9 +29,9 @@ const Toasts: React.FC = () => {
         <div key={n.id} style={{ ...itemStyle, ...kindStyle(n.kind) }} role="alert">
           <div style={{ flex: 1 }}>
             <div>{n.message}</div>
-            {n.logId && <div style={logStyle}>log id: {n.logId}</div>}
+            {n.logId && <div style={logStyle}>{t("log id:")} {n.logId}</div>}
           </div>
-          <button onClick={() => dismiss(n.id)} style={closeStyle} aria-label="Dismiss">
+          <button onClick={() => dismiss(n.id)} style={closeStyle} aria-label={t("Dismiss")}>
             ×
           </button>
         </div>

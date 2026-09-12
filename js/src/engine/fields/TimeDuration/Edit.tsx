@@ -1,5 +1,6 @@
 import React, { Component, ChangeEvent } from "react";
 import { Unit, unitsFromFormat, toParts, fromParts } from "./util";
+import { t, subscribe } from "@engine/i18n";
 
 interface Props {
   id?: string;
@@ -14,6 +15,14 @@ const LABEL: Record<Unit, string> = { h: "Hours", m: "Min", s: "Sec" };
 // Duration picker driven by a format ("HH:mm:ss" | "mm:ss" | "ss"). Renders one
 // number input per unit; value is the total in seconds.
 class TimeDurationEdit extends Component<Props> {
+  private unsubscribeI18n?: () => void;
+  componentDidMount() {
+    this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+  }
+  componentWillUnmount() {
+    this.unsubscribeI18n?.();
+  }
+
   render() {
     const { value, format, disabled, onChange } = this.props;
     const units = unitsFromFormat(format);
@@ -31,7 +40,7 @@ class TimeDurationEdit extends Component<Props> {
         {units.map((u, i) => (
           <React.Fragment key={u}>
             <div>
-              <label className="form-label mb-0 small text-muted">{LABEL[u]}</label>
+              <label className="form-label mb-0 small text-muted">{t(LABEL[u])}</label>
               <input
                 type="number"
                 min={0}

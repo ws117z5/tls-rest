@@ -7,6 +7,7 @@ import {
     MODES 
 } from '@engine/fields';
 import axios from 'axios';
+import { t, subscribe } from '@engine/i18n';
 
 interface PostsPageState {
     posts: any[];
@@ -41,8 +42,13 @@ class PostsPage extends PageComponent<{}, PostsPageState> {
         };
     }
 
+    private unsubscribeI18n?: () => void;
     async componentDidMount() {
         this.loadPosts();
+        this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+    }
+    componentWillUnmount() {
+        this.unsubscribeI18n?.();
     }
 
     loadPosts = async (page: number = 1) => {
@@ -100,7 +106,7 @@ class PostsPage extends PageComponent<{}, PostsPageState> {
             this.loadPosts(this.state.pagination.page);
         } catch (error) {
             console.error('Failed to delete post:', error);
-            alert('Failed to delete post');
+            alert(t('Failed to delete post'));
         }
     };
 
@@ -116,7 +122,7 @@ class PostsPage extends PageComponent<{}, PostsPageState> {
             this.loadPosts(this.state.pagination.page);
         } catch (error) {
             console.error('Failed to save post:', error);
-            alert('Failed to save post');
+            alert(t('Failed to save post'));
         }
     };
 
@@ -137,12 +143,12 @@ class PostsPage extends PageComponent<{}, PostsPageState> {
         return (
             <div>
                 <div className="d-flex justify-content-between align-items-center mb-4">
-                    <h1>Posts</h1>
-                    <button 
+                    <h1>{t('Posts')}</h1>
+                    <button
                         className="btn btn-primary"
                         onClick={this.handleCreatePost}
                     >
-                        Create New Post
+                        {t('Create New Post')}
                     </button>
                 </div>
 
@@ -170,17 +176,17 @@ class PostsPage extends PageComponent<{}, PostsPageState> {
         const isView = currentView === 'view';
         
         const mode = isView ? MODES.VIEW : MODES.EDIT;
-        const title = isEdit ? 'Edit Post' : isView ? 'View Post' : 'Create New Post';
+        const title = isEdit ? t('Edit Post') : isView ? t('View Post') : t('Create New Post');
 
         return (
             <div>
                 <div className="d-flex justify-content-between align-items-center mb-4">
                     <h1>{title}</h1>
-                    <button 
+                    <button
                         className="btn btn-secondary"
                         onClick={this.handleBackToList}
                     >
-                        Back to List
+                        {t('Back to List')}
                     </button>
                 </div>
 
@@ -206,7 +212,7 @@ class PostsPage extends PageComponent<{}, PostsPageState> {
             return (
                 <div className="d-flex justify-content-center align-items-center" style={{ height: '400px' }}>
                     <div className="spinner-border" role="status">
-                        <span className="sr-only">Loading...</span>
+                        <span className="sr-only">{t('Loading...')}</span>
                     </div>
                 </div>
             );

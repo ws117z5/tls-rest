@@ -11,6 +11,7 @@ import { FormLayoutBridge, WithLayout } from "@engine/fields/FormLayout";
 import { Fieldset } from "@engine/pages";
 import Auth from "@engine/controllers/auth";
 import Config from "@engine/Config";
+import useT from "@engine/useT";
 
 // The generic page for any backend module. Given a module name, its API
 // endpoint, and a mode, it loads the right data and renders the fieldset —
@@ -53,6 +54,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
     navigate,
     params,
 }) => {
+    const t = useT();
     const base = "/" + endpoint;
     const id = params?.id;
     // The column this module's records are addressed by ("id" unless the module
@@ -98,7 +100,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
     );
 
     const can = (m: string) => modes.indexOf(m) !== -1;
-    const heading = title || module.charAt(0).toUpperCase() + module.slice(1);
+    const heading = t(title || module.charAt(0).toUpperCase() + module.slice(1));
 
     const load = useCallback(async () => {
         setLoading(true);
@@ -134,7 +136,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
                 setRecord({}); // create
             }
         } catch (e: any) {
-            setError(e?.message || "Failed to load");
+            setError(e?.message || t("Failed to load"));
         } finally {
             setLoading(false);
         }
@@ -247,10 +249,10 @@ const ModulePage: React.FC<ModulePageProps> = ({
         Custom && isAdmin ? (
             <button
                 className="btn btn-outline-secondary"
-                title="Switch between this module's custom layout and the system default"
+                title={t("Switch between this module's custom layout and the system default")}
                 onClick={toggleLayout}
             >
-                {layoutPref === "system" ? "system" : "default"}
+                {layoutPref === "system" ? t("system") : t("default")}
             </button>
         ) : null;
 
@@ -261,29 +263,29 @@ const ModulePage: React.FC<ModulePageProps> = ({
     // options via WithLayout so it can inspect data/options.
     const isEditable = mode === "edit" || mode === "create";
     return (
-        <div className="container-fluid pt-4">
-            <div className="d-flex justify-content-between align-items-center mb-3">
+        <div className="container-fluid module-page pt-4">
+            <div className="module-page-header d-flex justify-content-between align-items-center mb-3">
                 <h1 className="h4 mb-0">
-                    {heading} — {mode}
+                    {heading} — {t(mode)}
                 </h1>
                 <div className="d-flex gap-2">
                     {isEditable && (
                         <button className="btn btn-primary" onClick={() => submit(record)}>
-                            Save
+                            {t("Save")}
                         </button>
                     )}
                     {isView && can("edit") && Auth.isAdmin() && (
                         <button className="btn btn-primary" onClick={() => go(`${base}/${id}/edit`)}>
-                            Edit
+                            {t("Edit")}
                         </button>
                     )}
                     <LayoutToggle />
                     <button className="btn btn-secondary" onClick={() => go(base)}>
-                        Back
+                        {t("Back")}
                     </button>
                 </div>
             </div>
-            <div className="card">
+            <div className="card module-page-card">
                 <div className="card-body">
                 <FieldsetProvider module={module} mode={fmMode}>
                     <FormLayoutBridge
@@ -318,7 +320,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
         return (
             <div className="d-flex justify-content-center p-4">
                 <div className="spinner-border" role="status">
-                    <span className="sr-only">Loading...</span>
+                    <span className="sr-only">{t("Loading...")}</span>
                 </div>
             </div>
         );
@@ -336,80 +338,84 @@ const ModulePage: React.FC<ModulePageProps> = ({
         // but keeps the Create button, filter bar and layout toggle around it.
         const CustomList = useCustom ? (Custom as React.ComponentType<any>) : null;
         return (
-            <div className="container-fluid pt-4">
-                <div className="d-flex justify-content-between align-items-center mb-3">
+            <div className="container-fluid module-page pt-4">
+                <div className="module-page-header d-flex justify-content-between align-items-center mb-3">
                     <h1 className="h4 mb-0">{heading}</h1>
                     <div className="d-flex gap-2">
                         {can("create") && (
                             <button className="btn btn-primary" onClick={() => go(`${base}/create`)}>
-                                Create
+                                {t("Create")}
                             </button>
                         )}
                         <LayoutToggle />
                     </div>
                 </div>
-                <FiltersComp
-                    module={module}
-                    meta={filtersMeta}
-                    values={draftFilters}
-                    onChange={onFilterChange}
-                    onApply={applyFilters}
-                    onReset={resetFilters}
-                />
-                {CustomList ? (
-                    <CustomList
-                        module={module}
-                        mode="list"
-                        data={data}
-                        record={null}
-                        modes={modes}
-                        navigate={go}
-                        reload={load}
-                        submit={submit}
-                        remove={remove}
-                    />
-                ) : (
-                    <FieldsetProvider module={module} mode={MODES.LIST}>
-                        <FieldsetList
-                            data={data}
-                            sortable
-                            showActions
-                            onView={can("view") ? (row: any) => go(`${base}/${row[keyField]}`) : undefined}
-                            onRowDoubleClick={can("view") ? (row: any) => go(`${base}/${row[keyField]}`) : undefined}
-                            onEdit={can("edit") ? (row: any) => go(`${base}/${row[keyField]}/edit`) : undefined}
-                            onDelete={can("delete") ? remove : undefined}
-                            onBulkDelete={can("delete") ? bulkRemove : undefined}
-                            pagination={
-                                pageInfo
-                                    ? { ...pageInfo, onPageChange: (p: number) => setPage(p) }
-                                    : undefined
-                            }
+                <div className="card module-page-card">
+                    <div className="card-body">
+                        <FiltersComp
+                            module={module}
+                            meta={filtersMeta}
+                            values={draftFilters}
+                            onChange={onFilterChange}
+                            onApply={applyFilters}
+                            onReset={resetFilters}
                         />
-                    </FieldsetProvider>
-                )}
+                        {CustomList ? (
+                            <CustomList
+                                module={module}
+                                mode="list"
+                                data={data}
+                                record={null}
+                                modes={modes}
+                                navigate={go}
+                                reload={load}
+                                submit={submit}
+                                remove={remove}
+                            />
+                        ) : (
+                            <FieldsetProvider module={module} mode={MODES.LIST}>
+                                <FieldsetList
+                                    data={data}
+                                    sortable
+                                    showActions
+                                    onView={can("view") ? (row: any) => go(`${base}/${row[keyField]}`) : undefined}
+                                    onRowDoubleClick={can("view") ? (row: any) => go(`${base}/${row[keyField]}`) : undefined}
+                                    onEdit={can("edit") ? (row: any) => go(`${base}/${row[keyField]}/edit`) : undefined}
+                                    onDelete={can("delete") ? remove : undefined}
+                                    onBulkDelete={can("delete") ? bulkRemove : undefined}
+                                    pagination={
+                                        pageInfo
+                                            ? { ...pageInfo, onPageChange: (p: number) => setPage(p) }
+                                            : undefined
+                                    }
+                                />
+                            </FieldsetProvider>
+                        )}
+                    </div>
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="container-fluid pt-4">
-            <div className="d-flex justify-content-between align-items-center mb-3">
+        <div className="container-fluid module-page pt-4">
+            <div className="module-page-header d-flex justify-content-between align-items-center mb-3">
                 <h1 className="h4 mb-0">
-                    {heading} — {mode}
+                    {heading} — {t(mode)}
                 </h1>
                 <div className="d-flex gap-2">
                     {isView && can("edit") && Auth.isAdmin() && (
                         <button className="btn btn-primary" onClick={() => go(`${base}/${id}/edit`)}>
-                            Edit
+                            {t("Edit")}
                         </button>
                     )}
                     <LayoutToggle />
                     <button className="btn btn-secondary" onClick={() => go(base)}>
-                        Back
+                        {t("Back")}
                     </button>
                 </div>
             </div>
-            <div className="card">
+            <div className="card module-page-card">
                 <div className="card-body">
                     <FieldsetProvider module={module} mode={fmMode}>
                         <FieldsetForm

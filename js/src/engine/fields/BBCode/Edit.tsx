@@ -1,5 +1,6 @@
 import React, { Component, ChangeEvent } from "react";
 import { BB_TOOLS, wrapSelection, renderBBCode } from "@engine/fields/BBCode/controllers/bbcode";
+import { t as translate, subscribe } from "@engine/i18n";
 
 // A pure BBCode text editor: toolbar tags + preview. Image handling is NOT done
 // here — images belong to a dedicated Image field on the module (see the Image
@@ -30,6 +31,14 @@ class BBCodeEdit extends Component<BBCodeEditProps, BBCodeEditState> {
             value: props.value || "",
             showPreview: false,
         };
+    }
+
+    private unsubscribeI18n?: () => void;
+    componentDidMount() {
+        this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+    }
+    componentWillUnmount() {
+        this.unsubscribeI18n?.();
     }
 
     componentDidUpdate(prev: BBCodeEditProps) {
@@ -77,7 +86,7 @@ class BBCodeEdit extends Component<BBCodeEditProps, BBCodeEditState> {
                             key={t.label}
                             type="button"
                             className="btn btn-sm btn-outline-secondary"
-                            title={t.title}
+                            title={translate(t.title)}
                             disabled={disabled}
                             onClick={() => this.applyTag(t.open, t.close)}
                         >
@@ -89,7 +98,7 @@ class BBCodeEdit extends Component<BBCodeEditProps, BBCodeEditState> {
                         className="btn btn-sm btn-outline-secondary"
                         onClick={() => this.setState((s) => ({ showPreview: !s.showPreview }))}
                     >
-                        {showPreview ? "Edit" : "Preview"}
+                        {showPreview ? translate("Edit") : translate("Preview")}
                     </button>
                 </div>
 
@@ -107,7 +116,7 @@ class BBCodeEdit extends Component<BBCodeEditProps, BBCodeEditState> {
                         value={value}
                         disabled={disabled}
                         onChange={this.handleChange}
-                        placeholder="Write using BBCode: [b]bold[/b], [i]italic[/i], ..."
+                        placeholder={translate("Write using BBCode: [b]bold[/b], [i]italic[/i], ...")}
                     />
                 )}
             </div>

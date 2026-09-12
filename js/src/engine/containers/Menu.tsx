@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { NavLink as RouterNavLink } from "react-router";
+import { Link, NavLink as RouterNavLink } from "react-router";
 import {
   NavLink,
   Navbar,
@@ -12,12 +12,11 @@ import {
   DropdownToggle,
   UncontrolledDropdown,
 } from "reactstrap";
-import "@css/menu.css";
 import Config, { MenuItem } from "@engine/Config";
 import Auth from "@controllers/auth";
+import { t, getLocale, setLocale, locales, subscribe } from "@engine/i18n";
 
 const iconStyle: React.CSSProperties = { height: "1.2em", verticalAlign: "middle", marginRight: 4 };
-const avatarStyle: React.CSSProperties = { height: 32, width: 32, borderRadius: "50%", objectFit: "cover" };
 
 // A module/page's icon is one of:
 //   a bare name ("home", "user-rights", …) — a cell of the /img/icons_bw.png
@@ -30,13 +29,13 @@ const isImageIcon = (icon: string) => /^(?:https?:)?\//.test(icon);
 
 // Render an item's label: "icon name", or just name, or just icon.
 function label(item: MenuItem): React.ReactNode {
-  if (!item.icon) return item.title;
+  if (!item.icon) return t(item.title);
   const icon = isImageIcon(item.icon) ? (
     <img src={item.icon} alt="" className="menu-icon" style={iconStyle} />
   ) : (
     <span className={`menu-icon-sprite icon-${item.icon}`} aria-hidden="true" />
   );
-  if (item.title) return (<>{icon}{item.title}</>);
+  if (item.title) return (<>{icon}{t(item.title)}</>);
   return icon;
 }
 
@@ -48,6 +47,16 @@ interface MenuState {
 // Config.getSubmenus() the dropdown groups, both already privilege-filtered.
 class Menu extends Component<{}, MenuState> {
   state: MenuState = { isOpen: false };
+  private unsubscribeI18n?: () => void;
+
+  // Class component, so useT()'s hook isn't available: subscribe manually and
+  // force a re-render whenever the locale or a translation resolves.
+  componentDidMount() {
+    this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+  }
+  componentWillUnmount() {
+    this.unsubscribeI18n?.();
+  }
 
   toggle = () => this.setState((s) => ({ isOpen: !s.isOpen }));
   // Collapse the mobile menu after navigating, so picking a link doesn't leave
@@ -59,6 +68,10 @@ class Menu extends Component<{}, MenuState> {
     const submenus = Config.getSubmenus();
     const authed = Auth.isAuthenticated();
     const avatar = Auth.getAvatar();
+    // Profile gets its own slot on the right (showing the user's name instead
+    // of "Profile"), so it's pulled out of the regular left-aligned items.
+    const profileItem = head.find((i) => i.key === "profile");
+    const leftHead = head.filter((i) => i.key !== "profile");
 
     const renderHeadItem = (item: MenuItem, idx: number): React.ReactNode => {
       // The login item becomes a Logout button for authenticated users.
@@ -74,7 +87,7 @@ class Menu extends Component<{}, MenuState> {
               }}
             >
               <span className="menu-icon-sprite icon-logout" aria-hidden="true" />
-              Logout
+              {t("Logout")}
             </NavLink>
           </NavItem>
         );
@@ -91,20 +104,27 @@ class Menu extends Component<{}, MenuState> {
     return (
       <div className="main-menu" style={menuDiv}>
         <Navbar color="dark" dark expand="md">
+          {/* Brand mark — purely decorative (a plain Link, not NavLink, so it
+              never picks up "active" nav styling); the "Home" nav item below
+              still covers real/keyboard navigation. */}
+          <Link to="/" className="menu-brand" onClick={this.close}>
+            <img src="/img/favico_256.png" alt="" className="menu-brand-logo" />
+          </Link>
+
           <NavbarToggler onClick={this.toggle} aria-label="Toggle navigation" />
           <Collapse isOpen={this.state.isOpen} navbar>
-            <Nav className="ml-auto" navbar>
+            <Nav navbar>
                 {/* Home link — the Home page's href is "" (the root route "/"), so it
                   isn't in the data-driven head list; add it explicitly here. `end`
                   keeps it active only on exactly "/", not on every route. */}
               <NavItem>
                 <NavLink tag={RouterNavLink} to="/" end onClick={this.close}>
                   <span className="menu-icon-sprite icon-home" aria-hidden="true" />
-                  Home
+                  {t("Home")}
                 </NavLink>
               </NavItem>
 
-              {head.map(renderHeadItem)}
+              {leftHead.map(renderHeadItem)}
 
               {Object.keys(submenus).map((title) => {
                 const items = submenus[title];
@@ -112,7 +132,7 @@ class Menu extends Component<{}, MenuState> {
                 return (
                   <UncontrolledDropdown key={"s" + title} setActiveFromChild>
                     <DropdownToggle tag="a" className="nav-link" caret>
-                      {title}
+                      {t(title)}
                     </DropdownToggle>
                     <DropdownMenu>
                       {items.map((item, key) => (
@@ -124,10 +144,40 @@ class Menu extends Component<{}, MenuState> {
                   </UncontrolledDropdown>
                 );
               })}
+            </Nav>
 
-              {authed && avatar && (
+            {/* Right-aligned account cluster: language, then avatar + name/role. */}
+            <Nav className="ml-auto align-items-md-center" navbar>
+              <NavItem>
+                <select
+                  className="form-select form-select-sm menu-locale"
+                  value={getLocale()}
+                  onChange={(e) => setLocale(e.target.value)}
+                  aria-label={t("Language")}
+                >
+                  {locales.map((l) => (
+                    <option key={l} value={l}>{l.toUpperCase()}</option>
+                  ))}
+                </select>
+              </NavItem>
+
+              {authed && profileItem && (
                 <NavItem>
-                  <img src={avatar} alt="avatar" className="menu-avatar" style={avatarStyle} />
+                  <NavLink tag={RouterNavLink} to={profileItem.path} onClick={this.close} className="menu-account">
+                    {avatar ? (
+                      <img src={avatar} alt="" className="menu-avatar" />
+                    ) : (
+                      <span className="menu-avatar menu-avatar-fallback">
+                        <span className="menu-icon-sprite icon-profile" aria-hidden="true" />
+                      </span>
+                    )}
+                    <span className="menu-account-text">
+                      <span className="menu-account-name">{Auth.getUserName() || t("Profile")}</span>
+                      <span className="menu-account-role">
+                        {Auth.isAdmin() ? t("Administrator") : t("Member")}
+                      </span>
+                    </span>
+                  </NavLink>
                 </NavItem>
               )}
             </Nav>

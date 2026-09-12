@@ -1,5 +1,6 @@
 import React from "react";
 import PageComponent from "@engine/containers/PageComponent";
+import { t, subscribe } from "@engine/i18n";
 
 // The index page presents Vladimir Koroteev's CV inside a monitor that upgrades
 // from a green CRT to a flat LCD as you scroll — the résumé scrolls through the
@@ -128,11 +129,13 @@ class Home extends PageComponent<IndexPageProps, IndexPageState> {
   private glitch = 0;
   private glitchRaf = 0;
   private lastP = 0;
+  private unsubscribeI18n?: () => void;
 
   async componentDidMount() {
     await super.componentDidMount();
     window.addEventListener("scroll", this.onScroll, { passive: true });
     window.addEventListener("resize", this.onScroll);
+    this.unsubscribeI18n = subscribe(() => this.forceUpdate());
     this.update();
   }
 
@@ -141,6 +144,7 @@ class Home extends PageComponent<IndexPageProps, IndexPageState> {
     window.removeEventListener("resize", this.onScroll);
     if (this.raf) cancelAnimationFrame(this.raf);
     if (this.glitchRaf) cancelAnimationFrame(this.glitchRaf);
+    this.unsubscribeI18n?.();
   }
 
   private onScroll = () => {
@@ -285,7 +289,7 @@ class Home extends PageComponent<IndexPageProps, IndexPageState> {
 
                   <section className="cv-section">
                     <h2>Languages</h2>
-                    <p>English — fluent, academic · Russian — native</p>
+                    <p>English — fluent, academic · Russian — native"</p>
                   </section>
                 </div>
 
@@ -295,8 +299,6 @@ class Home extends PageComponent<IndexPageProps, IndexPageState> {
             </div>
           </div>
         </div>
-
-        <div className="cv-hint">scroll to upgrade ↓</div>
       </div>
     );
   }

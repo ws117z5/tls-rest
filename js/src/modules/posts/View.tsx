@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Field } from "@engine/fields/FormLayout";
 import CommentsThread from "@engine/modules/comments/CommentsThread";
 import Auth from "@controllers/auth";
+import useT from "@engine/useT";
 
 // Params injected by ModulePage/WithLayout into custom containers.
 interface CustomContainerProps {
@@ -26,6 +27,7 @@ const META_FIELDS = ["id", "uuid", "created_by", "access", "created", "updated"]
 // Custom VIEW layout for the "posts" module. The parent chrome (ModulePage) owns
 // the module name / Back / Edit; this only lays out the fields.
 const PostsView: React.FC<CustomContainerProps> = (props) => {
+  const t = useT();
   const [metaOpen, setMetaOpen] = useState(false);
 
   const title = props.getValue("title");
@@ -45,7 +47,7 @@ const PostsView: React.FC<CustomContainerProps> = (props) => {
               onClick={() => setMetaOpen((o) => !o)}
               className="d-flex align-items-center bg-light px-3 py-2 text-muted"
               style={{ cursor: "pointer", userSelect: "none" }}
-              title="Item details & metadata"
+              title={t("Item details & metadata")}
             >
               <span
                 aria-hidden
@@ -74,10 +76,10 @@ const PostsView: React.FC<CustomContainerProps> = (props) => {
                             className="fw-semibold text-nowrap"
                             style={{ width: "30%", whiteSpace: "nowrap" }}
                           >
-                            {f.label || name}
+                            {f.label ? t(f.label) : name}
                             {f.description && (
                               <div className="text-muted fw-normal">
-                                {f.description}
+                                {t(f.description)}
                               </div>
                             )}
                           </th>
@@ -107,7 +109,7 @@ const PostsView: React.FC<CustomContainerProps> = (props) => {
                 letterSpacing: "-0.015em",
               }}
             >
-              {title || <span className="text-muted">Untitled</span>}
+              {title || <span className="text-muted">{t("Untitled")}</span>}
             </h1>
             <div
               style={{
@@ -116,9 +118,9 @@ const PostsView: React.FC<CustomContainerProps> = (props) => {
                 color: "#6c757d",
               }}
             >
-              by{" "}
+              {t("by")}{" "}
               <span style={{ color: "#343a40", fontWeight: 600 }}>
-                {author || "Unknown"}
+                {author || t("Unknown")}
               </span>
             </div>
             <div

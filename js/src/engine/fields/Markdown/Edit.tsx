@@ -2,6 +2,7 @@ import React, { Component, ChangeEvent } from "react";
 import { MD_TOOLS, wrapSelection } from "@engine/fields/Markdown/controllers/markdown";
 import { processImage } from "@engine/modules/images/controllers/images";
 import MarkdownRender from "./controllers/MarkdownRender";
+import { t as translate, subscribe } from "@engine/i18n";
 
 // A markdown text editor: toolbar + textarea with a live-preview toggle. The
 // image button uploads a file and inserts image markdown (![name](guid.ext)) at
@@ -35,6 +36,14 @@ class MarkdownEdit extends Component<MarkdownEditProps, MarkdownEditState> {
             showPreview: false,
             uploading: false,
         };
+    }
+
+    private unsubscribeI18n?: () => void;
+    componentDidMount() {
+        this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+    }
+    componentWillUnmount() {
+        this.unsubscribeI18n?.();
     }
 
     componentDidUpdate(prev: MarkdownEditProps) {
@@ -125,7 +134,7 @@ class MarkdownEdit extends Component<MarkdownEditProps, MarkdownEditState> {
                             key={t.label}
                             type="button"
                             className="btn btn-sm btn-outline-secondary"
-                            title={t.title}
+                            title={translate(t.title)}
                             disabled={disabled}
                             onClick={() => this.applyTag(t.open, t.close)}
                         >
@@ -135,7 +144,7 @@ class MarkdownEdit extends Component<MarkdownEditProps, MarkdownEditState> {
                     <button
                         type="button"
                         className="btn btn-sm btn-outline-secondary"
-                        title="Insert image at cursor"
+                        title={translate("Insert image at cursor")}
                         disabled={disabled || uploading}
                         onClick={this.pickImage}
                     >
@@ -146,7 +155,7 @@ class MarkdownEdit extends Component<MarkdownEditProps, MarkdownEditState> {
                         className="btn btn-sm btn-outline-secondary"
                         onClick={() => this.setState((s) => ({ showPreview: !s.showPreview }))}
                     >
-                        {showPreview ? "Edit" : "Preview"}
+                        {showPreview ? translate("Edit") : translate("Preview")}
                     </button>
                     <input
                         ref={this.fileInput}
@@ -172,7 +181,7 @@ class MarkdownEdit extends Component<MarkdownEditProps, MarkdownEditState> {
                         value={value}
                         disabled={disabled}
                         onChange={this.handleChange}
-                        placeholder="Write in Markdown: **bold**, _italic_, [link](url), `code`, - lists…"
+                        placeholder={translate("Write in Markdown: **bold**, _italic_, [link](url), `code`, - lists…")}
                     />
                 )}
             </div>

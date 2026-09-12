@@ -1,4 +1,5 @@
 import React, { Component, ChangeEvent } from "react";
+import { t, subscribe } from "@engine/i18n";
 
 interface JsonEditProps {
     id?: string;
@@ -42,6 +43,14 @@ class JsonEdit extends Component<JsonEditProps, JsonEditState> {
         };
     }
 
+    private unsubscribeI18n?: () => void;
+    componentDidMount() {
+        this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+    }
+    componentWillUnmount() {
+        this.unsubscribeI18n?.();
+    }
+
     componentDidUpdate(prevProps: JsonEditProps) {
         if (prevProps.value !== this.props.value) {
             const value = this.props.value || {};
@@ -73,7 +82,7 @@ class JsonEdit extends Component<JsonEditProps, JsonEditState> {
         } catch (error) {
             this.setState({ 
                 isValid: false, 
-                error: error instanceof Error ? error.message : "Invalid JSON"
+                error: error instanceof Error ? error.message : t("Invalid JSON")
             });
         }
     };
@@ -104,7 +113,7 @@ class JsonEdit extends Component<JsonEditProps, JsonEditState> {
                     value={jsonString}
                     disabled={disabled}
                     required={required}
-                    placeholder={placeholder || "Enter JSON..."}
+                    placeholder={placeholder || t("Enter JSON...")}
                     style={{ height: `${height}px`, fontFamily: 'monospace' }}
                     onChange={this.handleChange}
                 />
@@ -115,7 +124,7 @@ class JsonEdit extends Component<JsonEditProps, JsonEditState> {
                 )}
                 {isValid && jsonString && (
                     <small className="form-text text-muted">
-                        Valid JSON ✓
+                        {t("Valid JSON")} ✓
                     </small>
                 )}
             </div>

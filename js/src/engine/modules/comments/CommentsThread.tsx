@@ -1,6 +1,7 @@
 import React, { Component } from "react";
 import axios from "axios";
 import MarkdownRender from "@engine/fields/Markdown/controllers/MarkdownRender";
+import { t, subscribe } from "@engine/i18n";
 
 // A threaded discussion for one record. Talks to the polymorphic comments API:
 //   GET  /api/comments/{module}/{row}  -> { comments: tree }
@@ -65,7 +66,7 @@ class Composer extends Component<ComposerProps, ComposerState> {
   };
 
   render() {
-    const { submitting, placeholder, submitLabel = "Comment" } = this.props;
+    const { submitting, placeholder, submitLabel = t("Comment") } = this.props;
     const { body, preview } = this.state;
     const empty = !body.trim();
 
@@ -77,7 +78,7 @@ class Composer extends Component<ComposerProps, ComposerState> {
             className={`btn btn-outline-secondary ${preview ? "" : "active"}`}
             onClick={() => this.setState({ preview: false })}
           >
-            Write
+            {t("Write")}
           </button>
           <button
             type="button"
@@ -85,7 +86,7 @@ class Composer extends Component<ComposerProps, ComposerState> {
             onClick={() => this.setState({ preview: true })}
             disabled={empty}
           >
-            Preview
+            {t("Preview")}
           </button>
         </div>
 
@@ -113,7 +114,7 @@ class Composer extends Component<ComposerProps, ComposerState> {
             disabled={empty || submitting}
             onClick={this.send}
           >
-            {submitting ? "Saving…" : submitLabel}
+            {submitting ? t("Saving…") : submitLabel}
           </button>
         </div>
       </div>
@@ -132,8 +133,15 @@ class CommentsThread extends Component<Props, State> {
     submitting: false,
   };
 
+  private unsubscribeI18n?: () => void;
+
   componentDidMount() {
     if (this.hasTarget()) this.load();
+    this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+  }
+
+  componentWillUnmount() {
+    this.unsubscribeI18n?.();
   }
 
   componentDidUpdate(prev: Props) {
@@ -159,7 +167,7 @@ class CommentsThread extends Component<Props, State> {
         loading: false,
       });
     } catch {
-      this.setState({ error: "Could not load comments.", loading: false });
+      this.setState({ error: t("Could not load comments."), loading: false });
     }
   };
 
@@ -179,7 +187,7 @@ class CommentsThread extends Component<Props, State> {
       await this.load();
       return true;
     } catch {
-      this.setState({ submitting: false, error: "Could not post comment." });
+      this.setState({ submitting: false, error: t("Could not post comment.") });
       return false;
     }
   };
@@ -189,8 +197,8 @@ class CommentsThread extends Component<Props, State> {
     return (
       <li key={n.id} className="comment-node" style={{ marginTop: "1rem" }}>
         <div className="mb-1">
-          <span className="fw-semibold">{n.author || "Anonymous"}</span>
-          <span className="text-muted small ms-2">{whenText(n.created)}</span>
+          <span className="fw-semibold">{n.author || t("Anonymous")}</span>
+          <span className="text-muted small ml-2">{whenText(n.created)}</span>
         </div>
         <div className="comment-body">
           <MarkdownRender value={n.body} />
@@ -202,15 +210,15 @@ class CommentsThread extends Component<Props, State> {
             this.setState({ activeReply: replying ? null : n.id })
           }
         >
-          {replying ? "Cancel" : "Reply"}
+          {replying ? t("Cancel") : t("Reply")}
         </button>
 
         {replying && (
           <div className="mt-2">
             <Composer
               submitting={this.state.submitting}
-              placeholder={`Reply to ${n.author || "comment"}…`}
-              submitLabel="Reply"
+              placeholder={`${t("Reply to")} ${n.author || t("comment")}…`}
+              submitLabel={t("Reply")}
               onSubmit={(body) => this.submit("comments", n.id, body)}
             />
           </div>
@@ -240,24 +248,24 @@ class CommentsThread extends Component<Props, State> {
     return (
       <section className="comments-thread">
         <h5 className="h6 text-uppercase text-muted mb-3">
-          {count > 0 ? `Comments (${count})` : "Comments"}
+          {count > 0 ? `${t("Comments")} (${count})` : t("Comments")}
         </h5>
 
         {error && <div className="alert alert-warning py-2">{error}</div>}
 
         <Composer
           submitting={this.state.submitting}
-          placeholder="Add a comment… (Markdown supported)"
-          submitLabel="Post comment"
+          placeholder={t("Add a comment… (Markdown supported)")}
+          submitLabel={t("Post comment")}
           onSubmit={(body) =>
             this.submit(this.props.module, this.props.row as string | number, body)
           }
         />
 
         {loading && tree.length === 0 ? (
-          <p className="text-muted small mt-3">Loading…</p>
+          <p className="text-muted small mt-3">{t("Loading…")}</p>
         ) : tree.length === 0 ? (
-          <p className="text-muted small mt-3">No comments yet. Be the first.</p>
+          <p className="text-muted small mt-3">{t("No comments yet. Be the first.")}</p>
         ) : (
           <ul className="list-unstyled mt-3">
             {tree.map((n) => this.renderNode(n, 0))}

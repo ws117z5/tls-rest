@@ -7,6 +7,7 @@
 package mesh
 
 import (
+	"sort"
 	"sync"
 
 	"tls-rest/go/engine/controllers/optimizer"
@@ -29,10 +30,33 @@ type Report struct {
 // PlanEnvelope is what clients pull from GET /papers/{room}/plan: the peer order
 // (so tree indices map back to peer ids) and the optimizer plan.
 type PlanEnvelope struct {
-	Order             []string        `json:"order"`
-	Plan              *optimizer.Plan `json:"plan"`
-	StreamBitrateKbps int             `json:"streamBitrateKbps"`
+	Order []string        `json:"order"`
+	Plan  *optimizer.Plan `json:"plan"`
+	// VideoTiers is each peer's own resolution/bitrate to publish at, keyed by peer id (see BuildPlanFor).
+	VideoTiers map[string]VideoTier `json:"videoTiers"`
 }
+
+// VideoTier is one selectable publish quality. Width/Height are advisory
+// capture dimensions (applied via the browser's own aspect-preserving
+// downscale); BitrateKbps is what the balancer sizes per-stream demand from.
+type VideoTier struct {
+	Width       int `json:"width"`
+	Height      int `json:"height"`
+	BitrateKbps int `json:"bitrateKbps"`
+}
+
+// videoTiers are tried highest quality first. maxSafeUtil is the utilization
+// ceiling (of uplink/downlink/relay capacity) a tier's plan must fit under,
+// with headroom below 1.0 so a room doesn't sit right at the edge of dropping
+// frames — trading resolution for a stable frame rate is the point.
+var videoTiers = []VideoTier{
+	{Width: 1280, Height: 720, BitrateKbps: 1200},
+	{Width: 854, Height: 480, BitrateKbps: 600},
+	{Width: 640, Height: 360, BitrateKbps: 300},
+	{Width: 320, Height: 240, BitrateKbps: 150},
+}
+
+const maxSafeUtil = 0.85
 
 // Coordinator holds the live reports for every room and rebuilds a plan on
 // demand. It is safe for concurrent use.
@@ -91,11 +115,10 @@ func (c *Coordinator) Remove(roomID, peerID string) {
 	}
 }
 
-// Plan builds a relay plan for the room from the reports gathered so far.
-// bitrateKbps is the per-stream media bitrate. It returns (nil, waiting) when
-// fewer than two peers are present or a present peer has not reported yet;
-// waiting lists the peers still missing.
-func (c *Coordinator) Plan(roomID string, bitrateKbps int) (*PlanEnvelope, []string) {
+// Plan builds a relay plan for the room from the reports gathered so far. It
+// returns (nil, waiting) when fewer than two peers are present or a present
+// peer has not reported yet; waiting lists the peers still missing.
+func (c *Coordinator) Plan(roomID string) (*PlanEnvelope, []string) {
 	c.mu.Lock()
 	rs, ok := c.rooms[roomID]
 	if !ok {
@@ -109,12 +132,24 @@ func (c *Coordinator) Plan(roomID string, bitrateKbps int) (*PlanEnvelope, []str
 	}
 	c.mu.Unlock()
 
-	return BuildPlanFor(order, reports, bitrateKbps)
+	return BuildPlanFor(order, reports)
 }
 
-// BuildPlanFor is the pure transformation reports -> optimizer input -> plan. It
-// is exported so it can be exercised directly in tests without a Coordinator.
-func BuildPlanFor(order []string, reports map[string]*Report, bitrateKbps int) (*PlanEnvelope, []string) {
+// BuildPlanFor is the pure transformation reports -> optimizer input -> plan.
+// It is exported so it can be exercised directly in tests without a
+// Coordinator.
+//
+// Each source's row of the demand matrix is sized from ITS OWN video tier, so
+// publishers are capped independently rather than the whole room sharing one
+// bitrate. Tiers are assigned greedily: every publisher starts at the lowest
+// (always safe) tier, then — highest measured uplink first, since they have
+// the most headroom to spend — each is bumped up one tier at a time as far as
+// the shared mesh can sustain without breaching maxSafeUtil. A publisher's own
+// uplink funds this, but relay/downlink capacity on links their stream shares
+// with others is pooled across every source in the room, not sizeable in
+// isolation — hence the shared rebuild-and-check per bump rather than each
+// publisher just picking a tier off its own numbers.
+func BuildPlanFor(order []string, reports map[string]*Report) (*PlanEnvelope, []string) {
 	n := len(order)
 	if n < 2 {
 		return nil, nil
@@ -151,17 +186,62 @@ func BuildPlanFor(order []string, reports map[string]*Report, bitrateKbps int) (
 		}
 	}
 
-	streamMbps := float64(bitrateKbps) / 1000.0
-	for i := 0; i < n; i++ {
-		for j := 0; j < n; j++ {
-			if i != j {
-				in.Demand[i][j] = streamMbps
+	fits := func(res *optimizer.Result) bool {
+		return res.MaxUpUtil <= maxSafeUtil && res.MaxDownUtil <= maxSafeUtil && res.MaxRelayUtil <= maxSafeUtil
+	}
+	lowest := len(videoTiers) - 1
+	tierIdx := make([]int, n) // per source: index into videoTiers, 0 = highest
+	for i := range tierIdx {
+		tierIdx[i] = lowest
+	}
+	setDemand := func() {
+		for i := 0; i < n; i++ {
+			mbps := float64(videoTiers[tierIdx[i]].BitrateKbps) / 1000.0
+			for j := 0; j < n; j++ {
+				if i != j {
+					in.Demand[i][j] = mbps
+				}
 			}
 		}
 	}
+	envelopeFor := func(plan *optimizer.Plan) *PlanEnvelope {
+		tiers := make(map[string]VideoTier, n)
+		for i, id := range order {
+			tiers[id] = videoTiers[tierIdx[i]]
+		}
+		return &PlanEnvelope{Order: order, Plan: plan, VideoTiers: tiers}
+	}
 
+	setDemand()
 	plan := optimizer.BuildPlan(in)
-	return &PlanEnvelope{Order: order, Plan: plan, StreamBitrateKbps: bitrateKbps}, nil
+	if !fits(plan.Result) {
+		// Even everyone at the lowest tier doesn't fit: ship it anyway, it's
+		// the best available, and reporting keeps refining as conditions change.
+		return envelopeFor(plan), nil
+	}
+
+	priority := make([]int, n)
+	for i := range priority {
+		priority[i] = i
+	}
+	sort.Slice(priority, func(a, b int) bool { return in.Up[priority[a]] > in.Up[priority[b]] })
+
+	for _, i := range priority {
+		for tierIdx[i] > 0 {
+			trial := tierIdx[i] - 1
+			tierIdx[i] = trial
+			setDemand()
+			candidate := optimizer.BuildPlan(in)
+			if !fits(candidate.Result) {
+				tierIdx[i] = trial + 1 // revert the bump that broke it
+				setDemand()
+				break
+			}
+			plan = candidate
+		}
+	}
+
+	return envelopeFor(plan), nil
 }
 
 func blankInput(n int) *optimizer.Input {

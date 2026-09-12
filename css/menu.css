@@ -12,6 +12,21 @@
   padding: 0.35rem 1rem;
 }
 
+/* Brand mark: the site favicon before the nav links — a plain image, no
+   badge/box and no active-state styling (it's a plain Link, not a nav item). */
+.main-menu .menu-brand {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 0.6rem;
+  flex-shrink: 0;
+}
+
+.main-menu .menu-brand-logo {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+}
+
 /* Bootstrap's default toggler icon is a dark SVG — invisible against this
    theme's near-black bezel, so it's redrawn in the same phosphor green. */
 .main-menu .navbar-toggler {
@@ -145,4 +160,58 @@
 .main-menu .dropdown-item:focus {
   background: rgba(111, 242, 160, 0.12);
   color: #eafff2;
+}
+
+.main-menu .menu-locale {
+  background: transparent;
+  color: #6ff2a0;
+  border-color: rgba(111, 242, 160, 0.35);
+  width: auto;
+  margin-right: 0.75rem;
+}
+
+/* Account cluster: avatar circle + stacked name/role, as one clickable unit. */
+.main-menu .menu-account {
+  display: flex !important;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.25rem 0.5rem !important;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.main-menu .menu-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(111, 242, 160, 0.4);
+  flex-shrink: 0;
+}
+
+.main-menu .menu-avatar-fallback {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(111, 242, 160, 0.12);
+}
+
+.main-menu .menu-account-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.main-menu .menu-account-name {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #eafff2;
+}
+
+.main-menu .menu-account-role {
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: rgba(111, 242, 160, 0.75);
 }

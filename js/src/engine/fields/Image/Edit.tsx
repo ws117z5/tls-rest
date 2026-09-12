@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, ChangeEvent } from "react";
 import { ImageRef, imageUrl, normalizeRefs, processImage } from "@engine/modules/images/controllers/images";
+import useT from "@engine/useT";
 
 // Editable image field: click upload, the backend processes and stores each
 // image, and the returned reference(s) are held in the field value and shown as
@@ -14,6 +15,7 @@ interface ImageEditProps {
 }
 
 const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disabled, multiple }) => {
+    const t = useT();
     const [refs, setRefs] = useState<ImageRef[]>(normalizeRefs(value));
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState<string | null>(null);
@@ -46,7 +48,7 @@ const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disa
             emit(next);
         } catch (err) {
             console.error("Image upload failed:", err);
-            setUploadError(err instanceof Error ? err.message : "Image upload failed");
+            setUploadError(err instanceof Error ? err.message : t("Image upload failed"));
         } finally {
             setUploading(false);
             if (inputRef.current) inputRef.current.value = "";
@@ -58,7 +60,7 @@ const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disa
     return (
         <div className="image-edit">
             <label className="btn btn-sm btn-outline-primary mb-2">
-                {uploading ? "Uploading..." : multiple ? "Upload images" : "Upload image"}
+                {uploading ? t("Uploading...") : multiple ? t("Upload images") : t("Upload image")}
                 <input
                     ref={inputRef}
                     type="file"
@@ -95,7 +97,7 @@ const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disa
                                         className="btn btn-sm btn-link text-danger p-0"
                                         onClick={() => remove(idx)}
                                     >
-                                        remove
+                                        {t("remove")}
                                     </button>
                                 </div>
                             )}

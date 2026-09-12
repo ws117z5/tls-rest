@@ -1,4 +1,5 @@
 import React from "react";
+import useT from "@engine/useT";
 
 interface ButtonViewProps {
     id?: string;
@@ -18,6 +19,7 @@ const defaultProps: Partial<ButtonViewProps> = {
 };
 
 const ButtonView: React.FC<ButtonViewProps> = (props) => {
+    const t = useT();
     const {
         id,
         className,
@@ -54,7 +56,7 @@ const ButtonView: React.FC<ButtonViewProps> = (props) => {
             }}
             {...rest}
         >
-            {children || "Button"}
+            {children || t("Button")}
         </button>
     );
 };

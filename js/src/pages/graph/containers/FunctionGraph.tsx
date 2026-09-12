@@ -1,45 +1,34 @@
 import React, { Component } from "react";
 import "./canvas.css";
 
-
-
-interface FunctionGraphProps {
-    fns: Array<{
-        fn: (x: number, additionalParams?: any) => number,
-        additionalParams?: any,
-        color?: string,
-        thick?: number,
-        latex?: string
-    }>
+interface GraphFn {
+    fn: (x: number, additionalParams?: any) => number;
+    additionalParams?: any;
+    color?: string;
+    thick?: number;
+    latex?: string; // rendered via KaTeX when present
+    label?: string; // plain-text fallback (e.g. a user-typed expression)
 }
 
-//todo 
+interface FunctionGraphProps {
+    fns: GraphFn[];
+}
+
+interface FunctionGraphState {
+    // react-katex + its CSS are heavy; loaded on demand (see below).
+    katex: null | { InlineMath: any };
+}
+
+//todo
 /**
- * add input form for formulas
  * add color picker
  * add quantiles logic
  * add default distributions
  * add axis descriptions
  * add CLT logic
  */
-class FunctionGraph extends Component<FunctionGraphProps> {
-    constructor(props, state) {
-        super(props, state);
-
-        this.state = {
-            fns: [],
-            canvasDrawn: false,
-            // react-katex + its CSS are heavy; loaded on demand (see below).
-            katex: null as null | { InlineMath: any }
-        }
-    }
-
-    componentWillReceiveProps(nextProps) {
-        // This will erase any local state updates!
-        // Do not do this.
-        this.setState({ fns: nextProps.fns });
-      }
-    
+class FunctionGraph extends Component<FunctionGraphProps, FunctionGraphState> {
+    state: FunctionGraphState = { katex: null };
 
     componentDidMount() {
         // Load KaTeX only when this page mounts, then re-render the formulas.
@@ -48,34 +37,38 @@ class FunctionGraph extends Component<FunctionGraphProps> {
             import("katex/dist/katex.min.css"),
         ])
             .then(([m]) => this.setState({ katex: { InlineMath: m.InlineMath } }))
-            .catch(() => { /* fall back to raw LaTeX text */ });
+            .catch(() => { /* fall back to raw text */ });
 
-        var canvas = document.querySelector<HTMLCanvasElement>("canvas#graphs");
-        var axes = {x0: 0, y0: 0, scale: 1, allowNegativeX: false, allowNegativeY: false};
+        this.redraw();
+    }
 
-        var ctx = canvas?.getContext("2d");
+    // Re-plot whenever the function list changes (added/removed/edited) — the
+    // canvas has no diffing of its own, so the simplest correct approach is to
+    // clear and redraw everything each time.
+    componentDidUpdate(prevProps: FunctionGraphProps) {
+        if (prevProps.fns !== this.props.fns) this.redraw();
+    }
 
-        axes.x0 = 0.5 + 0.5*(canvas?.width ?? 0);
-        axes.y0 = 0.5 + 0.5*(canvas?.height ?? 0);
+    private redraw() {
+        const canvas = document.querySelector<HTMLCanvasElement>("canvas#graphs");
+        const ctx = canvas?.getContext("2d");
+        if (!canvas || !ctx) return;
 
-        axes.scale = 40;
-        axes.allowNegativeX = true;
-        axes.allowNegativeY = false;
+        const axes = {
+            x0: 0.5 + 0.5 * canvas.width,
+            y0: 0.5 + 0.5 * canvas.height,
+            scale: 40,
+            allowNegativeX: true,
+            allowNegativeY: false,
+        };
 
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
         this.drawAxes(ctx, axes);
 
         this.props.fns.forEach((fnParams) => {
-            var {fn, additionalParams, color, thick} = fnParams;
-            additionalParams = additionalParams ? additionalParams : {};
-            color = color ? color : "rgba(0, 0, 0, 255)";
-            thick = thick ? thick : 1;
-
-            this.drawFunciton(ctx, axes, fn, color, thick, additionalParams);
+            const { fn, additionalParams, color, thick } = fnParams;
+            this.drawFunciton(ctx, axes, fn, color || "rgba(0, 0, 0, 255)", thick || 1, additionalParams || {});
         });
-    }
-
-    drawDescription = () => {
-
     }
 
     drawFunciton = (ctx, axes, func, color, thick, additionalParams) => {
@@ -97,7 +90,7 @@ class FunctionGraph extends Component<FunctionGraphProps> {
                 ctx.lineTo(axes.x0+xx, axes.y0-yy);
             }
 
-        } 
+        }
         ctx.stroke();
     }
 
@@ -119,23 +112,27 @@ class FunctionGraph extends Component<FunctionGraphProps> {
 
     render() {
         return (
-            <div id="2d">
+            <div id="2d" className="graph-2d">
                 <div className="description">
                     {this.props.fns.map((fn, index) => {
-                        //rgb(0,0,255);stroke-width:3;stroke:rgb(0,0,0)" />
-                        if (fn.hasOwnProperty('latex')) {
-                            return (
-                                <div className="new-line function-description" style={{ top: 40*(index+1) + "px" } } key={index}>
-                                    <div className="rect" style={ { backgroundColor: fn.hasOwnProperty('color') ? fn.color : "rgba(0, 0, 0, 1)" } } /> 
-                                    {(this.state as any).katex
-                                        ? (() => { const IM = (this.state as any).katex.InlineMath; return <IM math={fn.latex} />; })()
-                                        : <span className="katex-fallback">{fn.latex}</span>}
-                                {`\n`}</div> 
-                            )
-                        }
+                        const swatchColor = fn.color || "rgba(0, 0, 0, 1)";
+                        const content = fn.latex ? (
+                            this.state.katex
+                                ? (() => { const IM = this.state.katex!.InlineMath; return <IM math={fn.latex} />; })()
+                                : <span className="katex-fallback">{fn.latex}</span>
+                        ) : fn.label ? (
+                            <code>{fn.label}</code>
+                        ) : null;
+                        if (!content) return null;
+                        return (
+                            <div className="new-line function-description" style={{ top: 40*(index+1) + "px" } } key={index}>
+                                <div className="rect" style={{ backgroundColor: swatchColor }} />
+                                {content}
+                            {`\n`}</div>
+                        )
                     })}
                 </div>
-                <canvas id="graphs" width="1200" height="800"></canvas>
+                <canvas id="graphs" width="700" height="380"></canvas>
             </div>
         )
     }

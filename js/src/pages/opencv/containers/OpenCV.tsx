@@ -1,6 +1,7 @@
 import React, { Component } from "react";
 import Request from "@engine/controllers/request";
 import { Buffer } from "buffer";
+import { t, subscribe } from "@engine/i18n";
 
 import "./opencv.css";
 
@@ -37,7 +38,10 @@ class OpenCV extends Component<OpenCVProps, OpenCVState> {
     };
   }
 
+  private unsubscribeI18n?: () => void;
+
   componentDidMount() {
+    this.unsubscribeI18n = subscribe(() => this.forceUpdate());
     // 1. Fetch available OpenCV filters from backend
     Request.apiCall("opencv/filters", {})
       .then((res: { data: FilterOption[] }) => {
@@ -150,6 +154,7 @@ class OpenCV extends Component<OpenCVProps, OpenCVState> {
 
   componentWillUnmount() {
     this.stopMedia();
+    this.unsubscribeI18n?.();
   }
 
   stopMedia = (): void => {
@@ -199,12 +204,12 @@ class OpenCV extends Component<OpenCVProps, OpenCVState> {
   render() {
     return (
       <div className="opencv-container">
-        <h3>WebRTC Hardware Stream-In / Stream-Out Pipeline</h3>
+        <h3>{t("WebRTC Hardware Stream-In / Stream-Out Pipeline")}</h3>
 
         {/* Filter Selection Dropdown */}
         <div className="filter-selector" style={{ marginBottom: "15px" }}>
           <label htmlFor="filter-select">
-            <strong>Select OpenCV Processing Filter: </strong>
+            <strong>{t("Select OpenCV Processing Filter:")} </strong>
           </label>
           <select
             id="filter-select"
@@ -222,7 +227,7 @@ class OpenCV extends Component<OpenCVProps, OpenCVState> {
 
         <div className="session-controls">
           <div>
-            <label>Browser Base64 Session Offer:</label>
+            <label>{t("Browser Base64 Session Offer:")}</label>
             <br />
             <textarea
               id="localSessionDescription"
@@ -233,7 +238,7 @@ class OpenCV extends Component<OpenCVProps, OpenCVState> {
           </div>
 
           <div>
-            <label>Golang Server SDP Status:</label>
+            <label>{t("Golang Server SDP Status:")}</label>
             <br />
             <textarea
               id="remoteSessionDescription"
@@ -242,8 +247,8 @@ class OpenCV extends Component<OpenCVProps, OpenCVState> {
               cols={50}
               value={
                 this.state.isStreaming
-                  ? `STREAM ACTIVE (ID: ${this.state.streamID})`
-                  : "Establishing WebRTC handshake..."
+                  ? `${t("STREAM ACTIVE (ID:")} ${this.state.streamID})`
+                  : t("Establishing WebRTC handshake...")
               }
             ></textarea>
           </div>
@@ -253,12 +258,12 @@ class OpenCV extends Component<OpenCVProps, OpenCVState> {
 
         <div className="video-streams">
           <div>
-            <h4>Local Camera Feed (Input)</h4>
+            <h4>{t("Local Camera Feed (Input)")}</h4>
             <video id="video1" width="320" height="240" autoPlay muted playsInline></video>
           </div>
 
           <div>
-            <h4>Processed OpenCV Stream (WebRTC Output)</h4>
+            <h4>{t("Processed OpenCV Stream (WebRTC Output)")}</h4>
             <video
               id="video2"
               width="320"
@@ -270,14 +275,14 @@ class OpenCV extends Component<OpenCVProps, OpenCVState> {
             ></video>
 
             {!this.state.isStreaming && (
-              <div className="placeholder">Awaiting Connection / Handshake...</div>
+              <div className="placeholder">{t("Awaiting Connection / Handshake...")}</div>
             )}
           </div>
         </div>
 
         <hr />
 
-        <h4>Logs</h4>
+        <h4>{t("Logs")}</h4>
         <div id="logs" className="log-window">
           {this.state.logs.map((log, index) => (
             <div key={index} className="log-message">

@@ -1,5 +1,6 @@
 import React from 'react';
 import { FIELD_TYPES, MODES, isImmutableField } from './FieldsetProvider';
+import { t } from '@engine/i18n';
 
 // Base field component props
 export interface BaseFieldProps {
@@ -113,14 +114,14 @@ const AutocompleteEdit = COMPONENTS['Autocomplete']?.[MODES.EDIT] as
 // Default fallback component
 const DefaultField: React.FC<BaseFieldProps> = ({ field, value, mode }) => (
   <div className="field-default">
-    <label>{field.label}</label>
+    <label>{field.label ? t(field.label) : field.label}</label>
     <div className="field-content">
       {mode === MODES.EDIT || mode === MODES.CREATE ? (
-        <input 
-          type="text" 
-          value={value || ''} 
+        <input
+          type="text"
+          value={value || ''}
           className="form-control"
-          placeholder={field.label}
+          placeholder={field.label ? t(field.label) : field.label}
         />
       ) : (
         <span>{value || '-'}</span>
@@ -145,7 +146,7 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
         fieldName={field.name}
         module={props.module}
         value={props.value}
-        placeholder={field.placeholder || field.description || field.label}
+        placeholder={t(field.placeholder || field.description || field.label || '')}
         disabled={field.readonly || props.disabled}
         required={field.required}
         className={props.className}
@@ -195,10 +196,10 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
   const enhancedProps = {
     ...props,
     id: field.name,
-    label: props.label !== undefined ? props.label : field.label,
+    label: props.label !== undefined ? props.label : (field.label ? t(field.label) : field.label),
     // Explicit placeholder from the fieldset (field.placeholder) wins; falls
     // back to description/label. Used in edit/create and filter inputs.
-    placeholder: field.placeholder || field.description || field.label,
+    placeholder: t(field.placeholder || field.description || field.label || ''),
     required: field.required,
     disabled: field.readonly || props.disabled,
     // Text-family widget: only multi-line types render a <textarea>; STRING and
@@ -243,7 +244,7 @@ function applyDisplayModifiers(
   if (field.unit && value !== undefined && value !== null && value !== "") {
     content = (
       <>
-        {rendered} <span className="field-unit text-muted">{field.unit}</span>
+        {rendered} <span className="field-unit text-muted">{t(field.unit)}</span>
       </>
     );
   }

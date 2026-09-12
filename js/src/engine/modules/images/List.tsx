@@ -1,15 +1,17 @@
 import React from "react";
 import { ModuleViewProps } from "@engine/controllers/registry";
 import { imageUrl, ImageRef } from "./controllers/images";
+import useT from "@engine/useT";
 
 // Custom LIST view for the images module: a responsive grid of image cards, each
 // showing the picture with its filename and upload date. Admins can switch back
 // to the standard table via the layout toggle in the page chrome.
 const ImagesList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
+    const t = useT();
     const rows = Array.isArray(data) ? data : [];
 
     if (rows.length === 0) {
-        return <div className="text-muted p-3">No images.</div>;
+        return <div className="text-muted p-3">{t("No images.")}</div>;
     }
 
     const fmtDate = (v: any): string => {

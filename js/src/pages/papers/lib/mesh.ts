@@ -77,17 +77,7 @@ export class MeshManager {
     control.onmessage = (ev) => this.handleControl(ctx!, ev.data);
 
     pc.onicecandidate = ({ candidate }) => this.sink.signal(peerId, { candidate });
-    pc.onnegotiationneeded = async () => {
-      try {
-        ctx!.makingOffer = true;
-        await pc.setLocalDescription();
-        this.sink.signal(peerId, pc.localDescription!);
-      } catch (e) {
-        console.error("[mesh] negotiation failed", peerId, e);
-      } finally {
-        ctx!.makingOffer = false;
-      }
-    };
+    pc.onnegotiationneeded = () => this.negotiate(ctx!);
     pc.ontrack = (ev) => this.handleTrack(ctx!, ev);
     pc.onconnectionstatechange = () => {
       if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
@@ -106,7 +96,32 @@ export class MeshManager {
         this.peers.delete(peerId);
       }
     };
+
+    // A pre-negotiated data channel (both sides agree on it out of band, per
+    // the `negotiated: true` above) deliberately does NOT trigger the
+    // browser's own onnegotiationneeded — but the underlying connection still
+    // needs one offer/answer round to set up ICE/DTLS/SCTP, or the channel
+    // never opens. Nothing else would ever kick that off (sendTrack, the only
+    // other trigger, only runs once a relay plan exists — and the plan
+    // requires probing over this same not-yet-open channel), so trigger it
+    // explicitly here. Both peers in a pair do this at connect time; the
+    // collision handling in handleSignal resolves the resulting glare.
+    this.negotiate(ctx);
+
     return ctx;
+  }
+
+  private async negotiate(ctx: PeerCtx) {
+    const pc = ctx.pc;
+    try {
+      ctx.makingOffer = true;
+      await pc.setLocalDescription();
+      this.sink.signal(ctx.id, pc.localDescription!);
+    } catch (e) {
+      console.error("[mesh] negotiation failed", ctx.id, e);
+    } finally {
+      ctx.makingOffer = false;
+    }
   }
 
   // called by the app when an SSE "signal" event arrives
@@ -151,6 +166,13 @@ export class MeshManager {
       }
     } catch (e) {
       console.error(`[mesh] handleSignal <- ${from} failed`, e);
+      // A genuine (non-ignored — that path returns early above, never throws)
+      // SDP application failure leaves this connection stuck: neither side
+      // retries on its own, so a pair that hits one of these races on initial
+      // connect can go permanently without video. restartIce() forces a fresh
+      // negotiationneeded with a brand-new offer covering all current tracks,
+      // giving the pair another chance to converge instead of staying silent.
+      try { pc.restartIce(); } catch { /* connection already closed */ }
     }
   }
 

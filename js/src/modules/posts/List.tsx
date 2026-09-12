@@ -1,5 +1,6 @@
 import React from "react";
 import { ModuleViewProps } from "@engine/controllers/registry";
+import useT from "@engine/useT";
 
 // Strip markdown/HTML to a short plain-text excerpt of the body.
 function excerpt(body: string, max = 180): string {
@@ -16,9 +17,10 @@ function excerpt(body: string, max = 180): string {
 // Custom LIST view for the "posts" module: title, author and a body excerpt per
 // post. Clicking a card opens its view.
 const PostsList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
+  const t = useT();
   const rows = Array.isArray(data) ? data : [];
   if (rows.length === 0) {
-    return <div className="text-muted p-3">No posts yet.</div>;
+    return <div className="text-muted p-3">{t("No posts yet.")}</div>;
   }
   return (
     <div className="d-flex flex-column gap-2">
@@ -31,7 +33,7 @@ const PostsList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
         >
           <div className="card-body py-2">
             <h5 className="card-title mb-1">{row.title || `#${row.id}`}</h5>
-            <div className="text-muted small mb-2">By {row.author || "—"}</div>
+            <div className="text-muted small mb-2">{t("By")} {row.author || "—"}</div>
             <div className="text-secondary small mb-0">{excerpt(row.content)}</div>
           </div>
         </div>

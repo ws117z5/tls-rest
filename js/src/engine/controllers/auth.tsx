@@ -37,6 +37,7 @@ export interface BackendPage {
 export interface MenuUser {
     authenticated: boolean;
     avatar?: string;
+    name?: string;
 }
 
 export type MenuEntry = BackendModule | BackendPage;
@@ -75,7 +76,7 @@ export default class Auth {
                     : {};
             Auth.user =
                 res.data?.user && typeof res.data.user === "object"
-                    ? { authenticated: res.data.user.authenticated === true, avatar: res.data.user.avatar }
+                    ? { authenticated: res.data.user.authenticated === true, avatar: res.data.user.avatar, name: res.data.user.name }
                     : { authenticated: false };
         } catch (err) {
             console.error("Failed to load menu:", err);
@@ -130,6 +131,10 @@ export default class Auth {
     /** Avatar URL when the user has one, else "" (used in the menu). */
     static getAvatar(): string {
         return Auth.user.avatar || "";
+    }
+    /** Display name for the menu (first+last name, else username), or "". */
+    static getUserName(): string {
+        return Auth.user.name || "";
     }
     static isAdmin(): boolean {
         return typeof window !== "undefined" && window.__ADMIN__ === true;

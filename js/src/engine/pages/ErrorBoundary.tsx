@@ -1,4 +1,5 @@
 import React from "react";
+import { t } from "@engine/i18n";
 
 interface ErrorBoundaryState {
   hasError: boolean;
@@ -22,7 +23,7 @@ export default class ErrorBoundary extends React.Component<React.PropsWithChildr
 
   render() {
     if (this.state.hasError) {
-      return <div style={{ color: "red" }}>Something went wrong: {String(this.state.error)}</div>;
+      return <div style={{ color: "red" }}>{t("Something went wrong:")} {String(this.state.error)}</div>;
     }
     return this.props.children;
   }

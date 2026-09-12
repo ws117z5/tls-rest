@@ -1,4 +1,5 @@
 import React, { Component } from "react";
+import { t, subscribe } from "@engine/i18n";
 
 interface TextListProps {
     value?: string;
@@ -27,6 +28,14 @@ class TextList extends Component<TextListProps, TextListState> {
         this.setState({ showDialog: false });
     };
 
+    private unsubscribeI18n?: () => void;
+    componentDidMount() {
+        this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+    }
+    componentWillUnmount() {
+        this.unsubscribeI18n?.();
+    }
+
     render() {
         const { value, maxLength } = this.props;
         const { showDialog } = this.state;
@@ -38,7 +47,7 @@ class TextList extends Component<TextListProps, TextListState> {
                 <span
                     style={isLong ? { cursor: "pointer", textDecoration: "underline" } : {}}
                     onClick={isLong ? this.handleOpen : undefined}
-                    title={isLong ? "Click to view full text" : undefined}
+                    title={isLong ? t("Click to view full text") : undefined}
                 >
                     {displayValue}
                 </span>
@@ -71,7 +80,7 @@ class TextList extends Component<TextListProps, TextListState> {
                             onClick={e => e.stopPropagation()}
                         >
                             <div style={{ marginBottom: "1em" }}>{value}</div>
-                            <button onClick={this.handleClose}>Close</button>
+                            <button onClick={this.handleClose}>{t("Close")}</button>
                         </div>
                     </div>
                 )}

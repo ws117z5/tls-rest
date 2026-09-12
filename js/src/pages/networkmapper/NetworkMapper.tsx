@@ -3,6 +3,7 @@ import PageComponent from "@engine/containers/PageComponent";
 import NetworkTopologyDashboard, {
   NetworkTopologyData,
 } from "./containers/NetworkTopologyDashboard";
+import { t, subscribe } from "@engine/i18n";
 
 // Admin-only Network Mapper page. Config.tsx gates it via requiresAdministration()
 // (see Auth.canAccessModule), so non-admins never see it in the Pages menu and
@@ -35,7 +36,7 @@ export default class NetworkMapperPage extends PageComponent<{}, NetworkMapperSt
   constructor(props: {}) {
     super(props);
     this.state = {
-      statusMessage: "Idle. Press \u201cRun scan\u201d to map the network.",
+      statusMessage: t("Idle. Press \u201cRun scan\u201d to map the network."),
       topology: initialTopology,
       scanning: false,
     } as NetworkMapperState;
@@ -46,16 +47,23 @@ export default class NetworkMapperPage extends PageComponent<{}, NetworkMapperSt
     return true;
   }
 
+  private unsubscribeI18n?: () => void;
+  async componentDidMount() {
+    await super.componentDidMount();
+    this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+  }
+
   componentWillUnmount() {
     this.eventSource?.close();
     this.eventSource = null;
+    this.unsubscribeI18n?.();
   }
 
   private startScan = () => {
     this.eventSource?.close();
     this.setState({
       scanning: true,
-      statusMessage: "Initializing network scanner...",
+      statusMessage: t("Initializing network scanner..."),
       topology: initialTopology,
     });
 
@@ -66,28 +74,28 @@ export default class NetworkMapperPage extends PageComponent<{}, NetworkMapperSt
       try {
         const data = JSON.parse(event.data);
         this.setState((prev) => {
-          const t = prev.topology;
+          const topo = prev.topology;
           switch (data.step) {
             case "status":
               return { ...prev, statusMessage: data.payload };
             case "modem":
-              return { ...prev, topology: { ...t, modem: data.payload } };
+              return { ...prev, topology: { ...topo, modem: data.payload } };
             case "hop_discovered":
-              return { ...prev, topology: { ...t, traceroute_hops: [...t.traceroute_hops, data.payload] } };
+              return { ...prev, topology: { ...topo, traceroute_hops: [...topo.traceroute_hops, data.payload] } };
             case "lan_discovered":
-              return { ...prev, topology: { ...t, lan_devices: data.payload } };
+              return { ...prev, topology: { ...topo, lan_devices: data.payload } };
             case "device_scanned":
               return {
                 ...prev,
                 topology: {
-                  ...t,
-                  lan_devices: t.lan_devices.map((dev) => (dev.ip === data.payload.ip ? data.payload : dev)),
+                  ...topo,
+                  lan_devices: topo.lan_devices.map((dev) => (dev.ip === data.payload.ip ? data.payload : dev)),
                 },
               };
             case "complete":
               es.close();
               this.eventSource = null;
-              return { ...prev, statusMessage: "Scan complete.", scanning: false };
+              return { ...prev, statusMessage: t("Scan complete."), scanning: false };
             default:
               return prev;
           }
@@ -104,9 +112,9 @@ export default class NetworkMapperPage extends PageComponent<{}, NetworkMapperSt
         ...prev,
         scanning: false,
         statusMessage:
-          prev.statusMessage === "Scan complete."
+          prev.statusMessage === t("Scan complete.")
             ? prev.statusMessage
-            : "Connection closed (admin session required, or scan finished).",
+            : t("Connection closed (admin session required, or scan finished)."),
       }));
     };
   };
@@ -116,9 +124,9 @@ export default class NetworkMapperPage extends PageComponent<{}, NetworkMapperSt
     return (
       <div className="container-fluid" style={{ paddingTop: 16 }}>
         <div className="d-flex justify-content-between align-items-center mb-2">
-          <h1 className="h4 mb-0">Network Mapper</h1>
+          <h1 className="h4 mb-0">{t("Network Mapper")}</h1>
           <button className="btn btn-primary btn-sm" onClick={this.startScan} disabled={scanning}>
-            {scanning ? "Scanning\u2026" : "Run scan"}
+            {scanning ? t("Scanning\u2026") : t("Run scan")}
           </button>
         </div>
 
@@ -134,7 +142,7 @@ export default class NetworkMapperPage extends PageComponent<{}, NetworkMapperSt
             borderRadius: 6,
           }}
         >
-          {scanning ? "\uD83D\uDFE2" : "\u26AA"} Live status: {statusMessage}
+          {scanning ? "\uD83D\uDFE2" : "\u26AA"} {t("Live status:")} {statusMessage}
         </div>
 
         <NetworkTopologyDashboard data={topology} />

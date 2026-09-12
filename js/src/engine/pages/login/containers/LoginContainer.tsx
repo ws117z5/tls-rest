@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
 import AuthButton from "./AuthButton";
+import useT from "@engine/useT";
 import "./LoginContainer.css";
 
 interface LoginProps {
@@ -22,6 +23,7 @@ const PROVIDERS: { key: string; label: string; icon: string }[] = [
 // OAuth uses a full-page redirect to the backend flow (/users/Auth/{provider}),
 // which establishes the session and redirects home.
 const Login: React.FC<LoginProps> = () => {
+  const t = useT();
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -43,7 +45,7 @@ const Login: React.FC<LoginProps> = () => {
       // Session cookie is set server-side; reload as the authenticated user.
       window.location.assign("/");
     } catch (err: any) {
-      setError(err?.response?.data?.error || "Authentication failed");
+      setError(err?.response?.data?.error || t("Authentication failed"));
       setLoading(false);
     }
   };
@@ -58,9 +60,9 @@ const Login: React.FC<LoginProps> = () => {
 
   return (
     <div className="login-card">
-      <h1 className="login-title">{mode === "login" ? "Sign in" : "Create account"}</h1>
+      <h1 className="login-title">{mode === "login" ? t("Sign in") : t("Create account")}</h1>
       <p className="login-subtitle">
-        {mode === "login" ? "Welcome back." : "Join in a few seconds."}
+        {mode === "login" ? t("Welcome back.") : t("Join in a few seconds.")}
       </p>
 
       {error && <div className="login-error">{error}</div>}
@@ -68,7 +70,7 @@ const Login: React.FC<LoginProps> = () => {
       <form className="login-form" onSubmit={submit}>
         {mode === "register" && (
           <div className="login-field">
-            <label className="login-label">Username</label>
+            <label className="login-label">{t("Username")}</label>
             <input
               className="login-input"
               value={userName}
@@ -79,7 +81,7 @@ const Login: React.FC<LoginProps> = () => {
         )}
 
         <div className="login-field">
-          <label className="login-label">Email</label>
+          <label className="login-label">{t("Email")}</label>
           <input
             type="email"
             className="login-input"
@@ -91,7 +93,7 @@ const Login: React.FC<LoginProps> = () => {
         </div>
 
         <div className="login-field">
-          <label className="login-label">Password</label>
+          <label className="login-label">{t("Password")}</label>
           <input
             type="password"
             name="password"
@@ -106,26 +108,26 @@ const Login: React.FC<LoginProps> = () => {
         </div>
 
         <button type="submit" className="login-submit" disabled={loading}>
-          {loading ? "Please wait\u2026" : mode === "login" ? "Sign in" : "Register"}
+          {loading ? t("Please wait\u2026") : mode === "login" ? t("Sign in") : t("Register")}
         </button>
       </form>
 
-      <div className="login-divider"><span>or</span></div>
+      <div className="login-divider"><span>{t("or")}</span></div>
 
       <div className="oauth-list">
         {PROVIDERS.map((p) => (
-          <AuthButton key={p.key} name={p.label} icon={p.icon} call={() => loginWith(p.key)} />
+          <AuthButton key={p.key} name={t(p.label)} icon={p.icon} call={() => loginWith(p.key)} />
         ))}
       </div>
 
       <div className="login-switch">
         {mode === "login" ? (
           <button type="button" className="login-link" onClick={() => switchMode("register")}>
-            Need an account? <strong>Register</strong>
+            {t("Need an account?")} <strong>{t("Register")}</strong>
           </button>
         ) : (
           <button type="button" className="login-link" onClick={() => switchMode("login")}>
-            Have an account? <strong>Sign in</strong>
+            {t("Have an account?")} <strong>{t("Sign in")}</strong>
           </button>
         )}
       </div>

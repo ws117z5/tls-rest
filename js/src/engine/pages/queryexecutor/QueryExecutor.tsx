@@ -1,11 +1,20 @@
 
 import PageComponent from "@engine/containers/PageComponent";
 import {TextEdit} from "@engine/fields"
+import { t, subscribe } from "@engine/i18n";
 
 interface QueryExecutorProps {}
 interface QueryExecutorState {}
 
 class QueryExecutor extends PageComponent<QueryExecutorProps, QueryExecutorState> {
+  private unsubscribeI18n?: () => void;
+  async componentDidMount() {
+    await super.componentDidMount();
+    this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+  }
+  componentWillUnmount() {
+    this.unsubscribeI18n?.();
+  }
 
   //tmp: function to sned query to database
   sendQuery = () => {
@@ -38,8 +47,8 @@ class QueryExecutor extends PageComponent<QueryExecutorProps, QueryExecutorState
       <div>
       <TextEdit
           id="query"
-          label="Query"
-          placeholder="Enter your query here"
+          label={t("Query")}
+          placeholder={t("Enter your query here")}
           width="300px" />
 
         <button
@@ -53,7 +62,7 @@ class QueryExecutor extends PageComponent<QueryExecutorProps, QueryExecutorState
             borderRadius: "5px",
             cursor: "pointer",
           }}
-        > Send Query </button>
+        > {t("Send Query")} </button>
         </div>
     )
   }

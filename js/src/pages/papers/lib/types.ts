@@ -61,10 +61,19 @@ export interface Plan {
   result: OptResult;
 }
 
+export interface VideoTier {
+  width: number;
+  height: number;
+  bitrateKbps: number;
+}
+
 export interface PlanEvent {
   order: string[];
   plan: Plan;
-  streamBitrateKbps: number;
+  // Each peer's OWN resolution/bitrate to capture and publish at, keyed by
+  // peer id — the coordinator caps every publisher independently rather than
+  // the whole room sharing one tier (see coordinator.go BuildPlanFor).
+  videoTiers: Record<string, VideoTier>;
 }
 
 // peer <-> peer control-channel messages

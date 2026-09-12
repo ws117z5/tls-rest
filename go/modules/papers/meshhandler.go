@@ -12,12 +12,9 @@ import (
 )
 
 // meshCoordinator holds per-room link reports and turns them into balanced
-// relay plans (the optimizer's balancer + resolver).
+// relay plans (the optimizer's balancer + resolver), including which video
+// tier (resolution/bitrate) the room can currently sustain.
 var meshCoordinator = mesh.NewCoordinator()
-
-// defaultBitrateKbps is the assumed per-stream media bitrate used to size demand
-// in the optimizer until the room negotiates its own.
-const defaultBitrateKbps = 800
 
 // ReportLink records a peer's measured links and returns the current plan (or a
 // "waiting" status while other peers still need to report).
@@ -52,7 +49,7 @@ func ReportLink(w http.ResponseWriter, r *http.Request) {
 		Stats: req.Stats,
 	})
 
-	env, waiting := meshCoordinator.Plan(roomID, defaultBitrateKbps)
+	env, waiting := meshCoordinator.Plan(roomID)
 	logPlanResult(roomID, env, waiting)
 	writeMeshPlan(w, env, waiting)
 }
@@ -60,7 +57,7 @@ func ReportLink(w http.ResponseWriter, r *http.Request) {
 // GetPlan returns the current relay plan for a room, or a waiting status.
 func GetPlan(w http.ResponseWriter, r *http.Request) {
 	roomID := mux.Vars(r)["roomId"]
-	env, waiting := meshCoordinator.Plan(roomID, defaultBitrateKbps)
+	env, waiting := meshCoordinator.Plan(roomID)
 	writeMeshPlan(w, env, waiting)
 }
 
@@ -76,11 +73,11 @@ func logPlanResult(roomID string, env *mesh.PlanEnvelope, waiting []string) {
 		log.Printf(
 			"[papers/mesh] room=%s plan built: peers=%d order=%v iter=%d gap=%.4f "+
 				"meanLatency=%.1fms directLatency=%.1fms maxUpUtil=%.0f%% maxDownUtil=%.0f%% "+
-				"maxRelayUtil=%.0f%% bitrate=%dkbps",
+				"maxRelayUtil=%.0f%% tiers=%v",
 			roomID, len(env.Order), env.Order, res.Iterations, res.Gap,
 			res.MeanLatency, res.DirectMeanLatency,
 			100*res.MaxUpUtil, 100*res.MaxDownUtil, 100*res.MaxRelayUtil,
-			env.StreamBitrateKbps,
+			env.VideoTiers,
 		)
 	} else if len(waiting) > 0 {
 		log.Printf("[papers/mesh] room=%s plan WAITING on report(s) from: %v", roomID, waiting)

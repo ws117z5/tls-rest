@@ -37,10 +37,7 @@ type RoomState struct {
 	Players   map[string]GameUser `json:"players"`    // session key -> game identity
 	Assigned  map[string]string   `json:"assigned"`   // session key -> word they wear (from another player)
 	NegParams map[string]any      `json:"neg_params"` // session key -> negotiator params (opaque)
-	// Finished is the scoreboard: session keys in the order they correctly
-	// guessed their word (self-reported — the server can't verify a word
-	// spoken aloud over video). Index 0 is the first to guess. A finished
-	// player is skipped when picking the next active player.
+	// Finished is the scoreboard: session keys in the order they were confirmed correct. Index 0 is first.
 	Finished []string `json:"finished"`
 }
 

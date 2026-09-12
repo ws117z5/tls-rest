@@ -1,5 +1,6 @@
 import React from "react";
 import PageComponent from "@engine/containers/PageComponent";
+import { t, subscribe } from "@engine/i18n";
 
 interface ArrayIteratorState {
   items: string[];
@@ -28,6 +29,15 @@ export default class ArrayIterator extends PageComponent<{}, ArrayIteratorState>
     };
   }
 
+  private unsubscribeI18n?: () => void;
+  async componentDidMount() {
+    await super.componentDidMount();
+    this.unsubscribeI18n = subscribe(() => this.forceUpdate());
+  }
+  componentWillUnmount() {
+    this.unsubscribeI18n?.();
+  }
+
   handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const { loopLogic } = this.state;
@@ -54,7 +64,7 @@ export default class ArrayIterator extends PageComponent<{}, ArrayIteratorState>
         error: "",
       });
     } catch (err: any) {
-      this.setState({ error: `Error: ${err.message}` });
+      this.setState({ error: `${t("Error:")} ${err.message}` });
     }
   };
 
@@ -85,14 +95,14 @@ export default class ArrayIterator extends PageComponent<{}, ArrayIteratorState>
         <form onSubmit={this.handleSubmit} className="flex flex-col space-y-4">
           <input
             type="text"
-            placeholder='Enter array like ["A", "B", "C", "D"]'
+            placeholder={t('Enter array like ["A", "B", "C", "D"]')}
             value={items as unknown as string}
             onChange={(e) => this.setState({ items: e.target.value.split(",") })}
             className="w-96 p-2 border rounded"
           />
           <input
             type="text"
-            placeholder="Enter loop logic (e.g., (currentIndex + 1) % length)"
+            placeholder={t("Enter loop logic (e.g., (currentIndex + 1) % length)")}
             value={loopLogic}
             onChange={(e) => this.setState({ loopLogic: e.target.value })}
             className="w-96 p-2 border rounded"
@@ -101,7 +111,7 @@ export default class ArrayIterator extends PageComponent<{}, ArrayIteratorState>
             type="submit"
             className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
           >
-            Start Loop
+            {t("Start Loop")}
           </button>
           {error && <div className="text-red-500">{error}</div>}
         </form>
@@ -130,19 +140,19 @@ export default class ArrayIterator extends PageComponent<{}, ArrayIteratorState>
                 onClick={this.prev}
                 className="px-4 py-2 bg-gray-300 rounded hover:bg-gray-400"
               >
-                Previous
+                {t("Previous")}
               </button>
               <button
                 onClick={this.next}
                 className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
               >
-                Next
+                {t("Next")}
               </button>
             </div>
 
             {/* Current Index */}
             <div>
-              Current Index:{" "}
+              {t("Current Index:")}{" "}
               <span className="font-bold text-blue-500">{currentIndex}</span>
             </div>
           </>

@@ -113,7 +113,6 @@ func NewPapersModule() *PapersModule {
 		{Path: "/papers/{roomId}/game/state", Methods: []string{http.MethodGet}, Handler: GameState, Absolute: true},
 		{Path: "/papers/{roomId}/game/events", Methods: []string{http.MethodGet}, Handler: GameEvents, Absolute: true},
 		{Path: "/papers/{roomId}/game/turn", Methods: []string{http.MethodPost}, Handler: TurnAction, Absolute: true},
-		{Path: "/papers/{roomId}/game/guess", Methods: []string{http.MethodPost}, Handler: GuessWord, Absolute: true},
 		{Path: "/papers/{roomId}/game/signal", Methods: []string{http.MethodPost}, Handler: SendSignal, Absolute: true},
 		{Path: "/papers/{roomId}/game/signal", Methods: []string{http.MethodGet}, Handler: DrainSignals, Absolute: true},
 		{Path: "/papers/{roomId}/report", Methods: []string{http.MethodPost}, Handler: ReportLink, Absolute: true},

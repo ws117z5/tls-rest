@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { ModuleViewProps } from "@engine/controllers/registry";
 import { RoomMesh } from "./videoMesh";
+import useT from "@engine/useT";
 import "./papers.css";
 
 interface PlayerView { key: string; name: string; word?: string; ready: boolean; active: boolean; finished: boolean; }
@@ -9,7 +10,7 @@ interface ScoreEntry { key: string; name: string; }
 interface GameState {
   selfName: string; selfWord: string; selfFinished: boolean; isCreator: boolean;
   players: PlayerView[]; scores: ScoreEntry[]; gameOver: boolean;
-  activeKey: string; started: boolean;
+  activeKey: string; started: boolean; roundStarted: boolean;
   wrong: number; wrongLimit: number; timerSecs: number; remaining: number;
   deadline: number; selfKey: string;
 }
@@ -40,6 +41,7 @@ const Tile: React.FC<{ pv: PlayerView; self: boolean; active: boolean; stream?: 
 };
 
 const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => {
+  const t = useT();
   const room = record || {};
   // Rooms are addressed by their stored hash (KeyField), never uuid or id.
   const roomId = room.hash;
@@ -49,6 +51,13 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
   const [name, setName] = useState("");
   const [word, setWord] = useState("");
   const [countdown, setCountdown] = useState(0);
+  // Name and word each start as an editable input with their own Set button;
+  // clicking Set locks that field into a read-only view (with its own Edit
+  // button to reopen it). Also flipped to the view on first load when the
+  // server already has that field (e.g. the page was reloaded after an
+  // earlier Set).
+  const [editingName, setEditingName] = useState(true);
+  const [editingWord, setEditingWord] = useState(true);
 
   // Local camera + remote participants' streams, keyed by player key ("source
   // id" in mesh terms). RoomMesh owns the actual peer connections; this
@@ -72,13 +81,13 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
   const attemptJoin = async () => {
     setPwError("");
     try {
-      await axios.post(`/papers/${roomId}`, { uuid: "self", name: name.trim() || "player", password });
+      await axios.post(`/papers/${roomId}`, { uuid: "self", name: name.trim() || t("player"), password });
       setJoined(true);
     } catch (e: any) {
       if (e?.response?.status === 403) {
         navigate(`/${module}`); // wrong password -> back to the list
       } else {
-        setPwError("Could not join the room.");
+        setPwError(t("Could not join the room."));
       }
     }
   };
@@ -119,7 +128,12 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
     refresh().then(() => {
       if (done) return;
       setState((s) => {
-        if (s) { if (!name && s.selfName) setName(s.selfName); if (!word && s.selfWord) setWord(s.selfWord); }
+        if (s) {
+          if (!name && s.selfName) setName(s.selfName);
+          if (!word && s.selfWord) setWord(s.selfWord);
+          if (s.selfName) setEditingName(false);
+          if (s.selfWord) setEditingWord(false);
+        }
         return s;
       });
     });
@@ -129,6 +143,15 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
     const fallback = setInterval(() => { refresh(); drainSignals(); }, 10000);
     return () => { done = true; es.close(); clearInterval(fallback); };
   }, [refresh, drainSignals, base]);
+
+  // Word locking: once the creator's first Start deranges the words
+  // (roundStarted), your word is fixed for the rest of the round — the view
+  // render below hides the Edit button while roundStarted is true. When a
+  // new round begins (restart clears roundStarted and selfWord together),
+  // flip back to the input so a word is required again before the next Start.
+  useEffect(() => {
+    if (state && !state.roundStarted && !state.selfWord) setEditingWord(true);
+  }, [state?.roundStarted, state?.selfWord]);
 
   // Local 1s countdown, re-synced from server `remaining` on each poll.
   useEffect(() => {
@@ -207,20 +230,22 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
     meshRef.current.syncPeers(peers);
   }, [state?.players, state?.selfKey]);
 
-  const join = async () => {
+  // Name and word are set independently, but both go through the same /join
+  // endpoint (it replaces the whole identity each call), so each submit sends
+  // the other field's current value along unchanged.
+  const setNameField = async () => {
     await axios.post(`${base}/join`, { name: name.trim(), word: word.trim() });
+    setEditingName(false);
+    refresh();
+  };
+  const setWordField = async () => {
+    await axios.post(`${base}/join`, { name: name.trim(), word: word.trim() });
+    setEditingWord(false);
     refresh();
   };
   const turn = async (action: string) => {
     await axios.post(`${base}/turn`, { action });
     if (action === "end") { navigate(`/${module}`); return; }
-    refresh();
-  };
-  // Self-reported: the player says the word out loud over video and everyone
-  // else confirms verbally, then clicks this. Removes them from the active-
-  // turn rotation and records their finish position on the scoreboard.
-  const guessWord = async () => {
-    await axios.post(`${base}/guess`, {});
     refresh();
   };
 
@@ -244,16 +269,16 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
     return (
       <div className="papers-room">
         <div className="papers-room-header">
-          <h4 className="mb-0">{room.name || "Room"}</h4>
+          <h4 className="mb-0">{room.name || t("Room")}</h4>
         </div>
         <div className="papers-modal-backdrop">
           <div className="papers-modal card shadow">
             <div className="card-body">
-              <h5 className="card-title mb-3">Password required</h5>
-              <p className="text-muted small mb-2">This game is password-protected.</p>
-              <label className="form-label mb-1">Your name</label>
+              <h5 className="card-title mb-3">{t("Password required")}</h5>
+              <p className="text-muted small mb-2">{t("This game is password-protected.")}</p>
+              <label className="form-label mb-1">{t("Your name")}</label>
               <input className="form-control mb-2" value={name} onChange={(e) => setName(e.target.value)} />
-              <label className="form-label mb-1">Password</label>
+              <label className="form-label mb-1">{t("Password")}</label>
               <input
                 className="form-control mb-2"
                 type="password"
@@ -264,8 +289,8 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
               />
               {pwError && <div className="text-danger small mb-2">{pwError}</div>}
               <div className="d-flex justify-content-end gap-2 mt-2">
-                <button className="btn btn-secondary" onClick={() => navigate(`/${module}`)}>Cancel</button>
-                <button className="btn btn-primary" onClick={attemptJoin} disabled={!password}>Enter</button>
+                <button className="btn btn-secondary" onClick={() => navigate(`/${module}`)}>{t("Cancel")}</button>
+                <button className="btn btn-primary" onClick={attemptJoin} disabled={!password}>{t("Enter")}</button>
               </div>
             </div>
           </div>
@@ -277,7 +302,7 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
   return (
     <div className="papers-room">
       <div className="papers-room-header">
-        <h4 className="mb-0">{room.name || "Room"}</h4>
+        <h4 className="mb-0">{room.name || t("Room")}</h4>
         <div className="d-flex align-items-center gap-3">
           {/* No in-room Leave button: the page chrome's Back button (above) is
               the one way out, and it unmounts this view, which stops the
@@ -288,37 +313,59 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
 
       {/* Name + word entry (prefilled). Word is assigned to another player. */}
       <div className="papers-controls d-flex flex-wrap gap-2 align-items-end p-3">
-        <div>
-          <label className="form-label mb-1">Your name</label>
-          <input className="form-control" style={{ maxWidth: 180 }} value={name} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <div>
-          <label className="form-label mb-1">Your word</label>
-          <input className="form-control" style={{ maxWidth: 200 }} value={word} onChange={(e) => setWord(e.target.value)}
-                 placeholder="for someone else" />
-        </div>
-        <button className="btn btn-primary" onClick={join} disabled={!name.trim() || !word.trim()}>Set</button>
+        {editingName ? (
+          <div className="d-flex gap-2 align-items-end">
+            <div>
+              <label className="form-label mb-1">{t("Your name")}</label>
+              <input className="form-control" style={{ maxWidth: 180 }} value={name} onChange={(e) => setName(e.target.value)} />
+            </div>
+            <button className="btn btn-primary" onClick={setNameField} disabled={!name.trim()}>{t("Set")}</button>
+          </div>
+        ) : (
+          <div className="d-flex align-items-center gap-2">
+            <span><strong>{name}</strong></span>
+            <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditingName(true)}>{t("Edit")}</button>
+          </div>
+        )}
 
-        {/* Self-reported: say the word out loud, everyone else confirms, then
-            click this. Available any time, not just on your turn — it just
-            takes you out of the active-turn queue and records your finish. */}
-        <button
-          className="btn btn-outline-success"
-          onClick={guessWord}
-          disabled={!state || state.selfFinished}
-        >
-          {state?.selfFinished ? "You guessed it! ✅" : "I guessed my word!"}
-        </button>
+        {editingWord && !state?.roundStarted ? (
+          <div className="d-flex gap-2 align-items-end">
+            <div>
+              <label className="form-label mb-1">{t("Your word")}</label>
+              <input className="form-control" style={{ maxWidth: 200 }} value={word} onChange={(e) => setWord(e.target.value)}
+                     placeholder={t("for someone else")} />
+            </div>
+            <button className="btn btn-primary" onClick={setWordField} disabled={!word.trim()}>{t("Set")}</button>
+          </div>
+        ) : (
+          <div className="d-flex align-items-center gap-2">
+            <span className="text-muted small">{t("Word set")} ✓</span>
+            {/* No Edit once the round's words are deranged — changing it now
+                would just be pointless, someone else already wears it. */}
+            {!state?.roundStarted && (
+              <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditingWord(true)}>{t("Edit")}</button>
+            )}
+          </div>
+        )}
 
         {/* Creator-only game controls. */}
         {state?.isCreator && (
-          <div className="ms-auto d-flex gap-2">
-            <button className="btn btn-success" onClick={() => turn("start")}>Start</button>
+          <div className="ml-auto d-flex gap-2">
+            {/* Starting alone would derange nobody's word onto anybody else's
+                tile — need at least one other player in the room. */}
+            {players.length > 1 && (
+              <button className="btn btn-success" onClick={() => turn("start")}>{t("Start")}</button>
+            )}
+            {/* Creator confirms over video that the active player said their
+                word correctly — only meaningful while a turn is running. */}
+            {state.started && (
+              <button className="btn btn-outline-success" onClick={() => turn("guessed")}>{t("Word guessed")}</button>
+            )}
             <button className="btn btn-warning" onClick={() => turn("wrong")} disabled={!state.started}>
-              Wrong ({state.wrong}/{state.wrongLimit})
+              {t("Wrong")} ({state.wrong}/{state.wrongLimit})
             </button>
-            <button className="btn btn-outline-primary" onClick={() => turn("restart")}>Restart</button>
-            <button className="btn btn-outline-danger" onClick={() => turn("end")}>End game</button>
+            <button className="btn btn-outline-primary" onClick={() => turn("restart")}>{t("Restart")}</button>
+            <button className="btn btn-outline-danger" onClick={() => turn("end")}>{t("End game")}</button>
           </div>
         )}
       </div>
@@ -330,13 +377,13 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
           <div className="card">
             <div className="card-body">
               <h5 className="card-title h6 text-uppercase text-muted mb-3">
-                {state.gameOver ? "Final scores" : "Scores so far"}
+                {state.gameOver ? t("Final scores") : t("Scores so far")}
               </h5>
               <table className="table table-sm mb-0">
                 <thead>
                   <tr>
                     <th style={{ width: "10%" }}>#</th>
-                    <th>Player</th>
+                    <th>{t("Player")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -367,7 +414,7 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
               />
             );
           })}
-          {players.length === 0 && <div className="text-muted">Waiting for players…</div>}
+          {players.length === 0 && <div className="text-muted">{t("Waiting for players…")}</div>}
         </div>
       </div>
 
@@ -376,17 +423,17 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
       <div className="papers-chat p-3 pt-0">
         <div className="card">
           <div className="card-body">
-            <h5 className="card-title h6 text-uppercase text-muted mb-2">Chat</h5>
+            <h5 className="card-title h6 text-uppercase text-muted mb-2">{t("Chat")}</h5>
             <div
               className="papers-chat-log mb-2"
               style={{ maxHeight: 160, overflowY: "auto" }}
             >
               {chatMessages.length === 0 ? (
-                <div className="text-muted small">No messages yet.</div>
+                <div className="text-muted small">{t("No messages yet.")}</div>
               ) : (
                 chatMessages.map((m, i) => (
                   <div key={i} className="small">
-                    <strong>{m.fromId === selfKey ? "You" : nameFor(m.fromId)}:</strong> {m.text}
+                    <strong>{m.fromId === selfKey ? t("You") : nameFor(m.fromId)}:</strong> {m.text}
                   </div>
                 ))
               )}
@@ -397,10 +444,10 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") sendChat(); }}
-                placeholder="Say something…"
+                placeholder={t("Say something…")}
               />
               <button className="btn btn-sm btn-primary" onClick={sendChat} disabled={!chatInput.trim()}>
-                Send
+                {t("Send")}
               </button>
             </div>
           </div>

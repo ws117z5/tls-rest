@@ -72,3 +72,12 @@ div.base {
   .material-icons {
       cursor: pointer;
   }
+
+/* The served bootstrap.min.css is v4.0.0 (npm's bootstrap ^5 is a mismatched
+   dependency, not what's actually linked) — v4 has no `gap-*` flex-gap
+   utilities, so components using them (matching v5 spacing conventions)
+   silently got zero gap. Polyfill just the values actually used, at v5's
+   spacer scale, rather than rewriting every call site to margin utilities. */
+.gap-1 { gap: 0.25rem; }
+.gap-2 { gap: 0.5rem; }
+.gap-3 { gap: 1rem; }
