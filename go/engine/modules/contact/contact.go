@@ -23,6 +23,7 @@ import (
 var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "contact_messages",
 	Name:    "Contact Messages",
+	Icon:    "messages",
 	Submenu: "engine",
 	Fields: []field.Field{
 		field.NewField("name", field.TYPE_STRING, true).WithLabel("Name"),

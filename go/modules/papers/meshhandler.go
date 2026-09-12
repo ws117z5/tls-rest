@@ -3,6 +3,7 @@ package papers
 import (
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 
 	"tls-rest/go/engine/controllers/mesh"
@@ -42,6 +43,9 @@ func ReportLink(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	log.Printf("[papers/mesh] room=%s report from %s: up=%.1f down=%.1f stats=%d link(s)",
+		roomID, req.Peer, req.Up, req.Down, len(req.Stats))
+
 	meshCoordinator.Report(roomID, req.Peer, &mesh.Report{
 		Up:    req.Up,
 		Down:  req.Down,
@@ -49,6 +53,7 @@ func ReportLink(w http.ResponseWriter, r *http.Request) {
 	})
 
 	env, waiting := meshCoordinator.Plan(roomID, defaultBitrateKbps)
+	logPlanResult(roomID, env, waiting)
 	writeMeshPlan(w, env, waiting)
 }
 
@@ -57,6 +62,31 @@ func GetPlan(w http.ResponseWriter, r *http.Request) {
 	roomID := mux.Vars(r)["roomId"]
 	env, waiting := meshCoordinator.Plan(roomID, defaultBitrateKbps)
 	writeMeshPlan(w, env, waiting)
+}
+
+// logPlanResult logs the balancer's outcome whenever a report causes a plan to
+// be (re)built — meant to stay on through a beta so relay/latency behavior
+// under real networks can be reviewed from the server logs, not just guessed
+// at. Deliberately only called from ReportLink (once per new report), not from
+// the polling GetPlan path, or every client's periodic /plan refetch would
+// flood the log with recomputations of an unchanged plan.
+func logPlanResult(roomID string, env *mesh.PlanEnvelope, waiting []string) {
+	if env != nil {
+		res := env.Plan.Result
+		log.Printf(
+			"[papers/mesh] room=%s plan built: peers=%d order=%v iter=%d gap=%.4f "+
+				"meanLatency=%.1fms directLatency=%.1fms maxUpUtil=%.0f%% maxDownUtil=%.0f%% "+
+				"maxRelayUtil=%.0f%% bitrate=%dkbps",
+			roomID, len(env.Order), env.Order, res.Iterations, res.Gap,
+			res.MeanLatency, res.DirectMeanLatency,
+			100*res.MaxUpUtil, 100*res.MaxDownUtil, 100*res.MaxRelayUtil,
+			env.StreamBitrateKbps,
+		)
+	} else if len(waiting) > 0 {
+		log.Printf("[papers/mesh] room=%s plan WAITING on report(s) from: %v", roomID, waiting)
+	} else {
+		log.Printf("[papers/mesh] room=%s plan not buildable yet (fewer than 2 peers reported)", roomID)
+	}
 }
 
 func writeMeshPlan(w http.ResponseWriter, env *mesh.PlanEnvelope, waiting []string) {

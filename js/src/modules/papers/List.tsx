@@ -19,7 +19,8 @@ const PapersList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
   return (
     <div className="papers-list d-flex flex-column gap-2 p-2">
       {rooms.map((room: any) => {
-        const key = room.uuid || room.id;
+        // Rooms are addressed by their stored hash (KeyField), never uuid or id.
+        const key = room.hash;
         const n = playerCount(room);
         return (
           <div

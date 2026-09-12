@@ -146,6 +146,7 @@ const ContactForm: React.FC = () => {
 export class ContactPage extends PageComponent<{}, {}> {
   protected href = "contact";
   protected title = "Contact";
+  protected icon = "messages-sm";
   protected isPage = true;
   protected submenu = "Legal";
 

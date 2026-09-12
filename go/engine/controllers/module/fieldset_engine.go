@@ -225,12 +225,19 @@ func (fe *FieldsetEngine) buildScopeConditions(params *QueryParams, v viewer, ar
 	// bag (request.From(r).Set(keyField, id)); scope the query to that row. Absent
 	// on a plain list request.
 	if fe.Request != nil {
-		if kv := request.From(fe.Request).String(fe.keyField()); kv != "" {
+		key := fe.keyField()
+		if kv := request.From(fe.Request).String(key); kv != "" {
 			var bind interface{} = kv
-			if n, err := strconv.ParseInt(kv, 10, 64); err == nil {
-				bind = n // numeric id binds as an integer, not text
+			// Only the numeric "id" column binds as an integer. Any other key
+			// (uuid, slug, …) is a text column: a numeric-looking value must
+			// still bind as text (mirrors BaseController.recordKey) or pgx fails
+			// to encode an int into a text parameter.
+			if key == "id" {
+				if n, err := strconv.ParseInt(kv, 10, 64); err == nil {
+					bind = n
+				}
 			}
-			conds = append(conds, fmt.Sprintf("%s = $%d", fe.keyField(), *argIndex))
+			conds = append(conds, fmt.Sprintf("%s = $%d", key, *argIndex))
 			*args = append(*args, bind)
 			*argIndex++
 		}

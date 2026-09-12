@@ -373,11 +373,17 @@ func NewImages() *Images {
 		ModuleAbstract: &ModuleAbstract[interface{}]{
 			ID:                   "images",
 			Name:                 "Images",
+			Icon:                 "images",
 			Submenu:              "engine",
 			Rights:               make(map[int]int),
 			DefaultPermission:    PERMISSION_READ,
 			DefaultPermissionSet: true,
 			OmitSystemFields:     []string{"updated"},
+			// A non-admin browsing the images module sees only images they
+			// uploaded (created_by = their id); admins see every image. Byte
+			// serving (/image/<uuid>) is unaffected — it stays gated by the
+			// image's own access level via CanViewRecord.
+			OwnerScoped: true,
 		},
 	}
 	m.ModuleAbstract.Fields = m.fieldset()

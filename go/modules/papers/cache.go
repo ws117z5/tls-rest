@@ -37,6 +37,11 @@ type RoomState struct {
 	Players   map[string]GameUser `json:"players"`    // session key -> game identity
 	Assigned  map[string]string   `json:"assigned"`   // session key -> word they wear (from another player)
 	NegParams map[string]any      `json:"neg_params"` // session key -> negotiator params (opaque)
+	// Finished is the scoreboard: session keys in the order they correctly
+	// guessed their word (self-reported — the server can't verify a word
+	// spoken aloud over video). Index 0 is the first to guess. A finished
+	// player is skipped when picking the next active player.
+	Finished []string `json:"finished"`
 }
 
 var (
@@ -47,7 +52,7 @@ var (
 		func(string, GameUser) error { return nil },
 	).WithTTL(30 * 24 * time.Hour)
 
-	// Keyed by room UUID. Purely in-memory (fast path); rebuilt from prooms.users
+	// Keyed by room UUID. Purely in-memory (fast path); rebuilt from papers.users
 	// on miss if you wire a getter.
 	RoomStateCache = cache.NewCache[RoomState](
 		func(string) (RoomState, error) { return RoomState{}, errCacheMiss },
@@ -79,7 +84,7 @@ func SetRoomState(st RoomState) {
 	RoomStateCache.Set(st.RoomUUID, st)
 }
 
-// marshalUsers renders the room's players for storage on prooms.users.
+// marshalUsers renders the room's players for storage on papers.users.
 func (st RoomState) marshalUsers() string {
 	b, _ := json.Marshal(st.Players)
 	return string(b)

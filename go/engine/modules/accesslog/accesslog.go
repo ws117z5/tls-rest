@@ -58,6 +58,7 @@ func NewAccessLog() *AccessLog {
 		ModuleAbstract: &module.ModuleAbstract[interface{}]{
 			ID:       "access_log",
 			Name:     "Access Log",
+			Icon:     "access-log",
 			Submenu:  "engine",
 			ReadOnly: true,
 			Rights:   make(map[int]int),

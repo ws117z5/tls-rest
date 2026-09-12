@@ -53,6 +53,7 @@ func NewPosts() *Posts {
 		ModuleAbstract: &ModuleAbstract[interface{}]{
 			ID:     "posts",
 			Name:   "Posts",
+			Icon:   "posts",
 			Rights: make(map[int]int),
 			// Public module: everyone may read (list/view); writes require rights.
 			DefaultPermission:    1, // PERMISSION_READ

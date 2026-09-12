@@ -43,6 +43,7 @@ const H: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 export class TermsPage extends PageComponent<{}, {}> {
   protected href = "terms";
   protected title = "Terms of Service";
+  protected icon = "terms";
   protected isPage = true;
   protected submenu = "Legal";
 
@@ -150,6 +151,7 @@ export class TermsPage extends PageComponent<{}, {}> {
 export class PrivacyPage extends PageComponent<{}, {}> {
   protected href = "privacy";
   protected title = "Privacy Policy";
+  protected icon = "privacy";
   protected isPage = true;
   protected submenu = "Legal";
 
@@ -235,8 +237,10 @@ export class PrivacyPage extends PageComponent<{}, {}> {
             contact us.
           </li>
           <li>
-            <strong>Deletion.</strong> Use the <ContactLink /> to request deletion
-            of your account and associated personal data.
+            <strong>Deletion.</strong> Use the{" "}
+            <Link to="/pages/delete-account">account deletion request</Link> page
+            to have your account and associated personal data removed. You do not
+            need to be signed in.
           </li>
           <li>
             <strong>Cookies.</strong> You can clear or block cookies in your

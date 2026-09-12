@@ -1,0 +1,20 @@
+/* The generic admin fieldset form (FieldsetForm.tsx) lays its description and
+   value columns out with an inline pixel flex-basis computed per-form — fine
+   on a desktop-width screen, but a fixed ~220px label column doesn't fit a
+   phone. Below this breakpoint, stack description above value and let both
+   take the full row width instead. `!important` is required because the
+   layout it overrides is inline (React `style`), which otherwise wins over a
+   plain stylesheet rule. */
+@media (max-width: 576px) {
+  .fieldset-row {
+    flex-direction: column !important;
+    gap: 0.35rem !important;
+    align-items: stretch !important;
+  }
+  .fieldset-cell-desc,
+  .fieldset-cell-value {
+    flex: 1 1 auto !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+}

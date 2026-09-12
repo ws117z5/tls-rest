@@ -69,9 +69,15 @@ func isAPICall(r *http.Request) bool {
 	}
 
 	// Does the request itself look like an API call (XHR / fetch / JSON accept /
-	// a mutating method) rather than a browser document navigation?
+	// SSE accept / a mutating method) rather than a browser document navigation?
+	// EventSource requests (e.g. GameEvents' SSE stream) can't set custom
+	// headers at all — no X-Request-Type, no X-Requested-With — so without the
+	// text/event-stream check they fell through to "page navigation" and got
+	// served the SPA HTML shell, which EventSource then aborts on (wrong MIME
+	// type). That silently degraded every SSE endpoint to its fallback poll.
 	acceptHeader := r.Header.Get("Accept")
 	isLikelyAPI := strings.Contains(acceptHeader, "application/json") ||
+		strings.Contains(acceptHeader, "text/event-stream") ||
 		r.Header.Get("X-Requested-With") == "XMLHttpRequest" ||
 		(r.Method != http.MethodGet && r.Method != http.MethodHead)
 

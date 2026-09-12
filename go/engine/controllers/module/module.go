@@ -71,7 +71,12 @@ type ModuleAbstract[T any] struct {
 	Order       int
 	// Submenu groups this module under a named submenu in the menu (e.g.
 	// "engine"); empty places it at the top level.
-	Submenu  string
+	Submenu string
+	// Icon shown next to this module's menu entry: either a bare name
+	// ("home", "user-rights", …) matching an `.icon-<name>` class in menu.css —
+	// a cell of the /img/icons_bw.png sprite sheet — or an image URL (e.g.
+	// "/image/<uuid>" or a static path); the frontend (Menu.tsx) tells them
+	// apart by whether the value looks like a path.
 	Icon     string
 	ReadOnly bool
 	Hidden   bool
@@ -146,8 +151,9 @@ type ModuleAbstract[T any] struct {
 	ListAscending bool
 
 	// KeyField is the column used to look up a single record in view/edit/delete
-	// (the /{module}/{key} path segment). Defaults to "id"; set to "uuid" for
-	// modules addressed by uuid instead of an incrementing id.
+	// (the /{module}/{key} path segment). Defaults to "id"; set to "uuid" (or any
+	// other unique column, e.g. papers' stored "hash") for modules addressed by
+	// something other than an incrementing id.
 	KeyField string
 
 	// SoftDelete makes DELETE flag the row (deleted = true) instead of removing
@@ -186,6 +192,14 @@ func (m *ModuleAbstract[T]) GetHiddenModes() []string {
 	return m.HiddenModes
 }
 
+// GetKeyField returns the column used to address a single record ("" means the
+// default "id"). Exposed so the menu API can tell the frontend which field to
+// navigate/act on — a module keyed on uuid (e.g. papers) must not be linked to
+// by its numeric id.
+func (m *ModuleAbstract[T]) GetKeyField() string {
+	return m.KeyField
+}
+
 // GetCustomRoutes exposes the module's extra routes (satisfies CustomRouter).
 func (m *ModuleAbstract[T]) GetCustomRoutes() []CustomRoute {
 	return m.CustomRoutes
@@ -216,6 +230,7 @@ type ModuleInterface interface {
 	IsHidden() bool
 	IsReadOnly() bool
 	GetHiddenModes() []string
+	GetKeyField() string
 	List(w http.ResponseWriter, r *http.Request)
 	View(w http.ResponseWriter, r *http.Request)
 	Create(w http.ResponseWriter, r *http.Request)

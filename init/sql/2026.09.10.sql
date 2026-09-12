@@ -41,3 +41,47 @@ CREATE TABLE IF NOT EXISTS public.contact_messages (
     updated    timestamptz NOT NULL DEFAULT now(),
     access     integer     NOT NULL DEFAULT 0
 );
+
+-- deletion_requests: submissions from the public "request account deletion" page
+-- (login optional, so identity providers' data-deletion URL requirement is met).
+-- Requests are actioned by an admin through the Deletion Requests module.
+CREATE TABLE IF NOT EXISTS public.deletion_requests (
+    id         bigserial   PRIMARY KEY,
+    uuid       uuid        NOT NULL DEFAULT uuid_generate_v4(),
+    email      varchar(200) NOT NULL,
+    user_id    integer,
+    reason     varchar(200),
+    note       text,
+    handled    boolean     NOT NULL DEFAULT false,
+    created    timestamptz NOT NULL DEFAULT now(),
+    updated    timestamptz NOT NULL DEFAULT now(),
+    access     integer     NOT NULL DEFAULT 0
+);
+
+-- papers: renamed from its legacy table name `prooms` to match the module
+-- (papers.go now does Initialize("papers")). Renaming preserves existing
+-- games/players; without this, a fresh install would create an empty `papers`
+-- table while all existing data stays orphaned under the old name.
+ALTER TABLE IF EXISTS prooms RENAME TO papers;
+ALTER SEQUENCE IF EXISTS prooms_id_seq RENAME TO papers_id_seq;
+ALTER INDEX IF EXISTS prooms_created_idx RENAME TO papers_created_idx;
+
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'prooms_pkey') THEN
+        ALTER TABLE papers RENAME CONSTRAINT prooms_pkey TO papers_pkey;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'prooms_uuid_key') THEN
+        ALTER TABLE papers RENAME CONSTRAINT prooms_uuid_key TO papers_uuid_key;
+    END IF;
+END $$;
+
+-- papers.hash: the room's public identifier — a MurmurHash3 of its real uuid,
+-- computed once at creation (papers.go's setRoomHash hook) and stored, so every
+-- lookup is a direct indexed match instead of hashing every row per request.
+-- The engine would auto-add this column on startup from the fieldset anyway;
+-- this pins the type and adds the index it doesn't create on its own.
+-- Note: any room that already existed before this change has hash = NULL and
+-- is unreachable by view/edit/delete until recreated (rooms are ephemeral game
+-- sessions, so this is expected — delete stale test rows rather than backfill).
+ALTER TABLE IF EXISTS papers ADD COLUMN IF NOT EXISTS hash text;
+CREATE INDEX IF NOT EXISTS papers_hash_idx ON papers (hash);

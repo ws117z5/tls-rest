@@ -106,10 +106,10 @@ var (
 	// OAuth providers (optional). A provider whose ID/secret is empty is simply
 	// offered-but-unconfigured: attempting it redirects to /login?error=
 	// provider_unconfigured rather than failing startup.
-	FacebookID     = Env("FACEBOOK_ID", "")
-	FacebookSecret = Env("FACEBOOK_SECRET", "")
-	GithubID       = Env("GITHUB_ID", "")
-	GithubSecret   = Env("GITHUB_SECRET", "")
+	//FacebookID     = Env("FACEBOOK_ID", "")
+	//FacebookSecret = Env("FACEBOOK_SECRET", "")
+	GithubID     = Env("GITHUB_ID", "")
+	GithubSecret = Env("GITHUB_SECRET", "")
 
 	// GoogleURLBlank is the OOB (out-of-band) sentinel — not a host, so it is
 	// not host-dependent and stays a constant.

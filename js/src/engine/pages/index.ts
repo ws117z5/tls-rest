@@ -1,9 +1,9 @@
-export { default as LoginPage } from "./login/Login"
-export { default as Profile } from "./profile/Profile"
-export { default as Money } from "./money/Money"
+// Named exports that other modules import directly. Page COMPONENTS are NOT
+// listed here — they are discovered from the filesystem by convention (see
+// Config.loadBarrel): any PageComponent subclass exported from
+// pages/<dir>/<Name>.tsx (or a flat pages/<Name>.tsx) is picked up automatically.
+// A backend page with an endpoint just needs a matching component; a
+// pure-frontend page needs only isPage = true. Nothing is hand-registered.
 export { default as Home } from "./home/Home"
-export { default as QueryExecutor } from "./queryexecutor/QueryExecutor"
-export { TermsPage, PrivacyPage } from "./legal/Legal"
-export { ContactPage } from "./contact/Contact"
 export { default as Fieldset } from "./Fieldset"
 export { default as ErrorBoundary } from "./ErrorBoundary"

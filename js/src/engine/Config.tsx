@@ -13,12 +13,15 @@ export interface MenuItem {
     modes: string[];    // modules only
     icon?: string;      // menu icon URL
     isPage: boolean;    // pages: from barrel isPageComponent; modules: false
+    // Column a module's records are addressed by ("id" unless the module sets a
+    // different KeyField, e.g. papers uses "uuid"). Modules only.
+    keyField?: string;
     component?: any;     // pages only
     props?: Record<string, any>;
     extraRoutes?: Array<{ href: string; component: any }>;
 }
 
-type BarrelEntry = { component: any; title: string; isPage: boolean; submenu: string; requiresAuth: boolean; requiresAdmin: boolean };
+type BarrelEntry = { component: any; title: string; isPage: boolean; submenu: string; icon: string; requiresAuth: boolean; requiresAdmin: boolean };
 
 export default class Config {
     private static head: MenuItem[] = [];
@@ -37,8 +40,9 @@ export default class Config {
             await Auth.loadMenu();
             await AppConfig.load();
 
-            // 2) Barrel of page components, keyed by href (provides the React
-            //    component to render each page; the server only sends metadata).
+            // 2) Page components discovered from the filesystem, keyed by href
+            //    (the server only sends page metadata; this supplies the React
+            //    component to render each one).
             const barrel = await Config.loadBarrel();
 
             const covered = new Set<string>();
@@ -57,6 +61,7 @@ export default class Config {
                         modes: entry.modes || [],
                         icon: entry.icon,
                         isPage: false,
+                        keyField: entry.key_field || "id",
                     };
                 }
                 const p = entry as BackendPage;
@@ -107,6 +112,7 @@ export default class Config {
                     href,
                     path: "/pages/" + href,
                     modes: [],
+                    icon: b.icon,
                     isPage: true,
                     component: b.component,
                     props: b.component?.props || {},
@@ -128,31 +134,82 @@ export default class Config {
         return Config.initPromise;
     }
 
+    // loadBarrel discovers page components from the filesystem, keyed by the
+    // href each one declares. Any PageComponent subclass exported (default or
+    // named) from pages/<dir>/<Name>.tsx — or a flat pages/<Name>.tsx — is picked
+    // up automatically, mirroring how module view overrides are found
+    // (controllers/registry.ts). Adding a page never means editing a list here.
+    //   ./pages            engine pages (this file lives in engine/)
+    //   ../pages           app pages
+    //   ./components/pages  legacy app page components
     private static async loadBarrel(): Promise<Record<string, BarrelEntry>> {
-        const [appPages, enginePages] = await Promise.all([
-            import("../components/pages"),
-            import("@engine/pages"),
-        ]);
+        // pages/<Dir>/<PascalName>.tsx or a flat pages/<PascalName>.tsx — one
+        // level deep, so sub-components (containers/, controllers/, lowercase
+        // helpers) are ignored.
+        //
+        // mode:"lazy-once" keeps every page component (and its deps — three.js,
+        // opencv, graphviz, …) OUT of the entry chunk: they go into one shared
+        // chunk fetched here during init, exactly like the old dynamic-import
+        // barrel. Path and RegExp MUST be inline literals on
+        // `import.meta.webpackContext(` — webpack only static-analyses that exact
+        // call shape, not an aliased variable.
+        const contexts: __WebpackModuleApi.RequireContext[] = [
+            (import.meta as any).webpackContext("./pages", {
+                recursive: true,
+                mode: "lazy-once",
+                chunkName: "pages",
+                regExp: /^\.\/(?:[^/]+\/)?[A-Z][A-Za-z0-9]*\.tsx$/,
+            }),
+            (import.meta as any).webpackContext("../pages", {
+                recursive: true,
+                mode: "lazy-once",
+                chunkName: "pages",
+                regExp: /^\.\/(?:[^/]+\/)?[A-Z][A-Za-z0-9]*\.tsx$/,
+            }),
+            (import.meta as any).webpackContext("../components/pages", {
+                recursive: true,
+                mode: "lazy-once",
+                chunkName: "pages",
+                regExp: /^\.\/(?:[^/]+\/)?[A-Z][A-Za-z0-9]*\.tsx$/,
+            }),
+        ];
+
         const map: Record<string, BarrelEntry> = {};
-        const scan = (loaded: Record<string, any>) => {
-            Object.keys(loaded).forEach((key) => {
-                const Cls = (loaded as any)[key];
-                if (!Cls || !("guid" in Cls)) return;
-                const meta = new Cls({});
-                const href: string = meta.getHref();
-                if (map[href]) return;
-                map[href] = {
-                    component: Cls,
-                    title: meta.getTitle(),
-                    isPage: typeof meta.isPageComponent === "function" ? meta.isPageComponent() : true,
-                    submenu: typeof meta.getSubmenu === "function" ? meta.getSubmenu() : "",
-                    requiresAuth: typeof meta.requiresAuthentication === "function" ? meta.requiresAuthentication() : false,
-                    requiresAdmin: typeof meta.requiresAdministration === "function" ? meta.requiresAdministration() : false,
-                };
-            });
-        };
-        scan(appPages as Record<string, any>);
-        scan(enginePages as Record<string, any>);
+        for (const ctx of contexts) {
+            for (const key of ctx.keys()) {
+                let mod: Record<string, any>;
+                try {
+                    mod = (await ctx(key)) as Record<string, any>;
+                } catch {
+                    continue; // a module that throws on import is not a usable page
+                }
+                Object.keys(mod).forEach((exportName) => {
+                    const Cls = mod[exportName];
+                    // PageComponent subclasses carry the inherited static guid().
+                    if (typeof Cls !== "function" || !("guid" in Cls)) return;
+                    let inst: any;
+                    try {
+                        inst = new Cls({});
+                    } catch {
+                        return;
+                    }
+                    if (typeof inst.getHref !== "function") return;
+                    const href: string = inst.getHref();
+                    // "" is valid — it is the home page's href. Reject only a
+                    // non-string or a duplicate.
+                    if (typeof href !== "string" || map[href] !== undefined) return;
+                    map[href] = {
+                        component: Cls,
+                        title: typeof inst.getTitle === "function" ? inst.getTitle() : href,
+                        isPage: typeof inst.isPageComponent === "function" ? inst.isPageComponent() : true,
+                        submenu: typeof inst.getSubmenu === "function" ? inst.getSubmenu() : "",
+                        icon: typeof inst.getIcon === "function" ? inst.getIcon() : "",
+                        requiresAuth: typeof inst.requiresAuthentication === "function" ? inst.requiresAuthentication() : false,
+                        requiresAdmin: typeof inst.requiresAdministration === "function" ? inst.requiresAdministration() : false,
+                    };
+                });
+            }
+        }
         return map;
     }
 

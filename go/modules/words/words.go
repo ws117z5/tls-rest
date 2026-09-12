@@ -75,6 +75,7 @@ func NewWords() *Words {
 		ModuleAbstract: &ModuleAbstract[interface{}]{
 			ID:   "words",
 			Name: "Words",
+			Icon: "words",
 
 			// Item 1 — per-user data: a user only ever lists their own words.
 			OwnerScoped: true,

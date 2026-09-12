@@ -10,6 +10,7 @@ import {
 import { FormLayoutBridge, WithLayout } from "@engine/fields/FormLayout";
 import { Fieldset } from "@engine/pages";
 import Auth from "@engine/controllers/auth";
+import Config from "@engine/Config";
 
 // The generic page for any backend module. Given a module name, its API
 // endpoint, and a mode, it loads the right data and renders the fieldset —
@@ -54,6 +55,10 @@ const ModulePage: React.FC<ModulePageProps> = ({
 }) => {
     const base = "/" + endpoint;
     const id = params?.id;
+    // The column this module's records are addressed by ("id" unless the module
+    // sets a different KeyField, e.g. papers uses "uuid") — a row must be linked
+    // to/deleted by this field, never a hardcoded .id.
+    const keyField = Config.getModule(module)?.keyField || "id";
 
     const [data, setData] = useState<any[]>([]);
     const [record, setRecord] = useState<any>(null);
@@ -151,25 +156,25 @@ const ModulePage: React.FC<ModulePageProps> = ({
     const remove = useCallback(
         async (row: any) => {
             try {
-                await axios.delete(`${base}/${row.id}`);
+                await axios.delete(`${base}/${row[keyField]}`);
                 load();
             } catch (e) {
                 console.error("Delete failed:", e);
             }
         },
-        [base, load]
+        [base, keyField, load]
     );
 
     const bulkRemove = useCallback(
         async (rows: any[]) => {
             try {
-                await Promise.all(rows.map((row) => axios.delete(`${base}/${row.id}`)));
+                await Promise.all(rows.map((row) => axios.delete(`${base}/${row[keyField]}`)));
             } catch (e) {
                 console.error("Bulk delete failed:", e);
             }
             load(); // single reload after all deletes
         },
-        [base, load]
+        [base, keyField, load]
     );
 
     const submit = useCallback(
@@ -177,8 +182,9 @@ const ModulePage: React.FC<ModulePageProps> = ({
             try {
                 if (mode === "create") {
                     const res = await axios.post(base, form);
-                    // Open the newly-created record's view (by uuid key or id).
-                    const key = res?.data?.uuid ?? res?.data?.id;
+                    // Open the newly-created record's view, addressed by this
+                    // module's key field (uuid for papers, id otherwise).
+                    const key = res?.data?.[keyField];
                     if (key != null && key !== "") {
                         go(`${base}/${key}`);
                         return;
@@ -191,7 +197,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
                 console.error("Save failed:", e);
             }
         },
-        [base, mode, id, go]
+        [base, mode, id, keyField, go]
     );
 
     // Filter handlers, handed to the filter bar (custom or default).
@@ -368,9 +374,9 @@ const ModulePage: React.FC<ModulePageProps> = ({
                             data={data}
                             sortable
                             showActions
-                            onView={can("view") ? (row: any) => go(`${base}/${row.id}`) : undefined}
-                            onRowDoubleClick={can("view") ? (row: any) => go(`${base}/${row.id}`) : undefined}
-                            onEdit={can("edit") ? (row: any) => go(`${base}/${row.id}/edit`) : undefined}
+                            onView={can("view") ? (row: any) => go(`${base}/${row[keyField]}`) : undefined}
+                            onRowDoubleClick={can("view") ? (row: any) => go(`${base}/${row[keyField]}`) : undefined}
+                            onEdit={can("edit") ? (row: any) => go(`${base}/${row[keyField]}/edit`) : undefined}
                             onDelete={can("delete") ? remove : undefined}
                             onBulkDelete={can("delete") ? bulkRemove : undefined}
                             pagination={

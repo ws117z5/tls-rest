@@ -13,6 +13,7 @@ export default class ArrayIterator extends PageComponent<{}, ArrayIteratorState>
   protected isPage = true;
   protected href = "arrayiter";
   protected title = "Array Iterator";
+  protected icon = "array-iterator";
   protected submenu = "tools";
 
   constructor(props: {}) {

@@ -22,6 +22,14 @@
       "label": "stamp version",
       "type": "shell",
       "command": "echo \"APP_VERSION=$(git rev-parse --short=8 HEAD)\" > \"${workspaceFolder}/.vscode/version.env\"",
+      "presentation": {
+          "reveal": "never",
+          "revealProblems": "onProblem",
+          "focus": false,
+          "panel": "shared",
+          "showReuseMessage": false,
+          "close": true
+      },
       "problemMatcher": []
     }
   ]

@@ -24,6 +24,7 @@ type UserGroup struct {
 var Module = &ModuleAbstract[interface{}]{
 	ID:      "user_groups",
 	Name:    "User Groups",
+	Icon:    "user-groups",
 	Submenu: "engine",
 	Fields: []Field{
 		NewField("name", TYPE_STRING, true).

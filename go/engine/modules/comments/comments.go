@@ -36,6 +36,7 @@ const selfModule = "comments"
 var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "comments",
 	Name:    "Comments",
+	Icon:    "comments",
 	Submenu: "engine",
 	Fields: []field.Field{
 		field.NewField("module_id", field.TYPE_STRING, true).WithLabel("Module"),

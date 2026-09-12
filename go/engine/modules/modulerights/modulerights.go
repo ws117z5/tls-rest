@@ -175,6 +175,7 @@ var GroupRightsModule = &ModuleAbstract[interface{}]{
 	ID:              "user_group_rights",
 	RightsAffecting: true,
 	Name:            "Group Rights",
+	Icon:            "group-rights",
 	Submenu:         "engine",
 	Fields: []Field{
 		NewField("group_id", TYPE_INT, true).
@@ -200,6 +201,7 @@ var UserRightsModule = &ModuleAbstract[interface{}]{
 	ID:              "user_rights",
 	RightsAffecting: true,
 	Name:            "User Rights",
+	Icon:            "user-rights",
 	Submenu:         "engine",
 	Fields: []Field{
 		NewField("user_id", TYPE_INT, true).

@@ -55,7 +55,7 @@ func List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db, _ := pgdb.GetInstance()
-	rows, err := db.GetAll("SELECT " + proomColumns + " FROM prooms")
+	rows, err := db.GetAll("SELECT " + proomColumns + " FROM papers")
 	if err != nil {
 		log.Println(err)
 	}
@@ -93,7 +93,7 @@ func CreateRoom(w http.ResponseWriter, r *http.Request) {
 	}
 
 	db, _ := pgdb.GetInstance()
-	_, err = db.InsertRow("prooms", map[string]interface{}{
+	_, err = db.InsertRow("papers", map[string]interface{}{
 		"uuid":       pRoom.Uuid,
 		"name":       pRoom.Name,
 		"password":   pRoom.Password,
@@ -175,7 +175,7 @@ func AddRoomUser(w http.ResponseWriter, r *http.Request) {
 	db, _ := pgdb.GetInstance()
 	pRoom := new(Proom)
 
-	prow, err := db.GetOne("SELECT "+proomColumns+" FROM proom WHERE uuid = $1", roomId)
+	prow, err := db.GetOne("SELECT "+proomColumns+" FROM papers WHERE uuid = $1", roomId)
 	if err != nil {
 		panic(err)
 	}
@@ -216,7 +216,7 @@ func AddRoomUser(w http.ResponseWriter, r *http.Request) {
 
 	pRoom.Users = string(jsonUsers)
 
-	_, err = db.InsertRow("prooms", map[string]interface{}{
+	_, err = db.InsertRow("papers", map[string]interface{}{
 		"uuid":       pRoom.Uuid,
 		"name":       pRoom.Name,
 		"password":   pRoom.Password,
@@ -241,7 +241,7 @@ func ViewRoomUsers(w http.ResponseWriter, r *http.Request) {
 	db, _ := pgdb.GetInstance()
 	pRoom := new(Proom)
 
-	prow, err := db.GetOne("SELECT "+proomColumns+" FROM proom WHERE uuid = $1", roomId)
+	prow, err := db.GetOne("SELECT "+proomColumns+" FROM papers WHERE uuid = $1", roomId)
 	if err != nil {
 		panic(err)
 	}

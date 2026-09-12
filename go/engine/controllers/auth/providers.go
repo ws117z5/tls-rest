@@ -60,6 +60,7 @@ var providers = Providers{
 		secret:   func() string { return config.GithubSecret },
 		fetch:    fetchGithub,
 	},
+	/* fuck facebook, they ask me to fill a business account and waith for 14 days for approval
 	"facebook": {
 		name:     "facebook",
 		segment:  "Facebook",
@@ -68,7 +69,7 @@ var providers = Providers{
 		id:       func() string { return config.FacebookID },
 		secret:   func() string { return config.FacebookSecret },
 		fetch:    fetchFacebook,
-	},
+	}, */
 	"vk": {
 		name:     "vk",
 		segment:  "Vk",

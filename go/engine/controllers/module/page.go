@@ -71,7 +71,12 @@ type PageAbstract struct {
 	RequiresAdmin bool
 	Order         int    // menu ordering (lower first)
 	Submenu       string // groups this page under a named submenu; empty = top level
-	Icon          string // menu icon (URL, e.g. /image/<uuid> or a static path)
+	// Icon shown next to this page's menu entry: either a bare name
+	// ("home", "user-rights", …) matching an `.icon-<name>` class in menu.css —
+	// a cell of the /img/icons_bw.png sprite sheet — or an image URL (e.g.
+	// "/image/<uuid>" or a static path); the frontend (Menu.tsx) tells them
+	// apart by whether the value looks like a path.
+	Icon string
 
 	// Load returns the single record for this page (given the session, so a page
 	// can be "the current user", "this org", ...). Save persists an update.

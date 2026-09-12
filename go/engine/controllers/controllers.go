@@ -215,6 +215,10 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 		Endpoint    string   `json:"endpoint"`
 		Modes       []string `json:"modes"`
 		Icon        string   `json:"icon,omitempty"`
+		// KeyField is the column records are addressed by ("" -> "id"). A module
+		// keyed on uuid (e.g. papers) must be linked to by uuid, not the row's
+		// numeric id, so the frontend needs to know which one to use.
+		KeyField string `json:"key_field,omitempty"`
 	}
 	menuByID := map[string]module.ModuleMenuMeta{}
 	for _, m := range module.RegisteredModuleMenu() {
@@ -237,8 +241,10 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 		submenu := ""
 		icon := ""
 		readOnly := false
+		keyField := ""
 		if m, ok := module.RegisteredModules[id]; ok {
 			readOnly = m.IsReadOnly() // reliable, independent of the menu writer
+			keyField = m.GetKeyField()
 		}
 		if meta, ok := menuByID[id]; ok {
 			if meta.Description != "" {
@@ -264,6 +270,7 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 			Endpoint:    "/" + id,
 			Modes:       modeNames,
 			Icon:        icon,
+			KeyField:    keyField,
 		})
 	}
 

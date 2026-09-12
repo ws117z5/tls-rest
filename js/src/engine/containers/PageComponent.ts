@@ -33,6 +33,11 @@ S = PageComponentState
   // Menu submenu title; empty = top level. For pure-frontend pages this is the
   // grouping source; backend-registered pages are grouped by the server value.
   protected submenu: string = "";
+  // Menu icon: a bare name ("home", "user-rights", …) matching a `.icon-<name>`
+  // class in menu.css — a cell of the /img/icons_bw.png sprite sheet — or an
+  // image URL. Same convention as the backend ModuleAbstract/PageAbstract Icon
+  // field (see Menu.tsx's label()).
+  protected icon: string = "";
   // Frontend-only pages have an href for routing/menu but no backend endpoint.
   // The base data fetch is therefore opt-in: a page that actually has a
   // GET /{href} -> {Data, Fieldset} endpoint sets loadsData = true. Off by
@@ -92,6 +97,10 @@ S = PageComponentState
 
   public getSubmenu(): string {
     return this.submenu;
+  }
+
+  public getIcon(): string {
+    return this.icon;
   }
 
   public getUUID(): string {

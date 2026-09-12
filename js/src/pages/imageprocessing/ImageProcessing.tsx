@@ -7,6 +7,7 @@ import ImageProcessing from "./containers/ImageProcessing";
 class ImageProcessingPage extends PageComponent {
     protected href = 'imageproc';
     protected title = 'ImageProcessing';
+    protected icon = "image-processing";
     protected submenu = "tools";
     protected isPage = true;
 

@@ -179,6 +179,13 @@ func (v viewer) fieldVisibleInSchema(f Field) bool {
 // adminOnlyData (e.g. uuid) which are withheld from non-admins entirely; other
 // non-system access-gated fields are withheld from users below the required level.
 func (v viewer) fieldReadableInData(f Field) bool {
+	// A password field is write-only: once stored it is never returned to any
+	// client, admin included — the same convention as a hashed user password.
+	// (Excluding it here drops the column from the SELECT entirely, so it never
+	// leaves the DB layer for a read request.)
+	if f.Type == TYPE_PASSWORD {
+		return false
+	}
 	if v.isAdmin {
 		return true
 	}

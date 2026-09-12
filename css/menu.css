@@ -12,11 +12,90 @@
   padding: 0.35rem 1rem;
 }
 
+/* Bootstrap's default toggler icon is a dark SVG — invisible against this
+   theme's near-black bezel, so it's redrawn in the same phosphor green. */
+.main-menu .navbar-toggler {
+  border-color: rgba(111, 242, 160, 0.35);
+}
+
+.main-menu .navbar-toggler-icon {
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba(111, 242, 160, 0.9)' stroke-width='2' stroke-linecap='round' stroke-miterlimit='10' d='M4 7h22M4 15h22M4 23h22'/%3e%3c/svg%3e");
+}
+
 .main-menu > a {
   padding-right: 5px;
 }
 
+/* Menu icons come from a single sprite sheet (/img/icons_bw.png — a 6x6 grid
+   of 200x200 white-on-transparent glyphs, 1200x1200 total; the last row is
+   unused). Rather than painting the white pixels as-is, the sheet is used as
+   a CSS mask so the icon is filled with `currentColor` — it then tracks the
+   surrounding link's color (including :hover/.active) for free, matching the
+   phosphor-green theme. `.menu-icon-sprite` carries the shared size/mask
+   setup; one `.icon-<name>` modifier per glyph (below) sets only its
+   mask-position — both classes go on the same element (Menu.tsx's label()).
+   Pixel math at the sheet's actual cell size: each icon is 200x200, so
+   mask-size is 1200px 1200px (6 * 200) and every mask-position below is an
+   exact multiple of -200px (col * -200px, row * -200px) — no percentages, no
+   scaled-down units. `zoom` then shrinks the whole 200x200 box down to a
+   normal 16px nav icon; unlike `transform: scale()`, `zoom` also shrinks the
+   element's layout box, so it doesn't need a wrapper to avoid overlapping
+   neighboring nav items. */
+.main-menu .menu-icon-sprite {
+  display: inline-block;
+  width: 200px;
+  height: 200px;
+  zoom: 0.08;
+  margin-right: 6px;
+  vertical-align: middle;
+  background-color: currentColor;
+  -webkit-mask-image: url("/img/icons_bw.png");
+  mask-image: url("/img/icons_bw.png");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 1200px 1200px;
+  mask-size: 1200px 1200px;
+}
+
+/* Per-icon cell position, row by row (col * -200px, row * -200px). */
+.icon-user-rights        { mask-position: 0px     0px;     -webkit-mask-position: 0px     0px; }
+.icon-profile             { mask-position: -200px  0px;     -webkit-mask-position: -200px  0px; }
+.icon-login               { mask-position: -400px  0px;     -webkit-mask-position: -400px  0px; }
+.icon-home                { mask-position: -600px  0px;     -webkit-mask-position: -600px  0px; }
+.icon-access-control      { mask-position: -800px  0px;     -webkit-mask-position: -800px  0px; }
+.icon-user-groups         { mask-position: -1000px 0px;     -webkit-mask-position: -1000px 0px; }
+
+.icon-posts               { mask-position: 0px     -200px;  -webkit-mask-position: 0px     -200px; }
+.icon-logout              { mask-position: -200px  -200px;  -webkit-mask-position: -200px  -200px; }
+.icon-log                 { mask-position: -400px  -200px;  -webkit-mask-position: -400px  -200px; }
+.icon-access-log          { mask-position: -600px  -200px;  -webkit-mask-position: -600px  -200px; }
+.icon-console             { mask-position: -800px  -200px;  -webkit-mask-position: -800px  -200px; }
+.icon-users               { mask-position: -1000px -200px;  -webkit-mask-position: -1000px -200px; }
+
+.icon-words               { mask-position: 0px     -400px;  -webkit-mask-position: 0px     -400px; }
+.icon-statistics          { mask-position: -200px  -400px;  -webkit-mask-position: -200px  -400px; }
+.icon-messages            { mask-position: -400px  -400px;  -webkit-mask-position: -400px  -400px; }
+.icon-user-delete-request { mask-position: -600px  -400px;  -webkit-mask-position: -600px  -400px; }
+.icon-terms               { mask-position: -800px  -400px;  -webkit-mask-position: -800px  -400px; }
+.icon-messages-sm         { mask-position: -1000px -400px;  -webkit-mask-position: -1000px -400px; }
+
+.icon-images              { mask-position: 0px     -600px;  -webkit-mask-position: 0px     -600px; }
+.icon-group-rights        { mask-position: -200px  -600px;  -webkit-mask-position: -200px  -600px; }
+.icon-config              { mask-position: -400px  -600px;  -webkit-mask-position: -400px  -600px; }
+.icon-comments            { mask-position: -600px  -600px;  -webkit-mask-position: -600px  -600px; }
+.icon-privacy             { mask-position: -800px  -600px;  -webkit-mask-position: -800px  -600px; }
+.icon-graphs              { mask-position: -1000px -600px;  -webkit-mask-position: -1000px -600px; }
+
+.icon-image-processing    { mask-position: 0px     -800px;  -webkit-mask-position: 0px     -800px; }
+.icon-opencv              { mask-position: -200px  -800px;  -webkit-mask-position: -200px  -800px; }
+.icon-net-mapper          { mask-position: -400px  -800px;  -webkit-mask-position: -400px  -800px; }
+/* Unlabeled in the sheet (a "[...]" bracket glyph) — wired to Array Iterator,
+   the one page whose icon would otherwise still be missing. */
+.icon-array-iterator      { mask-position: -600px  -800px;  -webkit-mask-position: -600px  -800px; }
+
 .main-menu .nav-link {
+  display: flex;
+  align-items: center;
   color: #6ff2a0 !important;
   font-family: "Space Grotesk", system-ui, sans-serif;
   font-size: 0.8rem;
@@ -52,6 +131,8 @@
 }
 
 .main-menu .dropdown-item {
+  display: flex;
+  align-items: center;
   color: #6ff2a0;
   font-family: "Space Grotesk", system-ui, sans-serif;
   font-size: 0.8rem;

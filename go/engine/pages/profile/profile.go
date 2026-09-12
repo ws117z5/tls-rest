@@ -18,6 +18,7 @@ import (
 var Page = &module.PageAbstract{
 	ID:           "profile",
 	Name:         "Profile",
+	Icon:         "profile",
 	Endpoint:     "/api/profile",
 	Editable:     true,
 	RequiresAuth: true,

@@ -14,6 +14,7 @@ class GraphPage extends PageComponent<{}, {}> {
   protected href = "graph";
   protected isPage = true;
   protected title = "Graphs";
+  protected icon = "graphs";
   protected submenu = "tools";
 
   constructor(props: {}) {

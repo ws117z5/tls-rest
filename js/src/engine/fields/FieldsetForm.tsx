@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import { Field, BaseFieldProps } from './Field';
 import { useFieldset, MODES, isImmutableField } from './FieldsetProvider';
+import '@css/fieldset.css';
 
 // Form data interface
 interface FormData {

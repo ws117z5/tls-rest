@@ -3,6 +3,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="google-signin-client_id" content="{{.Body.GoogleID}}">
     <script type="text/javascript">
         window.__AUTH__ = {{ if .Body.Authenticated }}true{{ else }}false{{ end }};

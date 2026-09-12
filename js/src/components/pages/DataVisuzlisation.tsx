@@ -109,6 +109,7 @@ class DataVisualisation extends PageComponent {
   protected href = "dataviz";
   protected isPage = true;
   protected title = "Data Visualisation";
+  protected icon = "statistics";
 
   render() {
     return (

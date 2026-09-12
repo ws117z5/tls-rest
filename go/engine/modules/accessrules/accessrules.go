@@ -71,6 +71,7 @@ func NewAccessRule() *AccessRule {
 		ModuleAbstract: &ModuleAbstract[interface{}]{
 			ID:                   "access_rule",
 			Name:                 "Access Rules",
+			Icon:                 "access-control",
 			Submenu:              "engine",
 			Rights:               make(map[int]int),
 			DefaultPermission:    PERMISSION_DENY, // admin-only

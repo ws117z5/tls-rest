@@ -230,6 +230,7 @@ func queryOr(r *http.Request, key, fallback string) string {
 var Page = &module.PageAbstract{
 	ID:            "netmapper",
 	Name:          "Network Mapper",
+	Icon:          "net-mapper",
 	Submenu:       "tools",
 	RequiresAuth:  true,
 	RequiresAdmin: true,

@@ -45,6 +45,7 @@ func Run(w http.ResponseWriter, r *http.Request) {
 var Page = &module.PageAbstract{
 	ID:            "console",
 	Name:          "Console",
+	Icon:          "console",
 	Submenu:       "engine",
 	RequiresAuth:  true,
 	RequiresAdmin: true,

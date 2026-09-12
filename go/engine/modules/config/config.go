@@ -16,6 +16,7 @@ import (
 var Module = &ModuleAbstract[interface{}]{
 	ID:              "config",
 	Name:            "Config",
+	Icon:            "config",
 	Submenu:         "engine",
 	ConfigAffecting: true, // writes invalidate cached session config
 	Fields: []Field{

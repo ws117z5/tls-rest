@@ -212,6 +212,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 var Page = &module.PageAbstract{
 	ID:   "login",
 	Name: "Login",
+	Icon: "login",
 	Routes: []module.PageRoute{
 		{Path: "/api/login", Methods: []string{"POST"}, Handler: Login},
 		{Path: "/api/auth/oauth", Methods: []string{"POST"}, Handler: OAuth},

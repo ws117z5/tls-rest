@@ -73,4 +73,5 @@ export type Control =
   | { t: "pong"; ts: number }
   | { t: "thrStart"; bytes: number }
   | { t: "thrDone"; bytes: number; ms: number }
-  | { t: "trackMap"; streamId: string; source: string };
+  | { t: "trackMap"; streamId: string; source: string }
+  | { t: "chat"; text: string; ts: number };

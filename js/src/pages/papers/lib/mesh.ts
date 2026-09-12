@@ -22,6 +22,11 @@ interface PeerCtx {
   senders: Map<string, RTCRtpSender[]>;
   streamToSource: Map<string, string>;
   pendingTracks: Map<string, { stream: MediaStream; track: MediaStreamTrack }[]>;
+  // ICE candidates that arrived before the remote description was set (their
+  // own signal POST outran the offer's, or the two raced at the server).
+  // addIceCandidate() would reject before a remote description exists, so
+  // these are held and flushed right after setRemoteDescription succeeds.
+  pendingCandidates: RTCIceCandidateInit[];
 }
 
 type ControlHandler = (peerId: string, msg: Control) => void;
@@ -63,6 +68,7 @@ export class MeshManager {
       senders: new Map(),
       streamToSource: new Map(),
       pendingTracks: new Map(),
+      pendingCandidates: [],
     };
     this.peers.set(peerId, ctx);
 
@@ -77,7 +83,7 @@ export class MeshManager {
         await pc.setLocalDescription();
         this.sink.signal(peerId, pc.localDescription!);
       } catch (e) {
-        console.error("negotiation", e);
+        console.error("[mesh] negotiation failed", peerId, e);
       } finally {
         ctx!.makingOffer = false;
       }
@@ -85,7 +91,19 @@ export class MeshManager {
     pc.ontrack = (ev) => this.handleTrack(ctx!, ev);
     pc.onconnectionstatechange = () => {
       if (["failed", "closed", "disconnected"].includes(pc.connectionState)) {
+        // Tell the app right away so it can drop the last video frame instead
+        // of leaving it frozen on screen.
         this.onClosed(peerId);
+      }
+      if (pc.connectionState === "failed") {
+        console.error(`[mesh] connection to ${peerId} failed (no network path found)`);
+      }
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+        // Terminal (unlike "disconnected", which can self-recover): tear this
+        // peer down so a future connect() starts a fresh RTCPeerConnection
+        // instead of reusing a dead one forever.
+        try { pc.close(); } catch { /* already closed */ }
+        this.peers.delete(peerId);
       }
     };
     return ctx;
@@ -97,6 +115,13 @@ export class MeshManager {
     const pc = ctx.pc;
     try {
       if (data && data.candidate !== undefined && !("type" in data)) {
+        if (!pc.remoteDescription) {
+          // Arrived before the offer/answer it followed — hold it rather than
+          // let addIceCandidate() reject it outright (dropped candidates can
+          // be the whole difference between connecting and not).
+          if (data.candidate) ctx.pendingCandidates.push(data.candidate);
+          return;
+        }
         try {
           await pc.addIceCandidate(data.candidate ?? undefined);
         } catch (e) {
@@ -109,12 +134,23 @@ export class MeshManager {
       ctx.ignoreOffer = !ctx.polite && collision;
       if (ctx.ignoreOffer) return;
       await pc.setRemoteDescription(desc);
+      if (ctx.pendingCandidates.length > 0) {
+        const pending = ctx.pendingCandidates;
+        ctx.pendingCandidates = [];
+        for (const c of pending) {
+          try {
+            await pc.addIceCandidate(c);
+          } catch (e) {
+            console.warn(`[mesh] buffered ICE candidate rejected <- ${from}`, e);
+          }
+        }
+      }
       if (desc.type === "offer") {
         await pc.setLocalDescription();
         this.sink.signal(from, pc.localDescription!);
       }
     } catch (e) {
-      console.error("handleSignal", e);
+      console.error(`[mesh] handleSignal <- ${from} failed`, e);
     }
   }
 

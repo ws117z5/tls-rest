@@ -20,6 +20,9 @@ export interface BackendModule {
     endpoint: string;    // e.g. "/posts"
     modes: string[];     // subset of ["list","view","create","edit","delete"]
     icon?: string;       // menu icon URL (e.g. /image/<uuid>)
+    // Column records are addressed by; absent/"" means "id". A module keyed on
+    // uuid (e.g. papers) must be linked to by uuid, not a row's numeric id.
+    key_field?: string;
 }
 
 // A page entry from the menu.

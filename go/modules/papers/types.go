@@ -34,7 +34,7 @@ type Puser struct {
 }
 
 type Filter struct {
-	tableName struct{} `sql:"prooms" urlstruct:"b"`
+	tableName struct{} `sql:"papers" urlstruct:"b"`
 
 	urlstruct.Pager
 }
