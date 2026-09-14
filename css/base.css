@@ -265,7 +265,7 @@ a {
 .navbar-brand { display: inline-block; padding-top: 0.3125rem; padding-bottom: 0.3125rem; margin-right: 1rem; font-size: 1.25rem; white-space: nowrap; color: #fff; }
 .navbar-collapse { flex-basis: 100%; flex-grow: 1; align-items: center; }
 .collapse:not(.show) { display: none; }
-.navbar-nav { display: flex; flex-direction: column; padding-left: 0; margin-bottom: 0; list-style: none; }
+.navbar-nav { display: flex; flex-direction: column; padding-left: 0; margin: 0; list-style: none; }
 .nav-link { display: block; padding: 0.5rem 1rem; color: rgba(255, 255, 255, 0.5); }
 .nav-link:hover, .nav-link:focus { color: rgba(255, 255, 255, 0.75); }
 .nav-link.active { color: #fff; }

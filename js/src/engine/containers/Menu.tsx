@@ -119,10 +119,11 @@ class Menu extends Component<{}, MenuState> {
     const submenus = Config.getSubmenus();
     const authed = Auth.isAuthenticated();
     const avatar = Auth.getAvatar();
-    // Profile gets its own slot on the right (showing the user's name instead
-    // of "Profile"), so it's pulled out of the regular left-aligned items.
+    // Profile and login/logout get their own slots on the right, after the
+    // language switcher, so they're pulled out of the left-aligned items.
     const profileItem = head.find((i) => i.key === "profile");
-    const leftHead = head.filter((i) => i.key !== "profile");
+    const loginItem = head.find((i) => i.key === "login");
+    const leftHead = head.filter((i) => i.key !== "profile" && i.key !== "login");
 
     const renderHeadItem = (item: MenuItem, idx: number): React.ReactNode => {
       // The login item becomes a Logout button for authenticated users.
@@ -264,6 +265,8 @@ class Menu extends Component<{}, MenuState> {
                   </RouterNavLink>
                 </li>
               )}
+
+              {loginItem && renderHeadItem(loginItem, -1)}
             </ul>
           </div>
         </nav>
