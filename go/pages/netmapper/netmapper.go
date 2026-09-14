@@ -223,10 +223,7 @@ func queryOr(r *http.Request, key, fallback string) string {
 	return fallback
 }
 
-// Page self-registers the admin-only scan endpoint through the shared
-// route-registrar seam. RequiresAdmin documents intent; the actual enforcement
-// for the custom route is adminGuard below (PageAbstract only auto-enforces
-// RequiresAdmin on its fieldset GET/PUT handlers, which this page doesn't use).
+// Page self-registers the admin-only scan endpoint; enforcement is via adminGuard below, not RequiresAdmin (which only covers fieldset GET/PUT).
 var Page = &module.PageAbstract{
 	ID:            "netmapper",
 	Name:          "Network Mapper",

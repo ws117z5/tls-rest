@@ -23,9 +23,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Module is the admin-only CRUD view over the raw translations table. The
-// table itself is created from this fieldset by the engine (init/sql pins the
-// types and adds the (key, locale) uniqueness).
+// Translation module, used in every t("string").
 var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "translations",
 	Name:    "Translations",

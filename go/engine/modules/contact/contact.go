@@ -18,8 +18,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Module is the admin-only CRUD view over stored contact submissions. The table
-// is auto-created from this fieldset by the engine (init/sql pins the types).
+// Contact module, backs the site's public contact form.
 var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "contact_messages",
 	Name:    "Contact Messages",

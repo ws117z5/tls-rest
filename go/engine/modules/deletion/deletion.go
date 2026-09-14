@@ -21,7 +21,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Module is the admin-only CRUD view over stored deletion requests.
+// Deletion module, backs the public account-deletion request page.
 var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "deletion_requests",
 	Name:    "Deletion Requests",

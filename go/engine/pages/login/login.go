@@ -1,8 +1,6 @@
-// Package login backs the email/password authentication endpoints for the login
-// Page: /api/login, /api/logout, /api/register. OAuth sign-in is handled
-// separately by lib/auth (the /users/Auth/{provider} flow). All three establish
-// or clear a session through auth.Login / auth.Logout — the single place that
-// sets UserID on a session.
+// Package login backs the email/password auth endpoints: /api/login,
+// /api/logout, /api/register. OAuth (/users/Auth/{provider}) is handled
+// separately by lib/auth.
 package login
 
 import (
@@ -25,10 +23,7 @@ type credentials struct {
 	UserName  string `json:"user_name"`
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
-	// External marks a non-web (mobile) client. When true the response also
-	// carries a bearer token the client sends as `Authorization: Bearer <token>`
-	// (web clients ignore it and use the cookie session as before).
-	External bool `json:"external"`
+	External  bool   `json:"external"` // true = mobile client, response includes a bearer token
 }
 
 // writeAuthResult returns the standard {ok,user} body and, for external clients,
@@ -79,7 +74,6 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		functions.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	// Uniform message so we don't reveal whether the email exists.
 	if row == nil {
 		functions.JSONError(w, http.StatusUnauthorized, "invalid email or password")
 		return
@@ -111,15 +105,12 @@ type oauthCredentials struct {
 	Provider    string `json:"provider"`     // "google" | "github" | "facebook" | "vk"
 	AccessToken string `json:"access_token"` // provider token from the device
 	Email       string `json:"email"`        // optional; used when the provider returns none
-	// Same flag as password login. External clients (mobile) get a bearer token;
-	// a web caller can omit it and rely on the cookie the flow also sets.
-	External bool `json:"external"`
+	External    bool   `json:"external"`     // true = mobile client, response includes a bearer token
 }
 
-// OAuth handles POST /api/auth/oauth {provider, access_token, email?, external?}.
-// It verifies the provider token (reusing the same provider registry as the web
-// /users/Auth/{provider} callback), finds/creates the local user, establishes a
-// session, and — for external clients — returns a bearer token.
+// OAuth handles POST /api/auth/oauth {provider, access_token, email?,
+// external?}: verifies the provider token, finds/creates the local user,
+// establishes a session, and (for external clients) returns a bearer token.
 func OAuth(w http.ResponseWriter, r *http.Request) {
 	var c oauthCredentials
 	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
@@ -133,7 +124,6 @@ func OAuth(w http.ResponseWriter, r *http.Request) {
 
 	id, username, err := auth.ProviderLoginWithToken(r.Context(), r, c.Provider, c.AccessToken, c.Email)
 	if err != nil {
-		// Uniform message; the detail is in the server logs.
 		functions.JSONError(w, http.StatusUnauthorized, "oauth authentication failed")
 		return
 	}
@@ -173,8 +163,6 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// user_name / first_name are NOT NULL in the schema; default them from the
-	// email local-part when not supplied.
 	local := c.Email
 	if i := strings.IndexByte(local, '@'); i > 0 {
 		local = local[:i]
@@ -205,10 +193,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 	writeAuthResult(w, int(id), userName, c.External)
 }
 
-// Page self-registers the auth endpoints through the shared route-registrar seam
-// so route.go no longer hardcodes them. Login is a custom (non-fieldset) page:
-// it owns its handlers rather than a fieldset. OAuth (/users/Auth/...) is handled
-// separately by lib/auth.
+// Page registers the login/auth HTTP endpoints.
 var Page = &module.PageAbstract{
 	ID:   "login",
 	Name: "Login",

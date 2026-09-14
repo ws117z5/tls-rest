@@ -29,12 +29,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Module is the admin-only CRUD view over the raw messages table. Its ID
-// (and so its URL/menu entry) is deliberately "message_log", not "messages" —
-// the latter is the user-facing inbox page (engine/pages/messages), a plain
-// frontend route the backend has no module named after; reusing the name here
-// would make Config.tsx treat this admin grid as "covering" that route for
-// admins, shadowing the real inbox page for them.
+// Messages module, backs ConversationList/MessageThread; ID avoids clashing with the inbox page name.
 var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "message_log",
 	Name:    "Message Log",

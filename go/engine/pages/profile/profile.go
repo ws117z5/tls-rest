@@ -12,9 +12,7 @@ import (
 	"tls-rest/go/engine/controllers/module"
 )
 
-// Page defines its own fields, independent of the admin-only users module, so a
-// normal user can view/edit their own basic details. Privilege fields
-// (user_group / access / system columns) are deliberately excluded.
+// Page defines its own fields (excludes privilege/system columns) so a normal user can view/edit their own basic details.
 var Page = &module.PageAbstract{
 	ID:           "profile",
 	Name:         "Profile",

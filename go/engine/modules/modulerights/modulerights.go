@@ -169,8 +169,7 @@ func fieldsField(rightsTable string) Field {
 		})
 }
 
-// GroupRightsModule: per-group module rights. Stored group_id as an integer FK
-// (INTEGER column) so it joins cleanly to users.user_group; rendered as a select.
+// GroupRightsModule holds per-group module rights.
 var GroupRightsModule = &ModuleAbstract[interface{}]{
 	ID:              "user_group_rights",
 	RightsAffecting: true,
@@ -195,8 +194,7 @@ var GroupRightsModule = &ModuleAbstract[interface{}]{
 	Rights:               make(map[int]int),
 }
 
-// UserRightsModule: extra per-user module rights, additive on top of the user's
-// group rights.
+// UserRightsModule holds extra per-user module rights, additive on top of group rights.
 var UserRightsModule = &ModuleAbstract[interface{}]{
 	ID:              "user_rights",
 	RightsAffecting: true,

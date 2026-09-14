@@ -23,7 +23,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Module is the admin-only CRUD view over the raw likes table.
+// Likes module, backs the like/dislike widget on posts, comments, and users.
 var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "likes",
 	Name:    "Likes",

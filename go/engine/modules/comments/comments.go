@@ -30,9 +30,7 @@ import (
 // comment (its row_id is then the parent comment's id).
 const selfModule = "comments"
 
-// Module is the admin-only CRUD view over the raw comments table. The table
-// itself is created from this fieldset by the engine (plus init/sql for the
-// (module_id, row_id) index).
+// Comments module, backs the CommentsThread widget on posts and other records.
 var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "comments",
 	Name:    "Comments",

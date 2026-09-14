@@ -29,7 +29,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// Module is the admin-only CRUD view over the raw friends table.
+// Friends module, backs FriendButton and the friend-request flow.
 var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "friend_requests",
 	Name:    "Friend Requests",
