@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 import { ModuleViewProps } from "@engine/controllers/registry";
 import { RoomMesh } from "./videoMesh";
+import Auth from "@controllers/auth";
 import useT from "@engine/useT";
 import "./papers.css";
 
@@ -42,21 +43,31 @@ const Tile: React.FC<{ pv: PlayerView; self: boolean; active: boolean; stream?: 
 
 const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => {
   const t = useT();
+
+  // Same gate as PapersList — reachable directly (a shared/bookmarked room
+  // link) without going through the list first.
+  useEffect(() => {
+    if (!Auth.isAuthenticated()) {
+      navigate(`/login?reason=${encodeURIComponent(t("You must be authorized to play games"))}`);
+    }
+  }, [navigate, t]);
+
   const room = record || {};
   // Rooms are addressed by their stored hash (KeyField), never uuid or id.
   const roomId = room.hash;
   const base = `/papers/${roomId}/game`;
 
+  // Identity comes from the signed-in account (papers requires auth — see
+  // PapersList's redirect-to-login gate), not a manually typed name.
+  const name = Auth.getUserName() || t("Player");
+
   const [state, setState] = useState<GameState | null>(null);
-  const [name, setName] = useState("");
   const [word, setWord] = useState("");
   const [countdown, setCountdown] = useState(0);
-  // Name and word each start as an editable input with their own Set button;
-  // clicking Set locks that field into a read-only view (with its own Edit
-  // button to reopen it). Also flipped to the view on first load when the
-  // server already has that field (e.g. the page was reloaded after an
-  // earlier Set).
-  const [editingName, setEditingName] = useState(true);
+  // The word starts as an editable input with its own Set button; clicking
+  // Set locks it into a read-only view (with its own Edit button to reopen
+  // it). Also flipped to the view on first load when the server already has
+  // it (e.g. the page was reloaded after an earlier Set).
   const [editingWord, setEditingWord] = useState(true);
 
   // Local camera + remote participants' streams, keyed by player key ("source
@@ -81,7 +92,7 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
   const attemptJoin = async () => {
     setPwError("");
     try {
-      await axios.post(`/papers/${roomId}`, { uuid: "self", name: name.trim() || t("player"), password });
+      await axios.post(`/papers/${roomId}`, { uuid: "self", name, password });
       setJoined(true);
     } catch (e: any) {
       if (e?.response?.status === 403) {
@@ -129,9 +140,7 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
       if (done) return;
       setState((s) => {
         if (s) {
-          if (!name && s.selfName) setName(s.selfName);
           if (!word && s.selfWord) setWord(s.selfWord);
-          if (s.selfName) setEditingName(false);
           if (s.selfWord) setEditingWord(false);
         }
         return s;
@@ -230,16 +239,10 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
     meshRef.current.syncPeers(peers);
   }, [state?.players, state?.selfKey]);
 
-  // Name and word are set independently, but both go through the same /join
-  // endpoint (it replaces the whole identity each call), so each submit sends
-  // the other field's current value along unchanged.
-  const setNameField = async () => {
-    await axios.post(`${base}/join`, { name: name.trim(), word: word.trim() });
-    setEditingName(false);
-    refresh();
-  };
+  // Word is set through the /join endpoint (it replaces the whole identity
+  // each call), sending the account name along unchanged.
   const setWordField = async () => {
-    await axios.post(`${base}/join`, { name: name.trim(), word: word.trim() });
+    await axios.post(`${base}/join`, { name, word: word.trim() });
     setEditingWord(false);
     refresh();
   };
@@ -264,6 +267,9 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
     setChatInput("");
   };
 
+  // Redirecting (see the effect above) — render nothing while that happens.
+  if (!Auth.isAuthenticated()) return null;
+
   // Popup password gate for protected rooms.
   if (!joined) {
     return (
@@ -276,8 +282,6 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
             <div className="card-body">
               <h5 className="card-title mb-3">{t("Password required")}</h5>
               <p className="text-muted small mb-2">{t("This game is password-protected.")}</p>
-              <label className="form-label mb-1">{t("Your name")}</label>
-              <input className="form-control mb-2" value={name} onChange={(e) => setName(e.target.value)} />
               <label className="form-label mb-1">{t("Password")}</label>
               <input
                 className="form-control mb-2"
@@ -311,22 +315,13 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
         </div>
       </div>
 
-      {/* Name + word entry (prefilled). Word is assigned to another player. */}
+      {/* Word entry (prefilled). Word is assigned to another player. Name is
+          shown for reference only — it comes from the signed-in account. */}
       <div className="papers-controls d-flex flex-wrap gap-2 align-items-end p-3">
-        {editingName ? (
-          <div className="d-flex gap-2 align-items-end">
-            <div>
-              <label className="form-label mb-1">{t("Your name")}</label>
-              <input className="form-control" style={{ maxWidth: 180 }} value={name} onChange={(e) => setName(e.target.value)} />
-            </div>
-            <button className="btn btn-primary" onClick={setNameField} disabled={!name.trim()}>{t("Set")}</button>
-          </div>
-        ) : (
-          <div className="d-flex align-items-center gap-2">
-            <span><strong>{name}</strong></span>
-            <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditingName(true)}>{t("Edit")}</button>
-          </div>
-        )}
+        <div className="d-flex align-items-center gap-2">
+          <span className="text-muted small">{t("Playing as")}</span>
+          <span><strong>{name}</strong></span>
+        </div>
 
         {editingWord && !state?.roundStarted ? (
           <div className="d-flex gap-2 align-items-end">

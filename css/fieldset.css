@@ -163,3 +163,180 @@
   border-color: var(--module-accent);
   color: var(--module-accent-ink);
 }
+
+/* CustomSelect (engine/fields/CustomSelect.tsx): the site-wide <select>
+   replacement, same interaction as the menu's language switcher — current
+   value stays put, clicking it expands the same box downward to reveal the
+   other options. Not scoped to .module-page since it's also used on plain
+   pages (e.g. Delete Account's reason field) that sit on the same light
+   background as everywhere else now.
+
+   Classes are prefixed "cx-select" — NOT "custom-select" — because
+   bootstrap.min.css (v4) already defines a native-<select> component under
+   the bare ".custom-select" name (its own background-image chevron,
+   appearance and padding overrides). Reusing that name here let Bootstrap's
+   rules merge onto these elements alongside ours, producing a hybrid
+   native-plus-custom look. */
+.cx-select {
+  position: relative;
+  display: inline-block;
+  width: 100%;
+}
+
+.cx-select-current {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+  background: #fff;
+  color: #16261c;
+  font-size: 0.9rem;
+  text-align: left;
+  border: 1px solid #dde2df;
+  border-radius: 10px;
+  padding: 0.375rem 0.75rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease, border-radius 0.15s ease, box-shadow 0.15s ease;
+}
+
+.cx-select-current:hover,
+.cx-select-current:focus {
+  border-color: #35d67e;
+  box-shadow: 0 0 0 0.15rem rgba(111, 242, 160, 0.18);
+}
+
+.cx-select-disabled .cx-select-current {
+  background: #f4f6f5;
+  color: #8a938e;
+  cursor: not-allowed;
+}
+
+.cx-select-current-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cx-select-caret {
+  flex-shrink: 0;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid #6b7570;
+  border-bottom: 2px solid #6b7570;
+  transform: rotate(45deg) translateY(-3px);
+  transition: transform 0.15s ease;
+}
+
+.cx-select-open .cx-select-caret {
+  transform: rotate(-135deg) translateY(-1px);
+}
+
+/* Open: same flatten-and-flush trick as the menu switcher — modest corner
+   radius on top (not the default 10px pill-adjacent look) squared off flush
+   against the options panel below. */
+.cx-select-open .cx-select-current {
+  border-radius: 10px 10px 0 0;
+  border-bottom-color: transparent;
+}
+
+.cx-select-options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 50;
+  max-height: 0;
+  overflow-y: auto;
+  opacity: 0;
+  background: #fff;
+  border: 1px solid #dde2df;
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  box-shadow: 0 10px 24px rgba(15, 40, 25, 0.12);
+  transition: max-height 0.18s ease, opacity 0.15s ease;
+}
+
+.cx-select-open .cx-select-options {
+  max-height: 220px;
+  opacity: 1;
+}
+
+.cx-select-option {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #16261c;
+  font-size: 0.9rem;
+  text-align: left;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  outline: none;
+}
+
+.cx-select-option:hover,
+.cx-select-option:focus {
+  background: rgba(111, 242, 160, 0.15);
+}
+
+/* Likes (engine/modules/likes/Likes.tsx): one united pill for like+dislike,
+   split by a single middle divider — not two separate buttons. Active state
+   recolors just that half's icon+count via currentColor (the sprite icon is
+   masked with currentColor, see menu.css). */
+.likes-widget {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid #dde2df;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.likes-btn {
+  display: inline-flex;
+  align-items: center;
+  border: none !important;
+  border-radius: 0 !important;
+  background: transparent;
+  color: #3a4440;
+}
+
+.likes-btn + .likes-btn {
+  border-left: 1px solid #dde2df !important;
+}
+
+.likes-btn:focus {
+  box-shadow: none;
+}
+
+.likes-btn-active-up {
+  background: rgba(111, 242, 160, 0.18);
+  color: #0d6b39;
+}
+
+.likes-btn-active-down {
+  background: rgba(220, 53, 69, 0.12);
+  color: #a52834;
+}
+
+.likes-widget-sm {
+  border-radius: 999px;
+}
+
+.likes-widget-sm .likes-btn {
+  padding: 0.15rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.likes-widget-sm .menu-icon-sprite {
+  zoom: 0.06;
+  margin-right: 3px;
+}

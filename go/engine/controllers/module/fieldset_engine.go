@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 
+	constants "tls-rest/go/constants"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/functions"
@@ -78,7 +79,6 @@ func (fe *FieldsetEngine) ParseQueryParams() (*QueryParams, error) {
 		return nil, fmt.Errorf("failed to parse query parameters: %w", err)
 	}
 
-	// Validate and set defaults
 	if params.Page < 1 {
 		params.Page = 1
 	}
@@ -86,8 +86,6 @@ func (fe *FieldsetEngine) ParseQueryParams() (*QueryParams, error) {
 		params.Limit = 20
 	}
 	if params.Order != "asc" && params.Order != "desc" {
-		// List defaults to newest-first (DESC); a module may opt into oldest-first
-		// (ASC) via ListAscending.
 		if fe.Module != nil && fe.Module.ListAscending {
 			params.Order = "asc"
 		} else {
@@ -98,10 +96,8 @@ func (fe *FieldsetEngine) ParseQueryParams() (*QueryParams, error) {
 	return params, nil
 }
 
-// BuildSelectQuery constructs a SELECT query based on fieldset configuration and parameters
-// tableColsCache memoizes each table's real column set (schema is fixed after
-// startup module registration, so caching is safe). Failed/empty lookups are
-// not cached, so they retry.
+// tableColsCache memoizes each table's real column set; failed/empty lookups
+// aren't cached, so they retry.
 var tableColsCache sync.Map // tableName -> map[string]bool (lowercased names)
 
 // tableColumnsCached returns the set of column names (lowercased) that actually
@@ -151,7 +147,6 @@ func (p *QueryParams) UnmarshalURL(values url.Values) error {
 			continue
 		}
 
-		// Parse filters.key=value
 		if strings.HasPrefix(key, "filters.") {
 			filterKey := strings.TrimPrefix(key, "filters.")
 			p.Filters[filterKey] = vals[0]
@@ -161,6 +156,9 @@ func (p *QueryParams) UnmarshalURL(values url.Values) error {
 	return nil
 }
 
+// BuildSelectQuery constructs a SELECT for mode, withholding fields the
+// viewer can't read and any fieldset field whose column no longer exists on
+// the table (fieldset/table drift).
 func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (string, []interface{}, error) {
 	var selectFields []string
 	var whereConditions []string
@@ -168,15 +166,6 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 	argIndex := 1
 
 	v := viewerForModule(fe.Request, fe.Module.ID)
-
-	// Build SELECT fields based on mode, withholding access-restricted columns
-	// from users who may not read them (system fields are always kept — the
-	// client needs id/uuid to route and act).
-	// Actual columns of the table, used to skip any fieldset field whose column
-	// doesn't exist (fieldset/table drift — e.g. a system field like "updated"
-	// that a module omitted but that is still in some fieldset copy). This makes
-	// the query resilient instead of failing with "column X does not exist".
-	// Empty (table missing / lookup failed) means "don't filter".
 	cols := tableColumnsCached(fe.TableName)
 
 	for _, field := range fe.Fields {
@@ -185,7 +174,7 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 				selectFields = append(selectFields, field.SQL+" AS "+field.Name)
 			} else {
 				if len(cols) > 0 && !cols[strings.ToLower(field.Name)] {
-					continue // column not in the table; don't select it
+					continue
 				}
 				selectFields = append(selectFields, field.Name)
 			}
@@ -203,7 +192,6 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 		query += " WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	// Add ORDER BY
 	if params.Sort != "" && fe.isValidSortField(params.Sort) {
 		query += fmt.Sprintf(" ORDER BY %s %s", params.Sort, params.Order)
 	} else if ds := fe.defaultSortField(); ds != "" {
@@ -213,25 +201,16 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 	return query, args, nil
 }
 
-// buildScopeConditions returns the WHERE conditions common to the list SELECT and
-// its COUNT — free-text search, ad-hoc filters, declared list filters, row-level
-// access, owner scoping and soft-delete — appending bind values to args and
-// advancing argIndex. Sharing this is what keeps the paginated total consistent
-// with the rows actually returned.
+// buildScopeConditions returns the WHERE conditions shared by the list SELECT
+// and its COUNT — key addressing, search, filters, row-level access, owner
+// scoping and soft-delete — so the paginated total matches the rows returned.
 func (fe *FieldsetEngine) buildScopeConditions(params *QueryParams, v viewer, argIndex *int, args *[]interface{}) []string {
 	var conds []string
 
-	// Single-record addressing: View/Edit/Delete put the key value in the request
-	// bag (request.From(r).Set(keyField, id)); scope the query to that row. Absent
-	// on a plain list request.
 	if fe.Request != nil {
 		key := fe.keyField()
 		if kv := request.From(fe.Request).String(key); kv != "" {
 			var bind interface{} = kv
-			// Only the numeric "id" column binds as an integer. Any other key
-			// (uuid, slug, …) is a text column: a numeric-looking value must
-			// still bind as text (mirrors BaseController.recordKey) or pgx fails
-			// to encode an int into a text parameter.
 			if key == "id" {
 				if n, err := strconv.ParseInt(kv, 10, 64); err == nil {
 					bind = n
@@ -243,41 +222,108 @@ func (fe *FieldsetEngine) buildScopeConditions(params *QueryParams, v viewer, ar
 		}
 	}
 
-	// Free-text search across searchable columns.
 	if params.Search != "" && fe.hasSearchableFields() {
 		if sc := fe.buildSearchConditions(params.Search, argIndex, args); len(sc) > 0 {
 			conds = append(conds, fmt.Sprintf("(%s)", strings.Join(sc, " OR ")))
 		}
 	}
 
-	// Ad-hoc filters[...] parameters.
 	if params.Filters != nil {
 		conds = append(conds, fe.buildFilterConditions(params.Filters, argIndex, args)...)
 	}
 
-	// Declared list filters (module <name>/filters.go).
 	conds = append(conds, fe.buildDeclaredFilterConditions(argIndex, args)...)
 
-	// Row-level access: non-admins only see records within their own access level.
-	if !v.isAdmin && fe.hasField("access") {
-		conds = append(conds, fmt.Sprintf("access <= $%d", *argIndex))
-		*args = append(*args, v.level)
-		*argIndex++
+	if cond := fe.buildVisibilityCondition(v, argIndex, args); cond != "" {
+		conds = append(conds, cond)
 	}
 
-	// Owner scoping: an OwnerScoped module shows a non-admin only rows they created.
 	if fe.Module != nil && fe.Module.OwnerScoped && !v.isAdmin && v.userID > 0 && fe.hasField("created_by") {
 		conds = append(conds, fmt.Sprintf("created_by = $%d", *argIndex))
 		*args = append(*args, v.userID)
 		*argIndex++
 	}
 
-	// Soft delete: a SoftDelete module never lists/views deleted rows.
 	if fe.Module != nil && fe.Module.SoftDelete && fe.hasField("deleted") {
 		conds = append(conds, "deleted IS NOT TRUE")
 	}
 
 	return conds
+}
+
+// buildVisibilityCondition returns the row-level visibility condition for a
+// non-admin viewer (empty for admins): the ACL sharing-list model if
+// VisibilityUsersField/VisibilityGroupsField is set, else the access-level gate.
+func (fe *FieldsetEngine) buildVisibilityCondition(v viewer, argIndex *int, args *[]interface{}) string {
+	if v.isAdmin || !fe.hasField("access") {
+		return ""
+	}
+
+	aclMode := fe.Module != nil && (fe.Module.VisibilityUsersField != "" || fe.Module.VisibilityGroupsField != "")
+
+	if aclMode {
+		var alt []string
+
+		if v.userID > 0 && fe.hasField("created_by") {
+			alt = append(alt, fmt.Sprintf("created_by = $%d", *argIndex))
+			*args = append(*args, v.userID)
+			*argIndex++
+		}
+		if f := fe.Module.VisibilityUsersField; f != "" && v.userID > 0 && fe.hasField(f) {
+			alt = append(alt, fmt.Sprintf(
+				"EXISTS (SELECT 1 FROM jsonb_array_elements_text(%s) AS vu WHERE vu::int = $%d)",
+				f, *argIndex,
+			))
+			*args = append(*args, v.userID)
+			*argIndex++
+		}
+		if f := fe.Module.VisibilityGroupsField; f != "" && fe.hasField(f) {
+			if v.userID > 0 {
+				alt = append(alt, fmt.Sprintf(
+					`EXISTS (SELECT 1 FROM jsonb_array_elements_text(%s) AS vg `+
+						`WHERE vg::int IN (SELECT jsonb_array_elements_text(u.groups)::int FROM users u WHERE u.id = $%d))`,
+					f, *argIndex,
+				))
+				*args = append(*args, v.userID)
+				*argIndex++
+			} else {
+				alt = append(alt, fmt.Sprintf(
+					"EXISTS (SELECT 1 FROM jsonb_array_elements_text(%s) AS vg WHERE vg::int = $%d)",
+					f, *argIndex,
+				))
+				*args = append(*args, constants.GuestGroupID)
+				*argIndex++
+			}
+		}
+
+		if len(alt) == 0 {
+			return "FALSE"
+		}
+		if len(alt) == 1 {
+			return alt[0]
+		}
+		return "(" + strings.Join(alt, " OR ") + ")"
+	}
+
+	alt := []string{fmt.Sprintf("access <= $%d", *argIndex)}
+	*args = append(*args, v.level)
+	*argIndex++
+
+	if fe.Module != nil {
+		if f := fe.Module.VisibilityField; f != "" && fe.hasField(f) {
+			alt = append(alt, fmt.Sprintf("%s = true", f))
+			if v.userID > 0 && fe.hasField("created_by") {
+				alt = append(alt, fmt.Sprintf("created_by = $%d", *argIndex))
+				*args = append(*args, v.userID)
+				*argIndex++
+			}
+		}
+	}
+
+	if len(alt) == 1 {
+		return alt[0]
+	}
+	return "(" + strings.Join(alt, " OR ") + ")"
 }
 
 // BuildCountQuery constructs a COUNT query for pagination
@@ -308,7 +354,6 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 		return nil, fmt.Errorf("failed to get database instance: %w", err)
 	}
 
-	// Get total count
 	countQuery, countArgs, err := fe.BuildCountQuery(params)
 	if err != nil {
 		return nil, err
@@ -319,33 +364,24 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 		return nil, fmt.Errorf("failed to get total count: %w", err)
 	}
 
-	// GetOne now returns a map directly.
 	total := 0
 	if countResult != nil {
 		total = functions.Coerce[int](countResult["count"])
 	}
 
-	// Build and execute main query
 	selectQuery, selectArgs, err := fe.BuildSelectQuery(params, mode)
 	if err != nil {
 		return nil, err
 	}
 
-	// Add LIMIT and OFFSET
 	offset := (params.Page - 1) * params.Limit
 	selectQuery += fmt.Sprintf(" LIMIT %d OFFSET %d", params.Limit, offset)
 
-	// Execute query
 	results, err := db.RQuery(selectQuery, selectArgs...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
-	// TYPE_TABLE fields are excluded from the main SELECT (shouldIncludeField) and
-	// loaded on demand via POST /api/modules/{id}/table/{field}; nothing to fold
-	// into the row here.
-
-	// Calculate total pages
 	totalPages := (total + params.Limit - 1) / params.Limit
 
 	return &QueryResult{
@@ -357,19 +393,13 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 	}, nil
 }
 
-// Helper methods
-
+// shouldIncludeField reports whether field belongs in the SELECT for mode: a
+// TYPE_TABLE field only when it has SQL (a computed display value) and mode
+// is list/view; a virtual field only in edit mode.
 func (fe *FieldsetEngine) shouldIncludeField(field Field, mode int) bool {
-	// TYPE_TABLE rows load via their own endpoint and are never part of the edit
-	// SELECT. A table field WITH an SQL expression is included in list/view only,
-	// so a computed display value (e.g. group names resolved from stored ids) can
-	// be shown without a separate request.
 	if field.Type == TYPE_TABLE {
 		return field.SQL != "" && mode&(MODE_LIST|MODE_VIEW) != 0
 	}
-
-	// Include field based on mode (LIST, VIEW, EDIT, etc.)
-	// This can be enhanced to check field-specific mode flags
 	return !field.Virtual || (mode&MODE_EDIT != 0)
 }
 
@@ -415,10 +445,8 @@ func (fe *FieldsetEngine) buildFilterConditions(filters map[string]interface{}, 
 		}
 
 		if field.SQLWhere != "" {
-			// Use custom WHERE clause from field
 			conditions = append(conditions, fmt.Sprintf(field.SQLWhere, fmt.Sprintf("$%d", *argIndex)))
 		} else {
-			// Default equality check
 			conditions = append(conditions, fmt.Sprintf("%s = $%d", fieldName, *argIndex))
 		}
 

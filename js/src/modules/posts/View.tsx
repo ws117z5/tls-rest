@@ -1,6 +1,8 @@
 import React, { useState } from "react";
+import { Link } from "react-router";
 import { Field } from "@engine/fields/FormLayout";
 import CommentsThread from "@engine/modules/comments/CommentsThread";
+import Likes from "@engine/modules/likes/Likes";
 import Auth from "@controllers/auth";
 import useT from "@engine/useT";
 
@@ -33,6 +35,7 @@ const PostsView: React.FC<CustomContainerProps> = (props) => {
   const title = props.getValue("title");
   const author = props.getValue("author");
   const postId = props.record?.id ?? props.getValue("id");
+  const authorId = props.record?.created_by;
 
   return (
     <div className="posts-view">
@@ -119,9 +122,18 @@ const PostsView: React.FC<CustomContainerProps> = (props) => {
               }}
             >
               {t("by")}{" "}
-              <span style={{ color: "#343a40", fontWeight: 600 }}>
-                {author || t("Unknown")}
-              </span>
+              {authorId ? (
+                <Link
+                  to={`/u/${authorId}`}
+                  style={{ color: "#343a40", fontWeight: 600, textDecoration: "none" }}
+                >
+                  {author || t("Unknown")}
+                </Link>
+              ) : (
+                <span style={{ color: "#343a40", fontWeight: 600 }}>
+                  {author || t("Unknown")}
+                </span>
+              )}
             </div>
             <div
               aria-hidden
@@ -133,6 +145,9 @@ const PostsView: React.FC<CustomContainerProps> = (props) => {
                 background: "linear-gradient(90deg, #0d6efd, #6610f2)",
               }}
             />
+            <div className="mt-3">
+              <Likes module="posts" row={postId} />
+            </div>
           </header>
 
           <div className="card-text text-dark">

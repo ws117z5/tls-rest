@@ -56,7 +56,9 @@
    normal 16px nav icon; unlike `transform: scale()`, `zoom` also shrinks the
    element's layout box, so it doesn't need a wrapper to avoid overlapping
    neighboring nav items. */
-.main-menu .menu-icon-sprite {
+/* Unscoped (not just .main-menu) so any button/icon elsewhere on the site —
+   e.g. Likes.tsx's like/dislike buttons — can reuse the same sprite sheet. */
+.menu-icon-sprite {
   display: inline-block;
   width: 200px;
   height: 200px;
@@ -68,8 +70,8 @@
   mask-image: url("/img/icons_bw.png");
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
-  -webkit-mask-size: 1200px 1200px;
-  mask-size: 1200px 1200px;
+  -webkit-mask-size: 1200px 1400px;
+  mask-size: 1200px 1400px;
 }
 
 /* Per-icon cell position, row by row (col * -200px, row * -200px). */
@@ -107,6 +109,16 @@
 /* Unlabeled in the sheet (a "[...]" bracket glyph) — wired to Array Iterator,
    the one page whose icon would otherwise still be missing. */
 .icon-array-iterator      { mask-position: -600px  -800px;  -webkit-mask-position: -600px  -800px; }
+
+/* Sheet grew from 1200x1200 (6 rows) to 1200x1400 (7 rows) to add these —
+   generic action icons for buttons anywhere on the site (not menu-specific). */
+.icon-back                { mask-position: 0px     -1000px; -webkit-mask-position: 0px     -1000px; }
+.icon-delete              { mask-position: -200px  -1000px; -webkit-mask-position: -200px  -1000px; }
+.icon-edit                { mask-position: -400px  -1000px; -webkit-mask-position: -400px  -1000px; }
+.icon-add                 { mask-position: -600px  -1000px; -webkit-mask-position: -600px  -1000px; }
+
+.icon-dislike             { mask-position: 0px     -1200px; -webkit-mask-position: 0px     -1200px; }
+.icon-like                { mask-position: -200px  -1200px; -webkit-mask-position: -200px  -1200px; }
 
 .main-menu .nav-link {
   display: flex;
@@ -162,12 +174,109 @@
   color: #eafff2;
 }
 
-.main-menu .menu-locale {
-  background: transparent;
-  color: #6ff2a0;
-  border-color: rgba(111, 242, 160, 0.35);
-  width: auto;
+/* Language switcher: the current-locale pill stays exactly where it is;
+   opening it grows the SAME shape downward to reveal the other locale(s) —
+   no separate floating menu element, no repositioning. */
+.main-menu .menu-lang-wrap {
+  position: relative;
+  /* Sits above sibling nav items while its options panel is expanded over them. */
+  z-index: 1;
+}
+
+.main-menu .menu-lang {
+  position: relative;
+  display: inline-block;
   margin-right: 0.75rem;
+}
+
+.main-menu .menu-lang-current {
+  /* Disable native OS button chrome: some browsers (notably Safari/WebKit)
+     theme <button> with their own rounding on focus/active that otherwise
+     fights the border-radius override below, which is what made the corners
+     look like they "snapped" to a full circle on click. */
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  display: block;
+  background: rgba(111, 242, 160, 0.08);
+  color: #6ff2a0;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  border: 1px solid rgba(111, 242, 160, 0.35);
+  border-radius: 999px;
+  padding: 0.3rem 0.9rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease, border-radius 0.15s ease;
+}
+
+.main-menu .menu-lang-current:hover,
+.main-menu .menu-lang-current:focus {
+  border-color: rgba(111, 242, 160, 0.65);
+  background-color: rgba(111, 242, 160, 0.16);
+}
+
+/* While open, this flattens from a full pill to a normal dropdown-box corner
+   radius on top (matching the panel below), and squares off completely where
+   the two meet in the middle. */
+.main-menu .menu-lang-open .menu-lang-current {
+  border-radius: 14px 14px 0 0;
+  border-bottom-color: transparent;
+}
+
+.main-menu .menu-lang-options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  overflow: hidden;
+  max-height: 0;
+  opacity: 0;
+  /* Solid, not tinted-transparent — the earlier rgba background was nearly
+     invisible against the page behind it. Matches the "Pages" dropdown's
+     solid surface. */
+  background: #0d130f;
+  border: 1px solid rgba(111, 242, 160, 0.35);
+  border-top: none;
+  /* Matches the toggle's own open-state radius above (14px) — both ends of
+     the expanded box get the same modest corner, not a full pill cap. */
+  border-bottom-left-radius: 14px;
+  border-bottom-right-radius: 14px;
+  transition: max-height 0.18s ease, opacity 0.15s ease;
+}
+
+
+
+.main-menu .menu-lang-open .menu-lang-options {
+  max-height: 3rem;
+  opacity: 1;
+}
+
+.main-menu .menu-lang-option {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: #6ff2a0;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-align: center;
+  padding: 0.3rem 0.9rem;
+  cursor: pointer;
+}
+
+.main-menu .menu-lang-option:hover,
+.main-menu .menu-lang-option:focus {
+  background: rgba(111, 242, 160, 0.18);
+  color: #eafff2;
+  outline: none;
 }
 
 /* Account cluster: avatar circle + stacked name/role, as one clickable unit. */

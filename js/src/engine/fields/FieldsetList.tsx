@@ -1,6 +1,7 @@
 import React, { Component } from 'react';
 import { Field } from './Field';
 import { useFieldset, MODES } from './FieldsetProvider';
+import Icon from '@engine/Icon';
 import useT from '@engine/useT';
 
 // List data interface
@@ -230,6 +231,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
                 className="btn btn-danger"
                 onClick={() => this.handleBulkDelete(rows)}
               >
+                <Icon name="delete" />
                 {t('Delete')} ({selected.size})
               </button>
               <button type="button" className="btn btn-outline-secondary" onClick={this.clearSelection}>
@@ -366,6 +368,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
                     onEdit(row, index);
                   }}
                 >
+                  <Icon name="edit" />
                   {t('Edit')}
                 </button>
               )}
@@ -380,6 +383,7 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
                     }
                   }}
                 >
+                  <Icon name="delete" />
                   {t('Delete')}
                 </button>
               )}

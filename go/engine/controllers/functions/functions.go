@@ -364,3 +364,35 @@ func Bytes(v interface{}) []byte {
 	}
 	return nil
 }
+
+// ImageFieldURL resolves a TYPE_IMAGE column's raw stored value to a single
+// usable image URL, or "" if empty. The value is a JSON array of refs (each
+// already carrying a "/image/<uuid>.<ext>" url) — or, for older rows, a bare
+// url/uuid string. Needed anywhere a TYPE_IMAGE column is read outside the
+// generic engine's own field rendering, which resolves this automatically.
+func ImageFieldURL(raw interface{}) string {
+	s, _ := raw.(string)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+
+	var refs []struct {
+		URL  string `json:"url"`
+		UUID string `json:"uuid"`
+	}
+	if err := json.Unmarshal([]byte(s), &refs); err == nil && len(refs) > 0 {
+		if refs[0].URL != "" {
+			return refs[0].URL
+		}
+		if refs[0].UUID != "" {
+			return "/image/" + refs[0].UUID
+		}
+		return ""
+	}
+
+	if strings.HasPrefix(s, "/image/") {
+		return s
+	}
+	return "/image/" + s
+}

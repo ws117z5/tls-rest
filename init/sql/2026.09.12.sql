@@ -304,3 +304,30 @@ INSERT INTO public.translations (key, locale, value) VALUES
 ('Add function', 'ru', 'Добавить функцию'),
 ('Expression did not evaluate to a number', 'ru', 'Выражение не вычислилось в число')
 ON CONFLICT (key, locale) DO NOTHING;
+
+-- likes: one polymorphic like/dislike reaction table for every module (posts,
+-- comments, users), same shape as the comments table above. One reaction per
+-- (module_id, row_id, user_id); value is +1 (like) or -1 (dislike). The engine
+-- also auto-creates these columns from the likes module fieldset; this file
+-- pins the types and adds the uniqueness + lookup indexes.
+CREATE TABLE IF NOT EXISTS public.likes (
+    id         bigserial   PRIMARY KEY,
+    uuid       uuid        NOT NULL DEFAULT uuid_generate_v4(),
+    module_id  text        NOT NULL,
+    row_id     bigint      NOT NULL,
+    user_id    integer     NOT NULL,
+    value      smallint    NOT NULL,
+    created_by integer,
+    created    timestamptz NOT NULL DEFAULT now(),
+    updated    timestamptz NOT NULL DEFAULT now(),
+    access     integer     NOT NULL DEFAULT 0,
+    CONSTRAINT likes_value_check CHECK (value IN (1, -1))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_likes_target_user ON public.likes (module_id, row_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_likes_target ON public.likes (module_id, row_id);
+
+INSERT INTO public.translations (key, locale, value) VALUES
+('Like', 'ru', 'Нравится'),
+('Dislike', 'ru', 'Не нравится')
+ON CONFLICT (key, locale) DO NOTHING;

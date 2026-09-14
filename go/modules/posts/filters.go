@@ -14,7 +14,6 @@ import (
 // Examples:
 //
 //	GET /posts?title=hello            -> WHERE title ILIKE '%hello%'
-//	GET /posts?public=true            -> WHERE public = true
 //	GET /posts?created_from=2024-01-01 -> WHERE created >= '2024-01-01'
 //	GET /posts?created_to=2024-12-31   -> WHERE created <= '2024-12-31'
 //
@@ -25,12 +24,6 @@ func (p *Posts) filters() *Filedset {
 		NewFilter("title", TYPE_STRING).
 			WithLabel("Title").
 			Contains(),
-
-		// Exact boolean match on the public flag. Admin-only.
-		NewFilter("public", TYPE_CHECKBOX).
-			WithLabel("Public").
-			AsAdminOnly().
-			Equals(),
 
 		// Admin-only: filter posts by their creator, searched by user name.
 		NewFilter("user", TYPE_STRING).

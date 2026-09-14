@@ -202,14 +202,17 @@ func (c *Cache[T]) WithMaxBytes(maxBytes int64, sizeOf func(T) int64) *Cache[T] 
 	return c
 }
 
+// Set writes through to the backing store before returning, so a Get right
+// after (e.g. the request following IssueToken) reliably sees it — with
+// ttl == 0 the local map is inert, so an async write left a real race here.
 func (c *Cache[T]) Set(key string, value T) {
 	c.Lock()
-	defer c.Unlock()
+	c.store(key, value)
+	c.Unlock()
 
 	if c.setter != nil {
-		go c.setter(key, value)
+		_ = c.setter(key, value)
 	}
-	c.store(key, value)
 }
 
 // Get retrieves a value by key.

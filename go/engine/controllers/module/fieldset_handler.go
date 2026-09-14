@@ -247,7 +247,7 @@ func (fh *FieldsetHandler) GetFieldset(w http.ResponseWriter, r *http.Request) {
 		// Per-field rights: restrict the field to only its granted modes, so it
 		// appears in (say) view but not edit. mask -1 means "no restriction".
 		if mask := v.fieldModeMask(field.Name); mask != -1 {
-			field.Mode &= mask
+			field.Mode &= mask | MODE_LOG | MODE_MULTIPLEUPDATE | MODE_SUBMIT
 			if field.Mode == 0 {
 				continue // not granted in any mode -> omit entirely
 			}

@@ -1,6 +1,8 @@
 import React, { Component } from "react";
 import axios from "axios";
+import { Link } from "react-router";
 import MarkdownRender from "@engine/fields/Markdown/controllers/MarkdownRender";
+import Likes from "@engine/modules/likes/Likes";
 import { t, subscribe } from "@engine/i18n";
 
 // A threaded discussion for one record. Talks to the polymorphic comments API:
@@ -13,6 +15,7 @@ import { t, subscribe } from "@engine/i18n";
 export interface CommentNode {
   id: number;
   author: string;
+  authorId: number;
   body: string;
   created: string;
   replies?: CommentNode[];
@@ -197,21 +200,30 @@ class CommentsThread extends Component<Props, State> {
     return (
       <li key={n.id} className="comment-node" style={{ marginTop: "1rem" }}>
         <div className="mb-1">
-          <span className="fw-semibold">{n.author || t("Anonymous")}</span>
+          {n.authorId > 0 ? (
+            <Link to={`/u/${n.authorId}`} className="fw-semibold text-decoration-none">
+              {n.author || t("Anonymous")}
+            </Link>
+          ) : (
+            <span className="fw-semibold">{n.author || t("Anonymous")}</span>
+          )}
           <span className="text-muted small ml-2">{whenText(n.created)}</span>
         </div>
         <div className="comment-body">
           <MarkdownRender value={n.body} />
         </div>
-        <button
-          type="button"
-          className="btn btn-link btn-sm p-0 text-decoration-none"
-          onClick={() =>
-            this.setState({ activeReply: replying ? null : n.id })
-          }
-        >
-          {replying ? t("Cancel") : t("Reply")}
-        </button>
+        <div className="d-flex align-items-center gap-2 mt-1">
+          <Likes module="comments" row={n.id} size="sm" />
+          <button
+            type="button"
+            className="btn btn-link btn-sm p-0 text-decoration-none"
+            onClick={() =>
+              this.setState({ activeReply: replying ? null : n.id })
+            }
+          >
+            {replying ? t("Cancel") : t("Reply")}
+          </button>
+        </div>
 
         {replying && (
           <div className="mt-2">

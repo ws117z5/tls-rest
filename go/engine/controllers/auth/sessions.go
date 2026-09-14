@@ -40,7 +40,8 @@ func BumpRightsEpoch() { atomic.AddInt64(&rightsEpoch, 1) }
 // fillSessionRights resolves and attaches the user's per-module mode rights,
 // access level and admin status to the session, in a single place so every code
 // path (new session, restored session, anonymous) is populated consistently.
-// Anonymous sessions (UserID <= 0) get module defaults and are never admin.
+// Anonymous sessions (UserID <= 0) resolve as a member of auth.GuestGroupID
+// (module defaults still apply on top) and are never admin.
 func fillSessionRights(s *cache.Session) {
 	s.ModuleModes = ResolveModuleModeRights(s.UserID)
 	s.FieldRights = ResolveModuleFieldRights(s.UserID)

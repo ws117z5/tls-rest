@@ -15,14 +15,12 @@ import (
 )
 
 const (
-	// Permission system constants (matching auth/rights.go)
-	PERMISSION_INHERIT = -1 // Inherit permission from parent (group or default)
-	PERMISSION_DENY    = 0  // No access to module
-	PERMISSION_READ    = 1  // Read-only access
-	PERMISSION_WRITE   = 2  // Full read/write access
+	PERMISSION_INHERIT = -1
+	PERMISSION_DENY    = 0
+	PERMISSION_READ    = 1
+	PERMISSION_WRITE   = 2
 )
 
-// ModuleHandler defines the interface for modules that want to override default behavior
 type ModuleHandler interface {
 	List(w http.ResponseWriter, r *http.Request)
 	View(w http.ResponseWriter, r *http.Request)
@@ -31,10 +29,6 @@ type ModuleHandler interface {
 	Delete(w http.ResponseWriter, r *http.Request)
 }
 
-// HandlerOverrides lets a module replace individual engine handlers without
-// implementing all of them (unlike CustomHandler, which is all-or-nothing). A
-// nil field falls through to CustomHandler and then the default controller, so a
-// module can override just one action (e.g. List) and keep the rest generic.
 type HandlerOverrides struct {
 	List   http.HandlerFunc
 	View   http.HandlerFunc
@@ -43,10 +37,6 @@ type HandlerOverrides struct {
 	Delete http.HandlerFunc
 }
 
-// CustomRoute is an extra route a module registers beyond the standard CRUD
-// (e.g. a binary upload or serve endpoint). When Absolute is true the Path is
-// registered on the root router as-is; otherwise it is relative to the module's
-// /<id> subrouter. Methods defaults to GET when empty.
 type CustomRoute struct {
 	Path     string
 	Methods  []string
@@ -54,125 +44,55 @@ type CustomRoute struct {
 	Absolute bool
 }
 
-// CustomRouter is implemented by modules that register routes beyond CRUD.
-// registerSingleModuleRoutes detects it, so a module only needs to populate its
-// CustomRoutes field (ModuleAbstract satisfies this automatically).
 type CustomRouter interface {
 	GetCustomRoutes() []CustomRoute
 }
 
-// Module represents a business module in your system.
 type ModuleAbstract[T any] struct {
-	ID   string
-	Name string
-	// Description and Order drive the menu entry (returned by /api/modules).
-	// Order sorts the menu (lower first); Description is the menu tooltip/subtitle.
-	Description string
-	Order       int
-	// Submenu groups this module under a named submenu in the menu (e.g.
-	// "engine"); empty places it at the top level.
-	Submenu string
-	// Icon shown next to this module's menu entry: either a bare name
-	// ("home", "user-rights", …) matching an `.icon-<name>` class in menu.css —
-	// a cell of the /img/icons_bw.png sprite sheet — or an image URL (e.g.
-	// "/image/<uuid>" or a static path); the frontend (Menu.tsx) tells them
-	// apart by whether the value looks like a path.
-	Icon     string
-	ReadOnly bool
-	Hidden   bool
-	// HiddenModes removes specific modes (e.g. "edit") from the menu without
-	// making the module fully read-only — the buttons disappear but other modes
-	// (like create) remain. Enforcement of the mode itself is via Overrides.
-	HiddenModes []string
-	Fields      []Field
-	// Filters declares the list-mode filters this module accepts, as an ordinary
-	// fieldset (conventionally defined in <module>/filters.go). When set, the
-	// fieldset engine turns matching query parameters into SQL WHERE clauses for
-	// List. Nil means the module declares no filters.
-	Filters           *Filedset
-	Rights            map[int]int // Legacy rights system (deprecated)
-	Data              []T
-	DefaultPermission int // Default permission level for new rights system
-	// DefaultPermissionSet distinguishes an explicit default of 0 (PERMISSION_DENY,
-	// e.g. admin-only modules) from an unset default. Without it, Initialize would
-	// silently promote every 0 to PERMISSION_READ, making restricted modules world-
-	// readable. Modules that want DENY set DefaultPermission: 0 and this flag: true.
-	DefaultPermissionSet bool
-
-	// OmitSystemFields lists engine-managed default fields the module does NOT
-	// want auto-injected: any of "uuid", "created", "updated", "created_by",
-	// "access" (and "id", though dropping id breaks CRUD-by-id — avoid). Use it
-	// for modules mapping onto a purpose-built table that lacks those columns, so
-	// generated SELECT/INSERT never reference them. Fields the module declares
-	// itself are unaffected; a missing "access" column is treated as access 0 by
-	// the row-level filter, so module-level DefaultPermission is what gates such
-	// modules.
-	OmitSystemFields []string
-
-	// Optional custom handlers - if nil, will use default behavior
-	CustomHandler ModuleHandler
-	Controller    *BaseController // Exported for access by custom handlers
-
-	// Overrides replaces individual engine handlers (granular; a nil field uses
-	// the default). CustomRoutes adds endpoints beyond CRUD (e.g. binary
-	// upload/serve). Both are honoured automatically on route registration.
-	Overrides    HandlerOverrides
-	CustomRoutes []CustomRoute
-
-	// OwnerScoped restricts list/count results to rows the current user created:
-	// a non-admin only sees records whose created_by matches their user id.
-	// Requires a created_by column (present unless dropped via OmitSystemFields);
-	// admins are not scoped. Use for per-user data such as a personal word list.
-	OwnerScoped bool
-
-	// BeforeFieldset and AfterFieldset are optional data hooks around field
-	// processing on create/update, letting a module change the data before it is
-	// written (the module-level analogue of the images Preprocessor).
-	//   BeforeFieldset — receives the RAW decoded request body, before the
-	//                    fieldset filters/coerces/validates fields.
-	//   AfterFieldset  — receives the FILTERED data, just before the DB write.
-	// Each returns the (possibly modified) data, or an error to abort with 400.
-	BeforeFieldset Preprocessor
-	AfterFieldset  Preprocessor
-
-	// RightsAffecting marks a module whose rows change resolved rights (users,
-	// groups, user_rights, user_group_rights). After a successful create/edit/
-	// delete on such a module, the controller fires OnRightsChange so cached
-	// session rights are invalidated.
-	RightsAffecting bool
-
-	// ConfigAffecting marks a module whose rows change resolved config (the
-	// config module). After a successful write, the controller fires
-	// OnConfigChange so cached session config is invalidated.
-	ConfigAffecting bool
-
-	// ListAscending makes the list default to oldest-first (ORDER BY ... ASC).
-	// The default for every module is newest-first (DESC) — last record first.
-	ListAscending bool
-
-	// KeyField is the column used to look up a single record in view/edit/delete
-	// (the /{module}/{key} path segment). Defaults to "id"; set to "uuid" (or any
-	// other unique column, e.g. papers' stored "hash") for modules addressed by
-	// something other than an incrementing id.
-	KeyField string
-
-	// SoftDelete makes DELETE flag the row (deleted = true) instead of removing
-	// it, and hides deleted rows from list/view. Requires a `deleted` column.
-	SoftDelete bool
+	ID                    string
+	Name                  string
+	Description           string
+	Order                 int
+	Submenu               string
+	Icon                  string
+	ReadOnly              bool
+	Hidden                bool
+	HiddenModes           []string // modes hidden from the menu without making the module fully read-only
+	Fields                []Field
+	Filters               *Filedset // list-mode filters fieldset; nil = none declared
+	Rights                map[int]int
+	Data                  []T
+	DefaultPermission     int
+	DefaultPermissionSet  bool     // true = DefaultPermission:0 is an explicit DENY, not "unset"
+	OmitSystemFields      []string // engine-managed default fields to skip auto-injecting
+	CustomHandler         ModuleHandler
+	Controller            *BaseController
+	Overrides             HandlerOverrides
+	CustomRoutes          []CustomRoute
+	OwnerScoped           bool         // non-admins only see rows they created
+	BeforeFieldset        Preprocessor // runs on the raw request body, before fieldset filtering
+	AfterFieldset         Preprocessor // runs on the filtered data, just before the DB write
+	RightsAffecting       bool         // fires OnRightsChange after a successful write
+	ConfigAffecting       bool         // fires OnConfigChange after a successful write
+	ListAscending         bool         // default list order is oldest-first, not newest-first
+	KeyField              string       // column used to address a record by; defaults to "id"
+	SoftDelete            bool         // DELETE flags the row (needs a `deleted` column) instead of removing it
+	VisibilityField       string       // boolean column that also grants visibility past the access-level gate
+	VisibilityUsersField  string       // jsonb user-id sharing list; with VisibilityGroupsField, replaces the access-level gate
+	VisibilityGroupsField string       // jsonb group-id sharing list; see VisibilityUsersField
 }
 
-// OnRightsChange is invoked after a successful write to a RightsAffecting module.
-// The bootstrap wires it to auth.BumpRightsEpoch (kept as a callback so the module
-// package doesn't import auth, which would be an import cycle).
+// OnRightsChange is invoked after a successful write to a RightsAffecting
+// module. Wired to auth.BumpRightsEpoch (kept as a callback so this package
+// doesn't import auth, which would be an import cycle).
 var OnRightsChange func()
 
-// OnConfigChange is invoked after a successful write to a ConfigAffecting module;
-// the bootstrap wires it to config.BumpConfigEpoch.
+// OnConfigChange is invoked after a successful write to a ConfigAffecting
+// module; wired to config.BumpConfigEpoch.
 var OnConfigChange func()
 
-// Preprocessor transforms a submitted data map during create/update. Use it to
-// derive, normalize, inject, or strip fields before persistence. r is the request
-// (read mux.Vars for the id on update, or the session); data is the working map.
+// Preprocessor transforms a submitted data map during create/update — derive,
+// normalize, inject, or strip fields before persistence.
 type Preprocessor func(r *http.Request, data map[string]interface{}) (map[string]interface{}, error)
 
 func (m *ModuleAbstract[T]) GetID() string {
@@ -192,10 +112,9 @@ func (m *ModuleAbstract[T]) GetHiddenModes() []string {
 	return m.HiddenModes
 }
 
-// GetKeyField returns the column used to address a single record ("" means the
-// default "id"). Exposed so the menu API can tell the frontend which field to
-// navigate/act on — a module keyed on uuid (e.g. papers) must not be linked to
-// by its numeric id.
+// GetKeyField returns the column used to address a single record ("" means
+// "id"), so the frontend knows which field to navigate/act on for modules
+// keyed by something else (e.g. papers' uuid).
 func (m *ModuleAbstract[T]) GetKeyField() string {
 	return m.KeyField
 }
@@ -238,19 +157,11 @@ type ModuleInterface interface {
 	Delete(w http.ResponseWriter, r *http.Request)
 }
 
-// Global registry for modules
 var RegisteredModules = make(map[string]ModuleInterface)
-
-// Global router for automatic route registration
 var GlobalRouter *mux.Router
-
-// Flag to track if auto-registration is enabled
 var AutoRegisterRoutes = true
-
-// Registry for module default permissions (matches auth package)
 var ModuleDefaultPermissions = make(map[string]int)
 
-// Event logging structure
 type ModuleEvent struct {
 	Timestamp  time.Time `json:"timestamp"`
 	ModuleID   string    `json:"module_id"`
@@ -265,11 +176,10 @@ type ModuleEvent struct {
 	UserAgent  string    `json:"user_agent,omitempty"`
 }
 
-// Module event logger
-// Module lifecycle diagnostics go to the console-only logger (never file/db).
+// ModuleLog is the console-only logger for module lifecycle diagnostics
+// (never file/db).
 var ModuleLog = log.Console.With("module")
 
-// RegisterModuleDefaultPermission sets the default permission for a module
 func RegisterModuleDefaultPermission(module string, defaultPermission int) {
 	ModuleDefaultPermissions[module] = defaultPermission
 	ModuleLog.Debugf("Default permission %d registered for module %s", defaultPermission, module)
@@ -281,7 +191,7 @@ func (m *ModuleAbstract[T]) SetDefaultPermission(permission int) {
 	RegisterModuleDefaultPermission(m.ID, permission)
 }
 
-// LogModuleEvent logs module eLogModuleEventvents with structured data
+// LogModuleEvent logs a module event with structured data.
 func LogModuleEvent(event ModuleEvent) {
 	status := "SUCCESS"
 	if !event.Success {
@@ -317,7 +227,6 @@ func LogModuleEvent(event ModuleEvent) {
 	ModuleLog.Debug(logMsg)
 }
 
-// Helper function to create event from HTTP request
 func NewModuleEventFromRequest(moduleID, action string, r *http.Request) ModuleEvent {
 	event := ModuleEvent{
 		Timestamp:  time.Now(),
@@ -325,33 +234,25 @@ func NewModuleEventFromRequest(moduleID, action string, r *http.Request) ModuleE
 		Action:     action,
 		RemoteAddr: r.RemoteAddr,
 		UserAgent:  r.UserAgent(),
-		Success:    true, // Will be set to false if error occurs
+		Success:    true,
 	}
-
-	// Try to extract user ID from various sources
 	if userID := extractUserID(r); userID != "" {
 		event.UserID = userID
 	}
-
 	return event
 }
 
-// extractUserID tries to extract user ID from request headers, context, or session
+// extractUserID tries to extract a user id from the Authorization header, an
+// X-User-ID header, or the request context, in that order.
 func extractUserID(r *http.Request) string {
-	// Check Authorization header for JWT or similar
 	if auth := r.Header.Get("Authorization"); auth != "" {
-		// This is a placeholder - implement actual JWT/token parsing as needed
 		if strings.HasPrefix(auth, "Bearer ") {
-			return "user_from_token" // Replace with actual token parsing
+			return "user_from_token"
 		}
 	}
-
-	// Check for user ID in headers
 	if userID := r.Header.Get("X-User-ID"); userID != "" {
 		return userID
 	}
-
-	// Check context for user information (if middleware sets it)
 	if ctx := r.Context(); ctx != nil {
 		if userID := ctx.Value("userID"); userID != nil {
 			if uid, ok := userID.(string); ok {
@@ -359,15 +260,14 @@ func extractUserID(r *http.Request) string {
 			}
 		}
 	}
-
-	return "" // No user ID found
+	return ""
 }
 
-// Initialize the module with a controller (should be called after module definition)
+// Initialize wires the module to a controller for tableName; call after the
+// module's fields/config are fully declared.
 func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	startTime := time.Now()
 
-	// Log module initialization start
 	event := ModuleEvent{
 		Timestamp: startTime,
 		ModuleID:  m.ID,
@@ -390,17 +290,9 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		}
 	}()
 
-	// Inject default fields if not present.
-	//
-	// System fields (id/uuid/created/updated/created_by) are read-only and only
-	// meaningful to admins: shown in list/view and shown read-only in edit, but
-	// never in create (nothing to show for a record that doesn't exist yet) and
-	// never editable. Admin-only visibility is enforced at request time by the
-	// engine; the modes here only control which forms they can appear in.
-	//
-	// The access field is the per-record access level (0 = everyone). Unlike the
-	// other system fields it is editable by admins (it is the control), so it also
-	// appears in create.
+	// addDefaultFields injects the system fields (id/uuid/created/updated/
+	// created_by): read-only, list/view/edit only. access is the exception —
+	// editable and shown in create too, since it's the per-record access level.
 	addDefaultFields := func(fields []Field) []Field {
 		const sysMode = MODE_LIST | MODE_VIEW | MODE_EDIT
 		defaultFields := []Field{
@@ -462,10 +354,6 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 				Validation:   map[string]interface{}{"min": 0},
 			},
 		}
-		// System fields are engine-managed. If a module declares one of the
-		// non-editable system fields itself (e.g. its own uuid), force it
-		// read-only so it can never be edited regardless of how it was declared.
-		// access is excluded: it is the one system field admins are meant to set.
 		for i := range fields {
 			if IsSystemField(fields[i].Name) && fields[i].Name != "access" {
 				fields[i].ReadOnly = true
@@ -476,7 +364,6 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		for _, f := range fields {
 			fieldMap[f.Name] = true
 		}
-		// Engine-managed defaults the module opted out of (OmitSystemFields).
 		omit := map[string]bool{}
 		for _, name := range m.OmitSystemFields {
 			omit[name] = true
@@ -494,7 +381,6 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	}
 	m.Fields = addDefaultFields(m.Fields)
 
-	// Validation checks
 	if m == nil {
 		panic("module is nil")
 	}
@@ -505,7 +391,6 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		panic("table name is empty")
 	}
 
-	// Create a non-generic wrapper for the controller
 	ModuleLog.Debugf("Creating controller wrapper for module: %s", m.ID)
 
 	moduleWrapper := &ModuleAbstract[interface{}]{
@@ -516,15 +401,18 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		Rights:  m.Rights,
 		// Behaviour the BaseController / FieldsetEngine read off bc.Module /
 		// fe.Module must be carried onto the wrapper or it is silently inert.
-		BeforeFieldset:   m.BeforeFieldset,
-		AfterFieldset:    m.AfterFieldset,
-		KeyField:         m.KeyField,
-		OwnerScoped:      m.OwnerScoped,
-		SoftDelete:       m.SoftDelete,
-		ListAscending:    m.ListAscending,
-		RightsAffecting:  m.RightsAffecting,
-		ConfigAffecting:  m.ConfigAffecting,
-		OmitSystemFields: m.OmitSystemFields,
+		BeforeFieldset:        m.BeforeFieldset,
+		AfterFieldset:         m.AfterFieldset,
+		KeyField:              m.KeyField,
+		OwnerScoped:           m.OwnerScoped,
+		SoftDelete:            m.SoftDelete,
+		VisibilityField:       m.VisibilityField,
+		VisibilityUsersField:  m.VisibilityUsersField,
+		VisibilityGroupsField: m.VisibilityGroupsField,
+		ListAscending:         m.ListAscending,
+		RightsAffecting:       m.RightsAffecting,
+		ConfigAffecting:       m.ConfigAffecting,
+		OmitSystemFields:      m.OmitSystemFields,
 	}
 
 	ModuleLog.Debugf("Creating base controller for module: %s", m.ID)
@@ -534,7 +422,6 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		panic(fmt.Sprintf("failed to create controller for module %s", m.ID))
 	}
 
-	// Register globally for automatic routing
 	ModuleLog.Debugf("Registering module globally: %s", m.ID)
 	RegisteredModules[m.ID] = m
 
@@ -558,7 +445,6 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	}
 	RegisterModuleDefaultPermission(m.ID, m.DefaultPermission)
 
-	// Automatically register routes if GlobalRouter is available and auto-registration is enabled
 	if GlobalRouter != nil && AutoRegisterRoutes {
 		ModuleLog.Debugf("Auto-registering routes for module: %s", m.ID)
 		registerSingleModuleRoutes(GlobalRouter, m)
@@ -572,10 +458,9 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	}
 }
 
-// dispatch routes one CRUD action through the override → CustomHandler → default
-// controller chain (first non-nil wins), wrapped in a single timed module event.
-// custom and controller are passed pre-bound (or nil) so a missing CustomHandler
-// or Controller simply falls through.
+// dispatch routes one CRUD action through the override → CustomHandler →
+// default controller chain (first non-nil wins), wrapped in a single timed
+// module event.
 func (m *ModuleAbstract[T]) dispatch(w http.ResponseWriter, r *http.Request, action string, override http.HandlerFunc, custom, controller func(http.ResponseWriter, *http.Request)) {
 	startTime := time.Now()
 	event := NewModuleEventFromRequest(m.ID, action, r)
@@ -655,11 +540,9 @@ func (m *ModuleAbstract[T]) Delete(w http.ResponseWriter, r *http.Request) {
 	m.dispatch(w, r, "DELETE", m.Overrides.Delete, custom, controller)
 }
 
-// isStoredColumn reports whether a field is backed by a real table column the
-// engine should create/reconcile. Virtual fields never are. A field with an SQL
-// expression is normally computed (no column) — EXCEPT a TYPE_TABLE field whose
-// SQL is a SELECT projection for display while its rows are still written to a
-// real JSONB column via TableOnSubmit.
+// isStoredColumn reports whether a field is backed by a real table column
+// (virtual and SQL-computed fields aren't) — except a TYPE_TABLE field whose
+// rows are still written to a real JSONB column via TableOnSubmit.
 func isStoredColumn(field Field) bool {
 	if field.Virtual {
 		return false
@@ -670,11 +553,8 @@ func isStoredColumn(field Field) bool {
 	return field.SQL == ""
 }
 
-// getDB returns a database instance
-// addMissingColumns brings an existing table up to date with the fieldset by
-// adding any missing stored column. It never drops or alters existing columns.
-// Virtual and SQL-computed fields (e.g. an IMAGE preview aliased to another
-// column) are skipped since they aren't real columns.
+// addMissingColumns brings an existing table up to date with the fieldset,
+// adding any missing stored column; it never drops or alters existing ones.
 func (m *ModuleAbstract[T]) addMissingColumns(db *pgdb.Db) error {
 	existing, err := tableColumns(db, m.ID)
 	if err != nil {
@@ -682,15 +562,12 @@ func (m *ModuleAbstract[T]) addMissingColumns(db *pgdb.Db) error {
 	}
 	for _, field := range m.Fields {
 		if !isStoredColumn(field) {
-			continue // computed / virtual — no column to reconcile
+			continue
 		}
 		if existing[strings.ToLower(field.Name)] {
 			continue
 		}
 		sqlType := m.fieldTypeToSQL(field)
-		// Reconciled columns are added NULLABLE so ALTER never fails on a table
-		// that already has rows. Required values are supplied on insert (uuid,
-		// created_by) or by a DB default below.
 		sqlType = strings.Replace(sqlType, " NOT NULL", "", 1)
 		if t, ok := timestampSystemColumnType(field.Name); ok {
 			sqlType = t
@@ -709,11 +586,7 @@ func (m *ModuleAbstract[T]) getDB() (*pgdb.Db, error) {
 	return pgdb.GetInstance()
 }
 
-// In-memory store (replace with DB in production)
-var (
-	modules = make(map[string]*ModuleAbstract[any]) // map of module ID to Module
-	//modulesMu sync.RWMutex
-)
+var modules = make(map[string]*ModuleAbstract[any])
 
 // CreateModule creates a new module.
 func CreateModule[T any](id, name string) (*ModuleAbstract[T], error) {
@@ -724,7 +597,6 @@ func CreateModule[T any](id, name string) (*ModuleAbstract[T], error) {
 		ID:     id,
 		Name:   name,
 		Fields: []Field{},
-		//Filterable: []string{},
 		Rights: make(map[int]int),
 	}
 	modules[id] = any(m).(*ModuleAbstract[any])
@@ -797,7 +669,6 @@ func timestampSystemColumnType(name string) (string, bool) {
 	return "", false
 }
 
-// fieldTypeToSQL converts a field type to SQL column definition
 func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 	var sqlType string
 
@@ -832,21 +703,18 @@ func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 	case TYPE_MONEY:
 		sqlType = "NUMERIC(15,2)"
 	default:
-		sqlType = "TEXT" // Default fallback
+		sqlType = "TEXT"
 	}
 
-	// Add NOT NULL constraint if required
 	if field.Required {
 		sqlType += " NOT NULL"
 	}
 
-	// Add default value if specified. A TYPE_TABLE field's SQL is a SELECT
-	// projection for display, not a column default, so it is excluded here.
+	// A TYPE_TABLE field's SQL is a SELECT projection for display, not a
+	// column default, so it's excluded from the "custom SQL as default" case.
 	if field.SQL != "" && field.Type != TYPE_TABLE {
-		// If field has custom SQL (like uuid_generate_v4()), use it as default
 		sqlType += fmt.Sprintf(" DEFAULT %s", field.SQL)
 	} else if field.DefaultValue != nil {
-		// Use the default value specified
 		switch v := field.DefaultValue.(type) {
 		case string:
 			sqlType += fmt.Sprintf(" DEFAULT '%s'", v)
@@ -887,7 +755,6 @@ func (m *ModuleAbstract[T]) EnsureTableExists() error {
 		return fmt.Errorf("failed to get database connection: %w", err)
 	}
 
-	// Check if table exists
 	exists, err := db.TableExists(m.ID)
 	if err != nil {
 		event.Success = false
@@ -896,22 +763,18 @@ func (m *ModuleAbstract[T]) EnsureTableExists() error {
 	}
 
 	if exists {
-		// Table exists — bring it up to date with the fieldset by adding any
-		// newly-declared columns (never drops/alters existing ones). This means a
-		// module can gain a field without a manual migration, e.g. the rights
-		// modules' "fields" column that activates field-level rights.
+		// Lets a module gain a field without a manual migration, e.g. the
+		// rights modules' "fields" column that activates field-level rights.
 		if err := m.addMissingColumns(db); err != nil {
 			ModuleLog.Warnf("reconcile columns for %s: %v", m.ID, err)
 		}
 		event.Details = "Table already exists"
-		return nil // Table already exists
+		return nil
 	}
 
-	// Table doesn't exist, need to create it
 	event.Action = "TABLE_CREATE"
 	event.Details = fmt.Sprintf("Creating table with %d fields", len(m.Fields))
 
-	// Create sequence for id field FIRST if it exists and is integer type
 	for _, field := range m.Fields {
 		if field.Name == "id" && field.Type == TYPE_INT {
 			sequenceSQL := fmt.Sprintf(`CREATE SEQUENCE IF NOT EXISTS %s_id_seq`, m.ID)
@@ -923,10 +786,7 @@ func (m *ModuleAbstract[T]) EnsureTableExists() error {
 		}
 	}
 
-	// Generate CREATE TABLE statement
 	createSQL := m.generateCreateTableSQL()
-
-	// Execute the CREATE TABLE statement
 	_, err = db.Query(createSQL)
 	if err != nil {
 		event.Success = false
@@ -945,17 +805,16 @@ func (m *ModuleAbstract[T]) generateCreateTableSQL() string {
 
 	for _, field := range m.Fields {
 		if !isStoredColumn(field) {
-			continue // computed / virtual / table-source — no column
+			continue
 		}
 
 		sqlType := m.fieldTypeToSQL(field)
 		if sqlType == "" {
-			continue // Skip fields that don't need database storage (like database table references)
+			continue
 		}
 
 		columnDef := fmt.Sprintf("%s %s", field.Name, sqlType)
 
-		// Handle special cases
 		switch field.Name {
 		case "id":
 			if field.Type == TYPE_INT {
@@ -965,9 +824,7 @@ func (m *ModuleAbstract[T]) generateCreateTableSQL() string {
 		case "uuid":
 			if field.Type == TYPE_UUID || (field.Type == TYPE_STRING && field.SQL != "") {
 				columnDef = "uuid UUID NOT NULL DEFAULT uuid_generate_v4()"
-				// If no id field, use uuid as primary key
 			}
-			// Check if id field exists, if not use uuid as primary key
 			hasIdField := false
 			for _, f := range m.Fields {
 				if f.Name == "id" {
@@ -987,10 +844,8 @@ func (m *ModuleAbstract[T]) generateCreateTableSQL() string {
 		columns = append(columns, columnDef)
 	}
 
-	// Build the CREATE TABLE statement
 	sql := fmt.Sprintf("CREATE TABLE IF NOT EXISTS %s (\n    %s", m.ID, strings.Join(columns, ",\n    "))
 
-	// Add primary key constraint
 	if len(primaryKeys) > 0 {
 		sql += fmt.Sprintf(",\n    CONSTRAINT %s_pkey PRIMARY KEY (%s)", m.ID, strings.Join(primaryKeys, ", "))
 	}
@@ -1000,7 +855,6 @@ func (m *ModuleAbstract[T]) generateCreateTableSQL() string {
 	return sql
 }
 
-// Public methods for testing
 func (m *ModuleAbstract[T]) GenerateCreateTableSQL() string {
 	return m.generateCreateTableSQL()
 }
@@ -1014,18 +868,15 @@ func registerSingleModuleRoutes(router *mux.Router, module ModuleInterface) {
 	moduleID := module.GetID()
 	ModuleLog.Debugf("Registering routes for module: %s", moduleID)
 
-	// Create subrouter for this module
 	subrouter := router.PathPrefix("/" + moduleID).Subrouter()
-
-	// Register CRUD routes
 	subrouter.HandleFunc("", module.List).Methods("GET")
 	subrouter.HandleFunc("", module.Create).Methods("POST")
 	subrouter.HandleFunc("/{id}", module.View).Methods("GET")
 	subrouter.HandleFunc("/{id}", module.Edit).Methods("PUT", "PATCH")
 	subrouter.HandleFunc("/{id}", module.Delete).Methods("DELETE")
 
-	// Register any module-supplied routes beyond CRUD (e.g. binary upload/serve).
-	// Absolute paths go on the root router; others are relative to /<moduleID>.
+	// Absolute custom routes go on the root router; others are relative to
+	// /<moduleID>.
 	if cr, ok := module.(CustomRouter); ok {
 		for _, rt := range cr.GetCustomRoutes() {
 			methods := rt.Methods
@@ -1060,12 +911,11 @@ func RegisterModuleRoutes(router *mux.Router) {
 	ModuleLog.Debugf("Route registration completed in %dms. %d modules registered.", duration, moduleCount)
 }
 
-// SetGlobalRouter sets the global router for automatic route registration
+// SetGlobalRouter sets the global router for automatic route registration.
 func SetGlobalRouter(router *mux.Router) {
 	GlobalRouter = router
 	ModuleLog.Debugf("Global router set for automatic module route registration")
 
-	// Register existing modules if any
 	if len(RegisteredModules) > 0 {
 		ModuleLog.Debugf("Registering %d existing modules with new global router", len(RegisteredModules))
 		for _, module := range RegisteredModules {

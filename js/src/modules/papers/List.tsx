@@ -1,5 +1,6 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { ModuleViewProps } from "@engine/controllers/registry";
+import Auth from "@controllers/auth";
 import useT from "@engine/useT";
 
 // Papers list = all active games (rooms). Each row opens the room's view.
@@ -14,6 +15,19 @@ function playerCount(room: any): number {
 
 const PapersList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
   const t = useT();
+
+  // Papers stays visible in the menu even while logged out (per module
+  // rights, everyone can list it) — but playing requires an account, so a
+  // logged-out click redirects to login with an explanation instead of
+  // rendering the room list.
+  useEffect(() => {
+    if (!Auth.isAuthenticated()) {
+      navigate(`/login?reason=${encodeURIComponent(t("You must be authorized to play games"))}`);
+    }
+  }, [navigate, t]);
+
+  if (!Auth.isAuthenticated()) return null;
+
   const rooms = Array.isArray(data) ? data : [];
   if (rooms.length === 0) {
     return <div className="text-muted p-4 text-center">{t("No active games right now.")}</div>;

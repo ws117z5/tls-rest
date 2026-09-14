@@ -62,11 +62,12 @@ func Init() {
 
 // node is one comment plus its nested replies, as sent to the client.
 type node struct {
-	ID      int         `json:"id"`
-	Author  string      `json:"author"`
-	Body    string      `json:"body"`
-	Created interface{} `json:"created"`
-	Replies []*node     `json:"replies"`
+	ID       int         `json:"id"`
+	Author   string      `json:"author"`
+	AuthorID int         `json:"authorId"`
+	Body     string      `json:"body"`
+	Created  interface{} `json:"created"`
+	Replies  []*node     `json:"replies"`
 }
 
 // handleList returns the whole comment tree rooted at (module, row).
@@ -97,9 +98,8 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 			FROM comments c
 			JOIN thread t ON c.module_id = '`+selfModule+`' AND c.row_id = t.id
 		)
-		SELECT t.id, t.module_id, t.row_id, t.body, t.created,
-		       COALESCE(NULLIF(TRIM(CONCAT(u.first_name, ' ', u.last_name)), ''),
-		                u.user_name, '') AS author
+		SELECT t.id, t.module_id, t.row_id, t.body, t.created, t.created_by,
+		       COALESCE(u.user_name, '') AS author
 		FROM thread t
 		LEFT JOIN users u ON u.id = t.created_by
 		ORDER BY t.created`, modID, rowID)
@@ -112,10 +112,11 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 	order := make([]*node, 0, len(rows))
 	for _, row := range rows {
 		n := &node{
-			ID:      functions.Int(row["id"]),
-			Author:  functions.Coerce[string](row["author"]),
-			Body:    functions.Coerce[string](row["body"]),
-			Created: row["created"],
+			ID:       functions.Int(row["id"]),
+			Author:   functions.Coerce[string](row["author"]),
+			AuthorID: functions.Int(row["created_by"]),
+			Body:     functions.Coerce[string](row["body"]),
+			Created:  row["created"],
 		}
 		byID[n.ID] = n
 		order = append(order, n)

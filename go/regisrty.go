@@ -11,8 +11,12 @@ import (
 	comments "tls-rest/go/engine/modules/comments"
 	contact "tls-rest/go/engine/modules/contact"
 	deletion "tls-rest/go/engine/modules/deletion"
+	friends "tls-rest/go/engine/modules/friends"
 	images "tls-rest/go/engine/modules/images"
+	likes "tls-rest/go/engine/modules/likes"
+	messages "tls-rest/go/engine/modules/messages"
 	modulerights "tls-rest/go/engine/modules/modulerights"
+	publicprofile "tls-rest/go/engine/modules/publicprofile"
 	translations "tls-rest/go/engine/modules/translations"
 	usergroups "tls-rest/go/engine/modules/usergroups"
 	users "tls-rest/go/engine/modules/users"
@@ -52,6 +56,10 @@ func InitAll() {
 	accessrules.Init()
 	images.Init()
 	comments.Init()
+	likes.Init()
+	messages.Init()
+	friends.Init()
+	publicprofile.Init()
 	contact.Init()
 	deletion.Init()
 	translations.Init()

@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"sort"
@@ -13,6 +12,7 @@ import (
 
 	"tls-rest/go/engine/controllers/auth"
 	"tls-rest/go/engine/controllers/db/pgdb"
+	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
 
 	"tls-rest/go/engine/controllers/db/cache"
@@ -20,7 +20,7 @@ import (
 
 func Error(w http.ResponseWriter, r *http.Request, ErrID int) {
 	session, ok := r.Context().Value(auth.SESSION_KEY).(*cache.Session)
-	if !ok || session != nil {
+	if !ok || session == nil {
 		// Handle the case where session is not found or not valid
 		log.Printf("Error: Session not found or invalid for error %d", ErrID)
 		// Use session.ID, session.UserID, etc.
@@ -34,14 +34,23 @@ func Error(w http.ResponseWriter, r *http.Request, ErrID int) {
 		},
 	}
 
-	if t, err := template.ParseFiles("templates/error.html"); err == nil {
-		if err := t.Execute(w, tpl); err != nil {
-			log.Println(err.Error())
-			http.Error(w, http.StatusText(ErrID), ErrID)
-		}
+	// Writing the template body with no explicit WriteHeader defaults to 200
+	// regardless of ErrID — every call through this function (401, 403, 404,
+	// 500, ...) was silently being sent to the client as 200 OK as long as
+	// templates/error.html happened to parse and execute cleanly. The actual
+	// deny decision upstream (e.g. the auth middleware) was correct; only the
+	// wire response was wrong. Caught by go/tests/rights_test.go expecting 401
+	// and observing 200.
+	t, err := template.ParseFiles("templates/error.html")
+	if err != nil {
+		http.Error(w, http.StatusText(ErrID), ErrID)
+		return
 	}
 
-	fmt.Fprintln(w, "http2 not supported!")
+	w.WriteHeader(ErrID)
+	if err := t.Execute(w, tpl); err != nil {
+		log.Println(err.Error())
+	}
 }
 
 // sendEarlyHints emits a 103 Early Hints informational response advertising the
@@ -353,9 +362,7 @@ func intersectModes(have, allow []string) []string {
 	return out
 }
 
-// userAvatar returns the menu avatar URL for a user, or "" if none. users.image
-// is a type_image field: a JSON array of refs (each already carrying a
-// "/image/<uuid>.<ext>" url). Use the first ref's url.
+// userAvatar returns the menu avatar URL for a user, or "" if none.
 func userAvatar(userID int) string {
 	db, err := pgdb.GetInstance()
 	if err != nil {
@@ -365,31 +372,7 @@ func userAvatar(userID int) string {
 	if err != nil || row == nil {
 		return ""
 	}
-	raw, _ := row["image"].(string)
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		return ""
-	}
-
-	var refs []struct {
-		URL  string `json:"url"`
-		UUID string `json:"uuid"`
-	}
-	if err := json.Unmarshal([]byte(raw), &refs); err == nil && len(refs) > 0 {
-		if refs[0].URL != "" {
-			return refs[0].URL
-		}
-		if refs[0].UUID != "" {
-			return "/image/" + refs[0].UUID
-		}
-		return ""
-	}
-
-	// Back-compat: a value stored as a plain url or uuid string.
-	if strings.HasPrefix(raw, "/image/") {
-		return raw
-	}
-	return "/image/" + raw
+	return functions.ImageFieldURL(row["image"])
 }
 
 // PagesAPI handles GET /api/pages. It returns the backend-registered pages

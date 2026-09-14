@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import axios from "axios";
 import { Link } from "react-router";
 import PageComponent from "@engine/containers/PageComponent";
+import CustomSelect from "@engine/fields/CustomSelect";
 
 // Public "request account deletion" page. Posts to /api/deletion-request, which
 // stores the request for an admin to action — nothing is deleted automatically.
@@ -90,19 +91,13 @@ const DeletionForm: React.FC = () => {
         <label className="form-label" htmlFor="dr-reason">
           Reason <span className="text-muted">(optional)</span>
         </label>
-        <select
+        <CustomSelect
           id="dr-reason"
-          className="form-select"
           value={reason}
-          onChange={(e) => setReason(e.target.value)}
-        >
-          <option value="">—</option>
-          {REASONS.map((r) => (
-            <option key={r} value={r}>
-              {r}
-            </option>
-          ))}
-        </select>
+          onChange={setReason}
+          placeholder="—"
+          options={REASONS.map((r) => ({ value: r, label: r }))}
+        />
       </div>
 
       <div className="mb-3">

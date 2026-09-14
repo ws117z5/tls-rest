@@ -275,8 +275,7 @@ func authorizeAPIRequest(ci *cache.Session, r *http.Request) (allowed bool, modu
 	if path == "/api/login" || path == "/api/logout" || path == "/api/register" {
 		return true, "auth", "login"
 	}
-	// Mobile bearer-token issue/revoke must be reachable while anonymous.
-	if path == "/api/auth/token" || path == "/api/auth/oauth" || path == "/api/auth/logout" {
+	if path == "/api/auth/oauth" || path == "/api/auth/logout" {
 		return true, "auth", "login"
 	}
 

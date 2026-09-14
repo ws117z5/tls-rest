@@ -2,6 +2,7 @@ import React from "react";
 import { FIELD_TYPES } from "./FieldsetProvider";
 import type { ModuleFilterMeta, ModuleFiltersProps } from "@engine/controllers/registry";
 import useT from "@engine/useT";
+import CustomSelect from "./CustomSelect";
 
 // FieldsetFilters is the standard list filter bar. It renders one input per
 // filter declared by the backend (the "Filters" array returned by GET /<module>,
@@ -33,15 +34,15 @@ function renderInput(
         case FIELD_TYPES.YES_NO:
         case FIELD_TYPES.ACTIVE_INACTIVE:
             return (
-                <select
-                    className="form-select form-select-sm"
-                    value={value ?? ""}
-                    onChange={(e) => onChange(e.target.value)}
-                >
-                    <option value="">{t("Any")}</option>
-                    <option value="true">{t("Yes")}</option>
-                    <option value="false">{t("No")}</option>
-                </select>
+                <CustomSelect
+                    value={String(value ?? "")}
+                    onChange={onChange}
+                    options={[
+                        { value: "", label: t("Any") },
+                        { value: "true", label: t("Yes") },
+                        { value: "false", label: t("No") },
+                    ]}
+                />
             );
 
         case FIELD_TYPES.INT:
@@ -102,7 +103,7 @@ const FieldsetFilters: React.FC<ModuleFiltersProps> = ({
 
     return (
         <div className="fieldset-filters card card-body mb-3 py-2">
-            <div className="row g-2 align-items-end">
+            <div className="row align-items-end">
                 {meta.map((f) => (
                     <div className="col-auto" key={f.name}>
                         <label className="form-label mb-1 small text-muted">

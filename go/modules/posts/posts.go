@@ -1,9 +1,49 @@
 package posts
 
 import (
+	"tls-rest/go/engine/controllers/db/pgdb"
+	"tls-rest/go/engine/controllers/functions"
+
 	. "tls-rest/go/engine/controllers/field"
 	. "tls-rest/go/engine/controllers/module"
 )
+
+// shareableUsers lists every user as a {value, name} option for the
+// visible_users sharing table. Simple and unfiltered — sharing your own post
+// with someone doesn't need the authority scoping a group-grant does.
+func shareableUsers(ctx map[string]interface{}) []map[string]interface{} {
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		return nil
+	}
+	rows, err := db.GetAll(`SELECT id AS value, user_name AS name FROM users ORDER BY user_name`)
+	if err != nil {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, map[string]interface{}{"value": r["value"], "name": functions.Coerce[string](r["name"])})
+	}
+	return out
+}
+
+// shareableGroups lists every user group as a {value, name} option for the
+// visible_groups sharing table.
+func shareableGroups(ctx map[string]interface{}) []map[string]interface{} {
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		return nil
+	}
+	rows, err := db.GetAll(`SELECT id AS value, name FROM user_groups ORDER BY name`)
+	if err != nil {
+		return nil
+	}
+	out := make([]map[string]interface{}, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, map[string]interface{}{"value": r["value"], "name": functions.Coerce[string](r["name"])})
+	}
+	return out
+}
 
 // fieldset defines the module's fields. It is the field-set counterpart to
 // filters() in filters.go: both build a set that the fieldset engine consumes.
@@ -40,10 +80,89 @@ func (p *Posts) fieldset() []Field {
 			WithOption("height", "300px").
 			NonSortable(),
 
-		NewField("public", TYPE_CHECKBOX, false).
-			WithLabel("Public").
-			WithDescription("Whether the post is publicly visible").
-			WithDefault(false),
+		// Sharing lists: who besides you and admins may see this post. Empty
+		// (the default) means private to you and admins — see VisibilityUsersField
+		// / VisibilityGroupsField below, which is what actually enforces this.
+		// Not shown at create time — a post is shared after it exists.
+		NewField("visible_users", TYPE_TABLE, false).
+			WithLabel("Visible To (Users)").
+			WithDescription("Specific users who may also view this post, besides you and admins").
+			WithOption("width", "500px").
+			InModes(MODE_VIEW | MODE_EDIT).
+			TableFieldset([]Field{
+				NewField("user", TYPE_INT, true).
+					WithLabel("User").
+					WithOption("widget", "select").
+					WithOption("width", "300px").
+					WithOptionsCtx(shareableUsers),
+			}).
+			TableRowsAddable("user").
+			TableData(func(ctx map[string]interface{}) []map[string]interface{} {
+				pid := functions.Int(ctx["id"])
+				if pid <= 0 {
+					return nil
+				}
+				db, err := pgdb.GetInstance()
+				if err != nil {
+					return nil
+				}
+				rows, err := db.GetAll(
+					`SELECT jsonb_array_elements_text(visible_users)::int AS "user" FROM posts WHERE id = $1`,
+					pid)
+				if err != nil {
+					return nil
+				}
+				return rows
+			}).
+			TableOnSubmit(func(rows []map[string]interface{}) interface{} {
+				ids := []interface{}{}
+				for _, r := range rows {
+					if id := functions.Int(r["user"]); id != -1 {
+						ids = append(ids, id)
+					}
+				}
+				return ids
+			}),
+
+		NewField("visible_groups", TYPE_TABLE, false).
+			WithLabel("Visible To (Groups)").
+			WithDescription("User groups who may also view this post, besides you and admins").
+			WithOption("width", "500px").
+			InModes(MODE_VIEW | MODE_EDIT).
+			TableFieldset([]Field{
+				NewField("group", TYPE_INT, true).
+					WithLabel("Group").
+					WithOption("widget", "select").
+					WithOption("width", "300px").
+					WithOptionsCtx(shareableGroups),
+			}).
+			TableRowsAddable("group").
+			TableData(func(ctx map[string]interface{}) []map[string]interface{} {
+				pid := functions.Int(ctx["id"])
+				if pid <= 0 {
+					return nil
+				}
+				db, err := pgdb.GetInstance()
+				if err != nil {
+					return nil
+				}
+				rows, err := db.GetAll(
+					`SELECT jsonb_array_elements_text(visible_groups)::int AS "group" FROM posts WHERE id = $1`,
+					pid)
+				if err != nil {
+					return nil
+				}
+				return rows
+			}).
+			TableOnSubmit(func(rows []map[string]interface{}) interface{} {
+				ids := []interface{}{}
+				for _, r := range rows {
+					if id := functions.Int(r["group"]); id != -1 {
+						ids = append(ids, id)
+					}
+				}
+				return ids
+			}),
 	}
 }
 
@@ -58,6 +177,13 @@ func NewPosts() *Posts {
 			// Public module: everyone may read (list/view); writes require rights.
 			DefaultPermission:    1, // PERMISSION_READ
 			DefaultPermissionSet: true,
+			// Sharing-list visibility (fieldset.go's visible_users/visible_groups):
+			// a non-admin sees a post only if they wrote it, or are named in one
+			// of the two sharing lists. A post shared with nobody is private to
+			// its author and admins — this replaces the generic access-level gate
+			// for this module entirely (see buildVisibilityCondition).
+			VisibilityUsersField:  "visible_users",
+			VisibilityGroupsField: "visible_groups",
 		},
 	}
 

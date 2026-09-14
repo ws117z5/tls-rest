@@ -2,38 +2,34 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
+	config "tls-rest/go/constants"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
 )
 
-// This file is the single live bridge between the database and the per-mode
-// bitmask access model declared in access.go.
-//
-// Model (per the revised rights design):
-//   - A user belongs to zero or more groups, stored as a jsonb array of ids in
-//     users.groups.
-//   - Groups are ordered by id: 0 (or no group) = unauthorized ... n = higher
-//     privilege. A user's access level is the highest id they belong to.
-//   - A group may be flagged is_admin; admins bypass mode and row checks.
-//   - Rights are per-mode bitmasks (auth.MODE_*) split across two tables:
-//       user_group_rights(group_id, module, modes)  - rights for a whole group
-//       user_rights(user_id,  module, modes)         - rights for one user
-//     A user's effective modes for a module are the OR of the module default,
-//     their group's rights, and their own rights (user rights are additive).
-
-// userGroupsSubquery yields every group id a user belongs to, from the jsonb
-// array in users.groups. Callers reference $1 = userID. Rights are aggregated
-// across all of them.
 const userGroupsSubquery = `
 	SELECT jsonb_array_elements_text(groups)::int AS group_id FROM users WHERE id = $1
 `
 
-// defaultModesFor maps a module's registered default permission
-// (DENY/READ/WRITE) to a mode bitmask, so a module is usable before any
-// explicit rights are granted: DENY -> nothing, READ -> browse/read,
-// WRITE -> everything.
+// GuestGroupID re-exports constants.GuestGroupID (module can't import auth,
+// so auth re-exports it) — what an anonymous caller resolves as.
+var GuestGroupID = config.GuestGroupID
+
+// groupIDsExpr returns the SQL (aliased "group_id") and args yielding the
+// group ids to resolve rights for: a real user's own groups, or just
+// GuestGroupID when anonymous (userID <= 0).
+func groupIDsExpr(userID int) (expr string, args []interface{}) {
+	if userID <= 0 {
+		return fmt.Sprintf("SELECT %d AS group_id", GuestGroupID), nil
+	}
+	return userGroupsSubquery, []interface{}{userID}
+}
+
+// defaultModesFor maps a module's default permission to a mode bitmask:
+// DENY -> nothing, READ -> browse/read, WRITE -> everything.
 func defaultModesFor(perm int) int {
 	switch {
 	case perm >= PERMISSION_WRITE:
@@ -45,26 +41,17 @@ func defaultModesFor(perm int) int {
 	}
 }
 
-// ResolveModuleFieldRights builds the per-module allowed-field set for a user.
-// A module ABSENT from the result is unrestricted (all fields — current
-// behavior); a module PRESENT maps to the exact set of non-system fields the
-// user may access. Rights are additive: an empty `fields` value on ANY
-// applicable rights row means "all fields" and leaves the module unrestricted;
-// otherwise the allowed set is the union of listed fields across the user's
-// group rights and their own user rights.
-//
-// If the `fields` column doesn't exist yet (rights tables predating this
-// feature), the queries error and the result is empty — i.e. unrestricted,
-// preserving existing behavior until the column is added.
+// ResolveModuleFieldRights builds the per-module allowed-field set for a
+// user: a module absent from the result is unrestricted; an empty `fields`
+// value on any applicable row also leaves it unrestricted (rights are additive).
 func ResolveModuleFieldRights(userID int) map[string]map[string]int {
 	db, err := pgdb.GetInstance()
 	if err != nil {
 		return map[string]map[string]int{}
 	}
 
-	// module -> field -> allowed-mode bitmask (union across the user's rows).
 	acc := map[string]map[string]int{}
-	unrestricted := map[string]bool{} // module -> saw an "all fields" (empty) row
+	unrestricted := map[string]bool{}
 
 	consume := func(rows []map[string]interface{}) {
 		for _, row := range rows {
@@ -74,7 +61,7 @@ func ResolveModuleFieldRights(userID int) map[string]map[string]int {
 			}
 			perField, empty := fieldRightsFromValue(row["fields"])
 			if empty || len(perField) == 0 {
-				unrestricted[m] = true // empty / unparseable = all fields
+				unrestricted[m] = true
 				continue
 			}
 			if acc[m] == nil {
@@ -86,31 +73,33 @@ func ResolveModuleFieldRights(userID int) map[string]map[string]int {
 		}
 	}
 
+	groupExpr, groupArgs := groupIDsExpr(userID)
 	if rows, e := db.RQuery(`
 		SELECT ugr.module AS module, ugr.fields AS fields
 		FROM user_group_rights ugr
-		WHERE ugr.group_id IN (`+userGroupsSubquery+`)
-	`, userID); e == nil {
+		WHERE ugr.group_id IN (`+groupExpr+`)
+	`, groupArgs...); e == nil {
 		consume(rows)
 	}
-	if rows, e := db.RQuery(`
-		SELECT module, fields FROM user_rights WHERE user_id = $1
-	`, userID); e == nil {
-		consume(rows)
+	if userID > 0 {
+		if rows, e := db.RQuery(`
+			SELECT module, fields FROM user_rights WHERE user_id = $1
+		`, userID); e == nil {
+			consume(rows)
+		}
 	}
 
 	result := map[string]map[string]int{}
 	for m, fields := range acc {
-		if !unrestricted[m] { // an "all fields" row anywhere wins
+		if !unrestricted[m] {
 			result[m] = fields
 		}
 	}
 	return result
 }
 
-// fieldRightsFromValue normalizes a stored "fields" value — which may arrive as
-// a string/[]byte (TEXT column) or an already-parsed map (JSONB column) — into
-// field -> mode-bitmask. The second return is true when the value is empty
+// fieldRightsFromValue normalizes a stored "fields" value (string, []byte, or
+// parsed map) into field -> mode-bitmask; the bool is true when empty
 // (meaning "all fields", unrestricted).
 func fieldRightsFromValue(v interface{}) (map[string]int, bool) {
 	switch t := v.(type) {
@@ -194,19 +183,13 @@ func allModesMask() int {
 	return mask
 }
 
-// ResolveModuleModeRights builds the per-module allowed-mode bitmask for a user.
-// It seeds every registered module with its default modes, then OR-s in the
-// user's group rights and their own user rights. Anonymous users (id <= 0)
-// receive only the defaults, so public modules stay readable while restricted
-// modules stay closed.
+// ResolveModuleModeRights builds the per-module allowed-mode bitmask for a
+// user: module default, OR-ed with group rights, OR-ed with the user's own
+// rights. An anonymous caller (id <= 0) resolves as a member of GuestGroupID.
 func ResolveModuleModeRights(userID int) ModuleModeRights {
 	rights := ModuleModeRights{}
 	for module, def := range ModuleDefaults() {
 		rights[module] = defaultModesFor(def)
-	}
-
-	if userID <= 0 {
-		return rights
 	}
 
 	db, err := pgdb.GetInstance()
@@ -214,13 +197,12 @@ func ResolveModuleModeRights(userID int) ModuleModeRights {
 		return rights
 	}
 
-	// Group rights, OR-ed across every group the user belongs to (the primary
-	// group on the user row plus any additional memberships).
+	groupExpr, groupArgs := groupIDsExpr(userID)
 	if rows, gerr := db.RQuery(`
 		SELECT ugr.module AS module, ugr.modes AS modes
 		FROM user_group_rights ugr
-		WHERE ugr.group_id IN (`+userGroupsSubquery+`)
-	`, userID); gerr == nil {
+		WHERE ugr.group_id IN (`+groupExpr+`)
+	`, groupArgs...); gerr == nil {
 		for _, row := range rows {
 			if m, _ := row["module"].(string); m != "" {
 				rights[m] |= functions.Int(row["modes"])
@@ -228,13 +210,14 @@ func ResolveModuleModeRights(userID int) ModuleModeRights {
 		}
 	}
 
-	// User-specific rights, additive on top of the group's.
-	if rows, uerr := db.RQuery(`
-		SELECT module, modes FROM user_rights WHERE user_id = $1
-	`, userID); uerr == nil {
-		for _, row := range rows {
-			if m, _ := row["module"].(string); m != "" {
-				rights[m] |= functions.Int(row["modes"])
+	if userID > 0 {
+		if rows, uerr := db.RQuery(`
+			SELECT module, modes FROM user_rights WHERE user_id = $1
+		`, userID); uerr == nil {
+			for _, row := range rows {
+				if m, _ := row["module"].(string); m != "" {
+					rights[m] |= functions.Int(row["modes"])
+				}
 			}
 		}
 	}
@@ -242,24 +225,20 @@ func ResolveModuleModeRights(userID int) ModuleModeRights {
 	return rights
 }
 
-// ResolveUserAccessLevel returns the user's access level, which is the id of the
-// group they belong to (0 / AccessAll if they have none). A record is visible
-// when the user's level is >= the record's access level (see CanAccessRow);
-// admins bypass the check entirely.
+// ResolveUserAccessLevel returns the id of the highest group the caller
+// belongs to (0 / AccessAll if none); an anonymous caller (id <= 0) resolves
+// as a member of GuestGroupID, same as ResolveModuleModeRights.
 func ResolveUserAccessLevel(userID int) int {
-	if userID <= 0 {
-		return AccessAll
-	}
-
 	db, err := pgdb.GetInstance()
 	if err != nil {
 		return AccessAll
 	}
 
+	groupExpr, groupArgs := groupIDsExpr(userID)
 	rows, err := db.RQuery(`
 		SELECT COALESCE(MAX(group_id), 0) AS level
-		FROM (`+userGroupsSubquery+`) g
-	`, userID)
+		FROM (`+groupExpr+`) g
+	`, groupArgs...)
 	if err != nil || len(rows) == 0 {
 		return AccessAll
 	}
@@ -267,8 +246,9 @@ func ResolveUserAccessLevel(userID int) int {
 	return functions.Int(rows[0]["level"])
 }
 
-// ResolveIsAdmin reports whether the user's group is flagged as an administrator
-// group. Admins bypass every mode and row-access check.
+// ResolveIsAdmin reports whether the user's group is flagged as an
+// administrator group. Unlike the other Resolve* functions, an anonymous
+// caller is never resolved via GuestGroupID here — a guest is never admin.
 func ResolveIsAdmin(userID int) bool {
 	if userID <= 0 {
 		return false

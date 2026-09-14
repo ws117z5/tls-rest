@@ -340,17 +340,26 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
       return <div className="text-muted">{translate("Loading…")}</div>;
     }
 
+    // A field can set its own table width (WithOption("width", ...) on the
+    // TYPE_TABLE field) to override the default shrink-to-content sizing; a
+    // column can independently set its own width the same way.
+    const width = this.props.field?.options?.width;
+
+    // overflowY explicit (not left to default "visible") because mixing
+    // visible/non-visible on the two axes makes browsers clip BOTH — without
+    // this an open CustomSelect inside a cell gets cut off at this wrapper's
+    // bottom edge instead of floating over content below it.
     return (
-      <div className="field-table" style={{ maxWidth: "100%", overflowX: "auto" }}>
+      <div className="field-table" style={{ maxWidth: "100%", overflowX: "auto", overflowY: "visible" }}>
         {label && <label className="form-label">{label}</label>}
         <table
-          className="table table-sm table-bordered align-middle mb-0 w-auto"
-          style={{ fontSize: "0.9rem" }}
+          className={`table table-sm table-bordered align-middle mb-0${width ? "" : " w-auto"}`}
+          style={{ fontSize: "0.9rem", width: width || undefined }}
         >
           <thead>
             <tr>
               {cols.map((c) => (
-                <th key={c.name} className="text-nowrap">
+                <th key={c.name} className="text-nowrap" style={{ width: c.options?.width }}>
                   {c.label ? translate(c.label) : c.name}
                 </th>
               ))}

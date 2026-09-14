@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useSearchParams } from "react-router";
 import axios from "axios";
 import AuthButton from "./AuthButton";
 import useT from "@engine/useT";
@@ -24,6 +25,11 @@ const PROVIDERS: { key: string; label: string; icon: string }[] = [
 // which establishes the session and redirects home.
 const Login: React.FC<LoginProps> = () => {
   const t = useT();
+  const [searchParams] = useSearchParams();
+  // Set by a page that redirected here because it requires sign-in (e.g.
+  // "?reason=You must be authorized to play games") — shown above the form
+  // so the visitor knows why they landed on the login screen.
+  const reason = searchParams.get("reason");
   const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -65,6 +71,7 @@ const Login: React.FC<LoginProps> = () => {
         {mode === "login" ? t("Welcome back.") : t("Join in a few seconds.")}
       </p>
 
+      {reason && <div className="login-reason">{reason}</div>}
       {error && <div className="login-error">{error}</div>}
 
       <form className="login-form" onSubmit={submit}>

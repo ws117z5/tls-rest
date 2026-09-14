@@ -55,7 +55,7 @@ var (
 	JsFooter = append(GetFiles(), "/js/static/gl-matrix-min.js")
 
 	//Css styles array
-	Css = []string{"/css/bootstrap.min.css", "/css/index.css", "/css/index-cv.css", "/css/menu.css", "/css/theme-dark.css"}
+	Css = []string{"/css/base.css", "/css/index.css", "/css/index-cv.css", "/css/menu.css", "/css/theme-dark.css"}
 
 	//Img Images array
 	//todo populate with image paths
@@ -187,15 +187,28 @@ func gitHeadVersion() string {
 // 2. All other chunks/files
 // 3. main.*.js
 func GetFiles() []string {
+	// Resolve against the project root (like envCandidates in env.go), not the
+	// process's CWD — the real server is always launched from the repo root,
+	// but `go test` chdirs into each package's own directory, so a bare
+	// "./js/dist" only ever resolves for the former.
 	distDir := "./js/dist"
+	if root := projectRoot(); root != "" {
+		distDir = filepath.Join(root, "js", "dist")
+	}
 	version := GetProjectVersion()
 
 	entries, err := os.ReadDir(distDir)
 	if err != nil {
-		panic(fmt.Errorf("failed to read dist directory: %w", err))
+		// No build output (fresh checkout, a Go-only test run, ...) — degrade to
+		// no bundled JS instead of taking the whole process down; the SPA shell
+		// just won't have its script tags until `npm run build` produces one.
+		fmt.Fprintf(os.Stderr, "warning: reading %s: %v (serving with no JS bundle)\n", distDir, err)
+		return nil
 	}
 
-	webBasePath := "/" + strings.TrimPrefix(filepath.ToSlash(distDir), "./")
+	// Always "/js/dist" on the wire — distDir above may be absolute (resolved
+	// via projectRoot) and must never leak the filesystem layout into a URL.
+	webBasePath := "/js/dist"
 	result := make([]string, 0, len(entries))
 
 	for _, entry := range entries {

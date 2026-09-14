@@ -11,7 +11,14 @@ import { FormLayoutBridge, WithLayout } from "@engine/fields/FormLayout";
 import { Fieldset } from "@engine/pages";
 import Auth from "@engine/controllers/auth";
 import Config from "@engine/Config";
+import Icon from "@engine/Icon";
+import Likes from "@engine/modules/likes/Likes";
 import useT from "@engine/useT";
+
+// Modules whose "view" page shows a like/dislike widget (posts and comments
+// render their own via a custom layout / CommentsThread; this generic path
+// only covers modules with no custom view, e.g. users).
+const LIKEABLE_MODULES = new Set(["users"]);
 
 // The generic page for any backend module. Given a module name, its API
 // endpoint, and a mode, it loads the right data and renders the fieldset —
@@ -276,17 +283,24 @@ const ModulePage: React.FC<ModulePageProps> = ({
                     )}
                     {isView && can("edit") && Auth.isAdmin() && (
                         <button className="btn btn-primary" onClick={() => go(`${base}/${id}/edit`)}>
+                            <Icon name="edit" />
                             {t("Edit")}
                         </button>
                     )}
                     <LayoutToggle />
                     <button className="btn btn-secondary" onClick={() => go(base)}>
+                        <Icon name="back" />
                         {t("Back")}
                     </button>
                 </div>
             </div>
             <div className="card module-page-card">
                 <div className="card-body">
+                {isView && LIKEABLE_MODULES.has(module) && (
+                    <div className="mb-3">
+                        <Likes module={module} row={id} />
+                    </div>
+                )}
                 <FieldsetProvider module={module} mode={fmMode}>
                     <FormLayoutBridge
                         formData={record}
@@ -344,6 +358,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
                     <div className="d-flex gap-2">
                         {can("create") && (
                             <button className="btn btn-primary" onClick={() => go(`${base}/create`)}>
+                                <Icon name="add" />
                                 {t("Create")}
                             </button>
                         )}
@@ -406,17 +421,24 @@ const ModulePage: React.FC<ModulePageProps> = ({
                 <div className="d-flex gap-2">
                     {isView && can("edit") && Auth.isAdmin() && (
                         <button className="btn btn-primary" onClick={() => go(`${base}/${id}/edit`)}>
+                            <Icon name="edit" />
                             {t("Edit")}
                         </button>
                     )}
                     <LayoutToggle />
                     <button className="btn btn-secondary" onClick={() => go(base)}>
+                        <Icon name="back" />
                         {t("Back")}
                     </button>
                 </div>
             </div>
             <div className="card module-page-card">
                 <div className="card-body">
+                    {isView && LIKEABLE_MODULES.has(module) && (
+                        <div className="mb-3">
+                            <Likes module={module} row={id} />
+                        </div>
+                    )}
                     <FieldsetProvider module={module} mode={fmMode}>
                         <FieldsetForm
                             mode={fmMode}

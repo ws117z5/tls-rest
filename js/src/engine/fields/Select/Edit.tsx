@@ -1,4 +1,5 @@
-import React, { Component, ChangeEvent } from "react";
+import React, { Component } from "react";
+import CustomSelect from "../CustomSelect";
 
 interface Option {
     name: string;
@@ -9,6 +10,7 @@ interface SelectEditProps {
     options?: Option[];
     params?: any | any[];
     value?: string | number;
+    disabled?: boolean;
     onChange?: (value: string | number, params?: any[]) => void;
 }
 
@@ -37,8 +39,7 @@ export default class SelectEdit extends Component<SelectEditProps, SelectEditSta
         }
     }
 
-    handleChange = (e: ChangeEvent<HTMLSelectElement>) => {
-        const newValue = e.target.value;
+    handleChange = (newValue: string) => {
         this.setState({ value: newValue });
         if (this.props.onChange) {
             this.props.onChange(newValue, this.props.params);
@@ -46,7 +47,7 @@ export default class SelectEdit extends Component<SelectEditProps, SelectEditSta
     };
 
     render() {
-        const { options = [] } = this.props;
+        const { options = [], disabled } = this.props;
         const { value } = this.state;
 
         // Show an explicit blank option whenever the current value matches no
@@ -58,13 +59,15 @@ export default class SelectEdit extends Component<SelectEditProps, SelectEditSta
         const opts = hasMatch ? options : [{ name: "—", value: "" }, ...options];
 
         return (
-            <select value={value ?? ""} onChange={this.handleChange}>
-                {opts.map((option, idx) => (
-                    <option key={option.value ?? idx} value={option.value ?? idx}>
-                        {option.name}
-                    </option>
-                ))}
-            </select>
+            <CustomSelect
+                value={String(value ?? "")}
+                disabled={disabled}
+                options={opts.map((option, idx) => ({
+                    value: String(option.value ?? idx),
+                    label: option.name,
+                }))}
+                onChange={this.handleChange}
+            />
         );
     }
 }

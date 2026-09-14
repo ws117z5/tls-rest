@@ -34,6 +34,7 @@ function cellText(col: ColumnDef, cell: any): string {
 interface FieldMeta {
   name?: string;
   tableFieldset?: ColumnDef[];
+  options?: Record<string, any>;
 }
 
 interface TableViewProps {
@@ -89,14 +90,18 @@ class TableView extends Component<TableViewProps, TableViewState> {
     }
   }
 
+  private width(): string | undefined {
+    return this.props.field?.options?.width;
+  }
+
   render() {
     if (this.state.rows !== null) {
-      return renderValue(this.state.rows, this.columns());
+      return renderValue(this.state.rows, this.columns(), this.width());
     }
     if (this.state.loading) {
       return <span className="text-muted">…</span>;
     }
-    return renderValue(this.props.value, this.columns());
+    return renderValue(this.props.value, this.columns(), this.width());
   }
 }
 
@@ -111,7 +116,7 @@ function parse(value: any): any {
   }
 }
 
-function renderValue(value: any, columns: ColumnDef[]): React.ReactElement {
+function renderValue(value: any, columns: ColumnDef[], width?: string): React.ReactElement {
   const v = parse(value);
 
   if (v === null || v === undefined || v === "") {
@@ -151,11 +156,14 @@ function renderValue(value: any, columns: ColumnDef[]): React.ReactElement {
 
     return (
       <div style={{ maxWidth: "100%", overflowX: "auto" }}>
-        <table className="table table-sm table-bordered mb-0 w-auto" style={{ fontSize: "0.9rem" }}>
+        <table
+          className={`table table-sm table-bordered mb-0${width ? "" : " w-auto"}`}
+          style={{ fontSize: "0.9rem", width: width || undefined }}
+        >
           <thead>
             <tr>
               {cols.map((c) => (
-                <th key={c.name} className="text-nowrap">
+                <th key={c.name} className="text-nowrap" style={{ width: c.options?.width }}>
                   {c.label ? t(c.label) : c.name}
                 </th>
               ))}
