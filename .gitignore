@@ -31,3 +31,6 @@ leet/*
 .githooks/*
 .claude/*
 
+init/*
+!init/schema.sql
+
