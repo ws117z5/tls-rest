@@ -18,6 +18,12 @@ const userGroupsSubquery = `
 // so auth re-exports it) — what an anonymous caller resolves as.
 var GuestGroupID = config.GuestGroupID
 
+// AdminGroupID re-exports constants.AdminGroupID.
+var AdminGroupID = config.AdminGroupID
+
+// UsersGroupID re-exports constants.UsersGroupID.
+var UsersGroupID = config.UsersGroupID
+
 // groupIDsExpr returns the SQL (aliased "group_id") and args yielding the
 // group ids to resolve rights for: a real user's own groups, or just
 // GuestGroupID when anonymous (userID <= 0).

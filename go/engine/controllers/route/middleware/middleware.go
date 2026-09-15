@@ -387,18 +387,27 @@ func HasModuleRight(userID int, moduleName, requiredRight string) bool {
 	return true
 }
 
-// getSessionID extracts or generates a session ID from the request
+// maxSessionIDLen matches access_log.session_id's varchar(512), so a client
+// that sends an oversized cookie/header can't fail that INSERT either.
+const maxSessionIDLen = 512
+
+// getSessionID returns the session cookie/header value, or "" for a request
+// carrying neither.
 func getSessionID(r *http.Request) string {
-	// Try to get session ID from cookie
 	if cookie, err := r.Cookie("session_id"); err == nil {
-		return cookie.Value
+		return truncate(cookie.Value, maxSessionIDLen)
 	}
-
-	// Try to get from custom header
 	if sessionID := r.Header.Get("X-Session-ID"); sessionID != "" {
-		return sessionID
+		return truncate(sessionID, maxSessionIDLen)
 	}
+	return ""
+}
 
-	// Generate a basic session ID from IP and UserAgent
-	return r.RemoteAddr + "_" + r.UserAgent()
+// truncate cuts s to at most n bytes, discarding a multi-byte rune split by
+// the cut (ToValidUTF8 replaces it) so the result is never invalid UTF-8.
+func truncate(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return strings.ToValidUTF8(s[:n], "")
 }

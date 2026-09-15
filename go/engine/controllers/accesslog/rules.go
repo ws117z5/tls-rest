@@ -55,6 +55,9 @@ func Decision(ipStr, userAgent string) (bool, int64) {
 		if ru.UserAgent != "" && !strings.Contains(userAgent, ru.UserAgent) {
 			continue
 		}
+		if ru.Net == nil && ru.Action == "deny" && ru.Firewall && ip != nil {
+			go blockIPForUARule(ip.String(), ru.UserAgent)
+		}
 		return ru.Action == "allow", ru.ID
 	}
 	return true, 0

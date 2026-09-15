@@ -222,12 +222,11 @@ func ValidateRequired() error {
 	)
 }
 
-// GuestGroupID is the user_groups.id an unauthenticated caller is treated as a
-// member of for rights/access resolution (auth.Resolve* and the module
-// engine's row-level ACLs both use it) — so an admin can grant baseline
-// rights, and share individual rows with, logged-out visitors the same way as
-// any other group, instead of every module falling back to just its default
-// permission. Lives here (not in the auth or module package) because both
-// need it and importing either from the other would cycle. Configurable via
-// GUEST_GROUP_ID; defaults to 1.
+// GuestGroupID is the user_groups.id an anonymous caller resolves as a member of.
 var GuestGroupID = EnvInt("GUEST_GROUP_ID", 1)
+
+// AdminGroupID is the user_groups.id of the durable admin group (test/seed fixtures use it).
+var AdminGroupID = EnvInt("ADMIN_GROUP_ID", 0)
+
+// UsersGroupID is the user_groups.id of the durable ordinary-users group (test/seed fixtures use it).
+var UsersGroupID = EnvInt("USERS_GROUP_ID", 2)

@@ -5,20 +5,19 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
 
 	"tls-rest/go/engine/controllers/log"
 )
 
-// Firewall integration: for access rules flagged `firewall` with action=deny and a
-// CIDR, we mirror the block at the host firewall (ufw) so the traffic is dropped
-// before it ever reaches the app. This is DECLARATIVE and best-effort — it diffs
-// the desired blocks against what it has applied and adds/removes ufw rules to
-// match, and if ufw isn't reachable it logs and carries on (see the note about
-// containers below).
+// fwApplied/uaBlocked track ufw deny rules already applied, so reconciling or matching again is a no-op.
 
 var (
 	fwMu      sync.Mutex
 	fwApplied = map[string]bool{} // cidrs we currently have a ufw deny for
+
+	uaBlockMu sync.Mutex
+	uaBlocked = map[string]bool{} // client IPs already blocked for a matched User-Agent rule
 )
 
 // ReconcileFirewall makes ufw match the firewall-flagged deny rules. Call it
@@ -60,6 +59,24 @@ func ReconcileFirewall(rules []Rule) {
 		logger.Infof("unblocked %s at ufw", cidr)
 		delete(fwApplied, cidr)
 	}
+}
+
+// blockIPForUARule adds a ufw deny for ip the first time a User-Agent-matched
+// (no CIDR) firewall-flagged rule blocks it; later matches for the same ip
+// are a no-op so repeated bot traffic doesn't re-run ufw every request.
+func blockIPForUARule(ip, userAgent string) {
+	uaBlockMu.Lock()
+	defer uaBlockMu.Unlock()
+	if uaBlocked[ip] {
+		return
+	}
+	comment := fmt.Sprintf("by tls-rest from %s rule, %s", userAgent, time.Now().Format(time.RFC3339))
+	if err := ufw("deny", "from", ip, "comment", comment); err != nil {
+		log.For("firewall").Warnf("ufw deny from %s (user-agent rule) failed: %v", ip, err)
+		return
+	}
+	log.For("firewall").Infof("blocked %s at ufw (user-agent rule %q)", ip, userAgent)
+	uaBlocked[ip] = true
 }
 
 func ufw(args ...string) error {

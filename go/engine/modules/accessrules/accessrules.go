@@ -48,7 +48,7 @@ func (m *AccessRule) fieldset() []Field {
 
 		NewField("firewall", TYPE_CHECKBOX, false).
 			WithLabel("Block at OS firewall (ufw)").
-			WithDescription("Also drop this IP/CIDR at the host firewall via ufw, not just in the app. Applies to CIDR deny rules only.").
+			WithDescription("Also drop matching traffic at the host firewall via ufw: the rule's CIDR, or (for a User-Agent-only rule) each matched client IP as it's seen.").
 			WithDefault(false),
 
 		NewField("note", TYPE_STRING, false).

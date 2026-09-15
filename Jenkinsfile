@@ -9,7 +9,14 @@ pipeline {
                 checkout scm
             }
         }
-        stage('Build & Test') {
+        stage('Test') {
+            steps {
+                // Runs against the shared workstation Postgres/Redis, same as the
+                // deployed app; a failure here stops the pipeline before Build/Deploy.
+                sh 'DOTENV_PATH=/opt/workstation/.env go test ./test/...'
+            }
+        }
+        stage('Build') {
             steps {
                 // APP_VERSION (git HEAD) -> Dockerfile ARG -> ENV APP_VERSION ->
                 // os.Getenv in the app -> ?v=… asset cache-buster.

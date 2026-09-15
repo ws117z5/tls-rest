@@ -16,9 +16,18 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"uuid"
 )
+
+// queriesTotal counts every query across all *Db wrappers (each GetInstance()
+// call returns a fresh wrapper, so per-instance queriesCount can't do this).
+var queriesTotal = promauto.NewCounter(prometheus.CounterOpts{
+	Name: "db_queries_total",
+	Help: "Total Postgres queries executed, across all *Db instances.",
+})
 
 // This package wraps pgx v5 (github.com/jackc/pgx/v5). pgx speaks PostgreSQL's
 // native protocol and uses $1/$2 placeholders directly, so raw SQL written with
@@ -111,6 +120,7 @@ func NewDb(connString string) (*Db, error) {
 func (db *Db) track(start time.Time) {
 	db.queriesCount++
 	db.queriesTime += time.Since(start).Seconds()
+	queriesTotal.Inc()
 }
 
 // Close releases the shared pool. Note the pool is shared across all *Db

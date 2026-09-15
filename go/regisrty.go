@@ -26,10 +26,12 @@ import (
 	words "tls-rest/go/modules/words"
 
 	// Engine pages
+	actionspage "tls-rest/go/engine/pages/actions"
 	configmod "tls-rest/go/engine/modules/config"
 	console "tls-rest/go/engine/pages/console"
 	login "tls-rest/go/engine/pages/login"
 	profile "tls-rest/go/engine/pages/profile"
+	statistics "tls-rest/go/engine/pages/statistics"
 
 	// App pages
 	netmapper "tls-rest/go/pages/netmapper"
@@ -69,6 +71,8 @@ func InitAll() {
 	configmod.Init()
 	console.Init()
 	profile.Init()
+	statistics.Init()
+	actionspage.Init()
 	netmapper.Init()
 
 	// --- Features (own route trees; unexported handlers) ---

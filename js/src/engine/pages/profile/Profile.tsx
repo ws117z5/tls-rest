@@ -3,6 +3,7 @@ import PageComponent from "@engine/containers/PageComponent";
 import Fieldset from "@engine/pages/Fieldset";
 import ConversationList from "@engine/modules/messages/ConversationList";
 import PublicProfile from "@engine/pages/publicprofile/PublicProfile";
+import Auth from "@controllers/auth";
 import { t } from "@engine/i18n";
 
 // Engine page: the current user's profile. A single, rights-filtered fieldset
@@ -24,6 +25,9 @@ class Profile extends PageComponent {
     render() {
         return (
             <>
+                <div className="container" style={{ maxWidth: 720, display: "flex", justifyContent: "flex-end", paddingTop: 12 }}>
+                    <button onClick={() => Auth.logout()}>{t("Logout")}</button>
+                </div>
                 <Fieldset endpoint="/api/profile" moduleName="users" title="Profile" editable />
                 <div className="container" style={{ maxWidth: 720 }}>
                     <h2 className="h5 mt-4 mb-3">{t("Messages")}</h2>

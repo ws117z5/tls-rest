@@ -21,6 +21,8 @@ func (m *AccessLog) fieldset() []Field {
 		NewField("user_agent", TYPE_STRING, false).WithLabel("User agent").AsReadOnly().NonSortable(),
 		NewField("module", TYPE_STRING, false).WithLabel("Module").AsReadOnly(),
 		NewField("action", TYPE_STRING, false).WithLabel("Action").AsReadOnly(),
+		NewField("country", TYPE_STRING, false).WithLabel("Country").AsReadOnly(),
+		NewField("session_id", TYPE_STRING, false).WithLabel("Session").AsReadOnly(),
 		NewField("blocked", TYPE_CHECKBOX, false).WithLabel("Blocked").AsReadOnly(),
 		NewField("denied_reason", TYPE_STRING, false).WithLabel("Denied reason").AsReadOnly(),
 	}
@@ -34,6 +36,7 @@ func (m *AccessLog) filters() *Filedset {
 		NewFilter("method", TYPE_STRING).WithLabel("Method").Equals(),
 		NewFilter("ip", TYPE_STRING).WithLabel("IP").Contains(),
 		NewFilter("path", TYPE_STRING).WithLabel("Path").Contains(),
+		NewFilter("country", TYPE_STRING).WithLabel("Country").Equals(),
 		NewFilter("blocked", TYPE_CHECKBOX).WithLabel("Blocked only").Equals(),
 		NewFilter("from", TYPE_DATE).WithLabel("From").WithSQL("ts").GreaterOrEqual(),
 		NewFilter("to", TYPE_DATE).WithLabel("To").WithSQL("ts").LessOrEqual(),

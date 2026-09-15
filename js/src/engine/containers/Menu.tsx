@@ -133,6 +133,8 @@ class Menu extends Component<{}, MenuState> {
             <a
               href="#"
               className="nav-link"
+              title={t("Logout")}
+              aria-label={t("Logout")}
               onClick={(e: React.MouseEvent) => {
                 e.preventDefault();
                 this.close();
@@ -140,7 +142,6 @@ class Menu extends Component<{}, MenuState> {
               }}
             >
               <span className="menu-icon-sprite icon-logout" aria-hidden="true" />
-              {t("Logout")}
             </a>
           </li>
         );

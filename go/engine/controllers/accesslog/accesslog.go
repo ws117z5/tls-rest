@@ -6,6 +6,7 @@
 package accesslog
 
 import (
+	"fmt"
 	stdlog "log"
 	"net"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"tls-rest/go/engine/controllers/actions"
 	"tls-rest/go/engine/controllers/db/pgdb"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -56,6 +58,11 @@ var (
 		Name: "http_requests_blocked_total",
 		Help: "Requests denied before handling, by reason.",
 	}, []string{"reason"})
+
+	requestsByModule = promauto.NewCounterVec(prometheus.CounterOpts{
+		Name: "http_requests_by_module_total",
+		Help: "Requests handled by a module's CRUD routes, by module.",
+	}, []string{"module"})
 )
 
 var (
@@ -64,12 +71,23 @@ var (
 )
 
 // Init starts the background writer and primes the rule cache. Call once at
-// startup after config is validated (the DB itself connects lazily).
+// startup after config is validated (the DB itself connects lazily). GeoIP is
+// NOT warmed here — it's registered as an Actions-page action (see
+// LoadGeoIP), run manually or on a schedule, not an automatic per-process cost.
 func Init() {
 	startOnce.Do(func() {
 		queue = make(chan Entry, 4096)
 		go worker()
 		ReloadRules()
+		actions.Register(&actions.Action{
+			ID:          "geoip_load",
+			Name:        "Load GeoIP tables",
+			Description: "Downloads the IPv4/IPv6-to-country range tables (~30MB) from GitHub so access_log rows can be resolved to a country.",
+			Run: func() (string, error) {
+				n4, n6, err := LoadGeoIP()
+				return fmt.Sprintf("%d IPv4 + %d IPv6 ranges loaded", n4, n6), err
+			},
+		})
 	})
 }
 
@@ -83,6 +101,9 @@ func Record(e Entry) {
 	}
 	requestsTotal.WithLabelValues(e.Method, statusClass).Inc()
 	requestDuration.WithLabelValues(e.Method).Observe(e.DurationMS / 1000.0)
+	if e.Module != "" {
+		requestsByModule.WithLabelValues(e.Module).Inc()
+	}
 	if e.Blocked {
 		reason := e.DeniedReason
 		if reason == "" {
@@ -113,9 +134,9 @@ func persist(e Entry) {
 		logf("accesslog: db unavailable: %v", err)
 		return
 	}
-	// Column set MUST match the access_log table the engine auto-creates from the
-	// access_log module fieldset. session_id is intentionally omitted (it's not a
-	// fieldset column); add it to the module fieldset first if you want it stored.
+	// Column set MUST match the access_log table (see the module's fieldset for
+	// the columns exposed in the admin grid; a couple of others, like
+	// session_id here, are written directly without being fieldset-exposed).
 	row := map[string]interface{}{
 		"ts":          e.Time,
 		"method":      e.Method,
@@ -127,6 +148,8 @@ func persist(e Entry) {
 		"module":      nullIfEmpty(e.Module),
 		"action":      nullIfEmpty(e.Action),
 		"blocked":     e.Blocked,
+		"country":     nullIfEmpty(CountryForIP(e.IP)),
+		"session_id":  nullIfEmpty(e.SessionID),
 	}
 	if e.UserID > 0 {
 		row["user_id"] = e.UserID

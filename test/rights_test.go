@@ -65,12 +65,12 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	adminID, err := createFixtureUser(db, "admin", []int{0})
+	adminID, err := createFixtureUser(db, "admin", []int{auth.AdminGroupID})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "rights_test: creating admin fixture user:", err)
 		os.Exit(1)
 	}
-	userID, err := createFixtureUser(db, "user", []int{2})
+	userID, err := createFixtureUser(db, "user", []int{auth.UsersGroupID})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "rights_test: creating ordinary fixture user:", err)
 		os.Exit(1)
@@ -120,7 +120,7 @@ func createSharedPostFixture(db *pgdb.Db, authorID int) (int, error) {
 		"title":          "rights_test: shared with guests and users",
 		"content":        "Full content — only visible to roles without a field restriction on posts.",
 		"created_by":     authorID,
-		"visible_groups": []int{1, 2},
+		"visible_groups": []int{auth.GuestGroupID, auth.UsersGroupID},
 	})
 	return int(id), err
 }
@@ -729,7 +729,7 @@ func TestFieldRights_RandomPerUser(t *testing.T) {
 		t.Fatalf("db unavailable: %v", err)
 	}
 
-	tempID, err := createFixtureUser(db, "fieldrights", []int{2})
+	tempID, err := createFixtureUser(db, "fieldrights", []int{auth.UsersGroupID})
 	if err != nil {
 		t.Fatalf("creating temp user: %v", err)
 	}
