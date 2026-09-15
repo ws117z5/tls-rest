@@ -87,13 +87,33 @@ type PageAbstract struct {
 	Routes []PageRoute
 }
 
+// PageDefaultModes maps page ID -> baseline field.MODE_VIEW|field.MODE_EDIT
+// bitmask, the page equivalent of ModuleDefaultPermissions. auth's
+// ResolveModuleModeRights seeds a session's rights from both, so a
+// user_group_rights row keyed by a page's ID grants it exactly like a module.
+var PageDefaultModes = make(map[string]int)
+
+// defaultModes computes this page's baseline bitmask, applied to every caller
+// before any group grant is added on top (mirrors a module's own
+// DefaultPermission -> defaultModesFor baseline): RequiresAuth or
+// RequiresAdmin both start denied (admin bypasses regardless via hasMode; an
+// authenticated-only page needs an explicit group grant, e.g. "users"); a
+// page requiring neither is open to everyone, guests included.
+func (p *PageAbstract) defaultModes() int {
+	if p.RequiresAuth || p.RequiresAdmin {
+		return 0
+	}
+	return field.MODE_VIEW | field.MODE_EDIT
+}
+
 // Initialize registers the page's routes via the shared registrar seam.
 func (p *PageAbstract) Initialize() {
-	// Publish menu metadata so /api/pages can list it (session-filtered),
+	PageDefaultModes[p.ID] = p.defaultModes()
+
+	// Publish menu metadata so /api/pages can list it (rights-filtered),
 	// making the pages menu backend-driven like modules.
 	registerPageMenu(PageMenuMeta{
-		ID: p.ID, Name: p.Name,
-		RequiresAuth: p.RequiresAuth, RequiresAdmin: p.RequiresAdmin, Order: p.Order,
+		ID: p.ID, Name: p.Name, Order: p.Order,
 		Submenu: p.Submenu, Icon: p.Icon,
 	})
 
@@ -126,33 +146,41 @@ func (p *PageAbstract) Initialize() {
 	})
 }
 
-func (p *PageAbstract) authorized(s *cache.Session) bool {
-	if p.RequiresAuth && (s == nil || s.UserID <= 0) {
+// hasMode reports whether the session may perform mode (field.MODE_VIEW or
+// field.MODE_EDIT) on this page: admin bypasses unconditionally, otherwise it
+// looks up the session's already-resolved per-page bitmask (baseline +
+// group grants — see PageDefaultModes and auth.ResolveModuleModeRights).
+// Duplicates auth.HasMode's two lines rather than importing auth, which
+// already imports this package.
+func (p *PageAbstract) hasMode(s *cache.Session, mode int) bool {
+	if s != nil && s.IsAdmin {
+		return true
+	}
+	if s == nil {
 		return false
 	}
-	if p.RequiresAdmin && (s == nil || !s.IsAdmin) {
-		return false
-	}
-	return true
+	return s.ModuleModes[p.ID]&mode != 0
 }
 
-// guard wraps a custom-route handler with this page's RequiresAuth/RequiresAdmin
-// enforcement, matching the fieldset endpoint's checks: an unauthenticated
-// caller on an auth-required page gets 401, a non-admin on an admin-required
-// page gets 403. When the page requires neither, the handler is returned
-// unwrapped (zero overhead).
-func (p *PageAbstract) guard(next http.HandlerFunc) http.HandlerFunc {
-	if !p.RequiresAuth && !p.RequiresAdmin {
-		return next
+// denyForMode writes the error matching why hasMode failed: 401 for a caller
+// with no session at all, 403 for one who is signed in but lacks the grant.
+func denyForMode(w http.ResponseWriter, s *cache.Session) {
+	if s == nil || s.UserID <= 0 {
+		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+		return
 	}
+	http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+}
+
+// guard wraps a custom-route handler with this page's rights check:
+// field.MODE_EDIT is required for every inner interactive endpoint — Go
+// decides accessibility here the same way it does for a module, even though a
+// page has no fieldset to validate against (see hasMode).
+func (p *PageAbstract) guard(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s := cache.SessionFromContext(r.Context())
-		if p.RequiresAuth && (s == nil || s.UserID <= 0) {
-			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
-			return
-		}
-		if p.RequiresAdmin && (s == nil || !s.IsAdmin) {
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
+		if !p.hasMode(s, field.MODE_EDIT) {
+			denyForMode(w, s)
 			return
 		}
 		next(w, r)
@@ -163,8 +191,8 @@ func (p *PageAbstract) guard(next http.HandlerFunc) http.HandlerFunc {
 // requesting user may see (system fields admin-only, access-gated fields hidden).
 func (p *PageAbstract) handleGet(w http.ResponseWriter, r *http.Request) {
 	s := cache.SessionFromContext(r.Context())
-	if !p.authorized(s) {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+	if !p.hasMode(s, field.MODE_VIEW) {
+		denyForMode(w, s)
 		return
 	}
 
@@ -196,8 +224,8 @@ func (p *PageAbstract) handleGet(w http.ResponseWriter, r *http.Request) {
 // aren't read-only (so a user can't write hidden/admin/access-gated fields).
 func (p *PageAbstract) handlePut(w http.ResponseWriter, r *http.Request) {
 	s := cache.SessionFromContext(r.Context())
-	if !p.authorized(s) {
-		http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+	if !p.hasMode(s, field.MODE_EDIT) {
+		denyForMode(w, s)
 		return
 	}
 

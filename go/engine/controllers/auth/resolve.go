@@ -197,6 +197,9 @@ func ResolveModuleModeRights(userID int) ModuleModeRights {
 	for module, def := range ModuleDefaults() {
 		rights[module] = defaultModesFor(def)
 	}
+	for page, modes := range PageDefaults() {
+		rights[page] = modes
+	}
 
 	db, err := pgdb.GetInstance()
 	if err != nil {

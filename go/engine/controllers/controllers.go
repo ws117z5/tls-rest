@@ -294,10 +294,7 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 		Icon     string `json:"icon,omitempty"`
 	}
 	for _, p := range module.RegisteredPageMenu() {
-		if p.RequiresAdmin && !isAdmin {
-			continue
-		}
-		if p.RequiresAuth && userID == 0 {
+		if !auth.HasPageMode(rights, p.ID, auth.MODE_VIEW, isAdmin) {
 			continue
 		}
 		add(p.Submenu, pageEntry{
@@ -384,31 +381,28 @@ func userAvatar(userID int) string {
 func PagesAPI(w http.ResponseWriter, r *http.Request) {
 	userID := 0
 	isAdmin := false
+	var rights auth.ModuleModeRights
 	if s, ok := r.Context().Value(auth.SESSION_KEY).(*cache.Session); ok && s != nil {
 		userID = s.UserID
 		isAdmin = s.IsAdmin
+		rights = s.ModuleModes
+	}
+	if rights == nil {
+		rights = auth.ResolveModuleModeRights(userID)
 	}
 
 	type pageInfo struct {
-		ID            string `json:"id"`
-		Name          string `json:"name"`
-		RequiresAuth  bool   `json:"requiresAuth"`
-		RequiresAdmin bool   `json:"requiresAdmin"`
+		ID   string `json:"id"`
+		Name string `json:"name"`
 	}
 
 	metas := module.RegisteredPageMenu()
 	out := make([]pageInfo, 0, len(metas))
 	for _, p := range metas {
-		if p.RequiresAdmin && !isAdmin {
+		if !auth.HasPageMode(rights, p.ID, auth.MODE_VIEW, isAdmin) {
 			continue
 		}
-		if p.RequiresAuth && userID == 0 {
-			continue
-		}
-		out = append(out, pageInfo{
-			ID: p.ID, Name: p.Name,
-			RequiresAuth: p.RequiresAuth, RequiresAdmin: p.RequiresAdmin,
-		})
+		out = append(out, pageInfo{ID: p.ID, Name: p.Name})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

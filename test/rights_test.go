@@ -671,6 +671,22 @@ func candidateFieldRightsModules(rights auth.ModuleModeRights) map[string][]stri
 	return out
 }
 
+// fieldsAlreadyOpen reports whether existing (a module's group-level field
+// rights, nil meaning no restriction was recorded at all) already grants
+// every field in names some mode, leaving no room for a personal grant to
+// narrow anything.
+func fieldsAlreadyOpen(existing map[string]int, names []string) bool {
+	if existing == nil {
+		return true
+	}
+	for _, n := range names {
+		if existing[n] == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // randomFieldGrants builds a random {"field": ["mode",...]} map — the shape
 // user_rights.fields stores — granting a random non-empty subset of fields
 // and, per granted field, a random non-empty subset of modes.
@@ -749,6 +765,19 @@ func TestFieldRights_RandomPerUser(t *testing.T) {
 		tested++
 		modID, names := modID, names
 		t.Run(modID, func(t *testing.T) {
+			// Checked before inserting our own row, against the group-only
+			// state: rights are additive, so a personal grant can only ever
+			// add visibility, never take it away. If the group already
+			// grants every candidate field some mode (nil counts as "every
+			// field" — no restriction recorded at all), no personal subset
+			// could ever narrow what's visible, and the assertion below would
+			// fail regardless of what we grant.
+			existing := auth.ResolveModuleFieldRights(tempID)[modID]
+			if fieldsAlreadyOpen(existing, names) {
+				t.Skipf("module %s's group rights already grant every candidate field, so a personal "+
+					"grant can't narrow it further (additive rights)", modID)
+			}
+
 			grants := randomFieldGrants(rng, names)
 
 			rightsID, err := db.InsertRow("user_rights", map[string]interface{}{
@@ -760,11 +789,6 @@ func TestFieldRights_RandomPerUser(t *testing.T) {
 				t.Fatalf("inserting user_rights: %v", err)
 			}
 			t.Cleanup(func() { _, _ = db.DeleteRow("user_rights", "id", int(rightsID)) })
-
-			if auth.ResolveModuleFieldRights(tempID)[modID] == nil {
-				t.Skipf("module %s already has an unrestricted (empty-fields) group rights row for this "+
-					"user's group, so a personal grant can't narrow it further (additive rights)", modID)
-			}
 
 			tok, _, err := auth.IssueToken(tempID, "rights_test_fieldrights")
 			if err != nil {

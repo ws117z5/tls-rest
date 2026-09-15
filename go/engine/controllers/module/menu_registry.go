@@ -27,14 +27,14 @@ type ModuleMenuMeta struct {
 	Hidden   bool
 }
 
-// PageMenuMeta is the menu-facing description of a registered page.
+// PageMenuMeta is the menu-facing description of a registered page. Access is
+// resolved dynamically per session (see PageAbstract.hasMode /
+// auth.HasPageMode), not stored here.
 type PageMenuMeta struct {
-	ID            string
-	Name          string
-	RequiresAuth  bool
-	RequiresAdmin bool
-	Order         int
-	Icon          string
+	ID    string
+	Name  string
+	Order int
+	Icon  string
 	// Submenu groups this page under a named submenu; empty = top level ("head").
 	Submenu string
 }

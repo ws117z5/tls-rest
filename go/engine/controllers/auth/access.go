@@ -34,6 +34,15 @@ func HasMode(rights ModuleModeRights, module string, mode Mode, isAdmin bool) bo
 	return AllowedModes(rights, module, isAdmin)&mode != 0
 }
 
+// HasPageMode reports whether the user may perform a page-level mode
+// (MODE_VIEW to see it in the menu and open it, MODE_EDIT for its inner
+// interactive endpoints) — same bitmask and admin bypass as HasMode, named
+// separately so a call site reads unambiguously as a page check, not a
+// module one.
+func HasPageMode(rights ModuleModeRights, pageID string, mode Mode, isAdmin bool) bool {
+	return HasMode(rights, pageID, mode, isAdmin)
+}
+
 // modeName pairs a bit with its stable string name. This is the single source
 // of the mode-bit -> name mapping; the API returns names (not the raw int) so
 // clients never have to know this package's bit layout, which differs from the

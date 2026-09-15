@@ -24,6 +24,13 @@ func ModuleDefaults() map[string]int {
 	return module.ModuleDefaultPermissions
 }
 
+// PageDefaults returns the registry of page baseline VIEW/EDIT bitmasks — the
+// page equivalent of ModuleDefaults, populated by module.PageDefaultModes as
+// each page initialises (see PageAbstract.Initialize).
+func PageDefaults() map[string]int {
+	return module.PageDefaultModes
+}
+
 // IsAdmin reports whether the user belongs to an administrator group. It is a
 // convenience wrapper around ResolveIsAdmin for callers that only have a user
 // id; the request path resolves admin status once onto the session.
