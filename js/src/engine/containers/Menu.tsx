@@ -34,8 +34,12 @@ interface NavDropdownProps {
   title: string;
   items: MenuItem[];
   onNavigate: () => void;
+  // Mobile only: the dropdown-menu below is CSS-hidden under the mobile
+  // breakpoint (menu.css) in favor of Menu's own single flyout panel, which
+  // this opens by name — see mobileSubmenu in Menu's state.
+  onExpand: () => void;
 }
-const NavDropdown: React.FC<NavDropdownProps> = ({ title, items, onNavigate }) => {
+const NavDropdown: React.FC<NavDropdownProps> = ({ title, items, onNavigate, onExpand }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLLIElement>(null);
 
@@ -56,6 +60,7 @@ const NavDropdown: React.FC<NavDropdownProps> = ({ title, items, onNavigate }) =
         onClick={(e) => {
           e.preventDefault();
           setOpen((o) => !o);
+          onExpand();
         }}
       >
         {title}
@@ -82,12 +87,15 @@ const NavDropdown: React.FC<NavDropdownProps> = ({ title, items, onNavigate }) =
 interface MenuState {
   isOpen: boolean;
   langOpen: boolean;
+  // Mobile drawer only: the submenu title whose flyout panel is open, or null
+  // for the main drawer view. Unused above the mobile breakpoint.
+  mobileSubmenu: string | null;
 }
 
 // The menu is server-driven: Config.getHead() are the top-level entries and
 // Config.getSubmenus() the dropdown groups, both already privilege-filtered.
 class Menu extends Component<{}, MenuState> {
-  state: MenuState = { isOpen: false, langOpen: false };
+  state: MenuState = { isOpen: false, langOpen: false, mobileSubmenu: null };
   private unsubscribeI18n?: () => void;
 
   // Class component, so useT()'s hook isn't available: subscribe manually and
@@ -112,7 +120,7 @@ class Menu extends Component<{}, MenuState> {
   toggle = () => this.setState((s) => ({ isOpen: !s.isOpen }));
   // Collapse the mobile menu after navigating, so picking a link doesn't leave
   // the open panel covering the page underneath it.
-  close = () => this.setState({ isOpen: false });
+  close = () => this.setState({ isOpen: false, mobileSubmenu: null });
 
   render() {
     const head = Config.getHead();
@@ -160,7 +168,7 @@ class Menu extends Component<{}, MenuState> {
     };
 
     return (
-      <div className="main-menu" style={menuDiv}>
+      <div className={`main-menu${this.state.mobileSubmenu ? " submenu-open" : ""}`} style={menuDiv}>
         <nav className="navbar navbar-dark bg-dark navbar-expand-md">
           {/* Brand mark — purely decorative (a plain Link, not NavLink, so it
               never picks up "active" nav styling); the "Home" nav item below
@@ -200,7 +208,13 @@ class Menu extends Component<{}, MenuState> {
                 const items = submenus[title];
                 if (!items || items.length === 0) return null;
                 return (
-                  <NavDropdown key={"s" + title} title={t(title)} items={items} onNavigate={this.close} />
+                  <NavDropdown
+                    key={"s" + title}
+                    title={t(title)}
+                    items={items}
+                    onNavigate={this.close}
+                    onExpand={() => this.setState({ mobileSubmenu: title })}
+                  />
                 );
               })}
             </ul>
@@ -271,6 +285,33 @@ class Menu extends Component<{}, MenuState> {
             </ul>
           </div>
         </nav>
+
+        {/* Mobile only (menu.css hides these above the breakpoint): a tap-out
+            backdrop, and the single flyout panel every submenu's onExpand
+            opens by name (see mobileSubmenu) — it sits to the right of the
+            main drawer rather than replacing it. */}
+        {this.state.isOpen && <div className="mobile-menu-backdrop" onClick={this.close} />}
+        <div className={`mobile-submenu-panel${this.state.mobileSubmenu ? " open" : ""}`}>
+          <button
+            type="button"
+            className="mobile-submenu-back nav-link"
+            onClick={() => this.setState({ mobileSubmenu: null })}
+          >
+            <span className="menu-icon-sprite icon-back" aria-hidden="true" />
+            {t("Back")}
+          </button>
+          <div className="mobile-submenu-title">{this.state.mobileSubmenu && t(this.state.mobileSubmenu)}</div>
+          <ul className="mobile-submenu-list">
+            {this.state.mobileSubmenu &&
+              submenus[this.state.mobileSubmenu]?.map((item, key) => (
+                <li key={key}>
+                  <RouterNavLink to={item.path} className="nav-link" onClick={this.close}>
+                    {label(item)}
+                  </RouterNavLink>
+                </li>
+              ))}
+          </ul>
+        </div>
       </div>
     );
   }

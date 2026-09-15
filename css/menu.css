@@ -324,3 +324,152 @@
   text-transform: none;
   color: rgba(111, 242, 160, 0.75);
 }
+
+/* Mobile drawer: below the navbar-expand-md breakpoint, the collapsed panel
+   becomes a fixed, full-height left drawer instead of an inline dropdown, and
+   tapping a submenu opens a second panel to its right (mobile-submenu-panel)
+   rather than the desktop's absolute .dropdown-menu — see Menu.tsx's
+   mobileSubmenu state. Both panels share this width so the flyout sits
+   exactly at the drawer's right edge. */
+:root { --mobile-drawer-width: min(82vw, 300px); }
+
+@media (max-width: 767.98px) {
+  .main-menu .navbar-collapse {
+    display: flex !important;
+    flex-direction: column;
+    align-items: stretch;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: var(--mobile-drawer-width);
+    height: 100dvh;
+    background: #0b0a08;
+    border-right: 1px solid rgba(111, 242, 160, 0.22);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.55);
+    padding: 1rem 0.75rem;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    transition: transform 0.28s ease, width 0.28s ease;
+    z-index: 200;
+  }
+
+  .main-menu .navbar-collapse.show {
+    transform: translateX(0);
+  }
+
+  /* Explicit rather than relying on the desktop row-layout rule not applying
+     here — the two are both media-query-gated, so nothing guarantees load
+     order between them beats depending on absence. */
+  .main-menu .navbar-nav {
+    flex-direction: column !important;
+    width: 100%;
+  }
+
+  /* The flyout replaces this for mobile submenus. Its trigger gets a
+     right-pointing caret (a submenu opens a panel to the right here, not a
+     downward dropdown) flush to the row's far edge. */
+  .main-menu .dropdown-menu {
+    display: none !important;
+  }
+
+  .main-menu .dropdown-toggle {
+    justify-content: space-between;
+  }
+
+  .main-menu .dropdown-toggle::after {
+    border-top: 0.3em solid transparent;
+    border-right: 0;
+    border-bottom: 0.3em solid transparent;
+    border-left: 0.3em solid;
+  }
+
+  .main-menu .navbar-nav.ml-auto {
+    margin-top: auto;
+    margin-left: 0;
+  }
+
+  .mobile-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 190;
+  }
+
+  /* Opening a submenu shrinks the main drawer (redefining the shared
+     variable moves both .navbar-collapse's width and the flyout's left/width
+     together) so the flyout's remaining-viewport width can show its items in
+     full instead of running off the screen. */
+  .main-menu.submenu-open {
+    --mobile-drawer-width: 90px;
+  }
+
+  .main-menu.submenu-open .navbar-collapse .nav-item,
+  .main-menu.submenu-open .navbar-collapse .nav-link {
+    min-width: 0;
+  }
+
+  .main-menu.submenu-open .navbar-collapse .nav-link {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
+  .mobile-submenu-panel {
+    position: fixed;
+    top: 0;
+    left: var(--mobile-drawer-width);
+    width: calc(100vw - var(--mobile-drawer-width));
+    height: 100dvh;
+    background: #0d130f;
+    border-right: 1px solid rgba(111, 242, 160, 0.22);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.55);
+    padding: 1rem 0.75rem;
+    overflow-y: auto;
+    transform: translateX(-100%);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform 0.28s ease, opacity 0.2s ease, left 0.28s ease, width 0.28s ease;
+    z-index: 201;
+  }
+
+  .mobile-submenu-panel.open {
+    transform: translateX(0);
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .mobile-submenu-back {
+    display: flex;
+    align-items: center;
+    background: none;
+    border: none;
+    width: 100%;
+    text-align: left;
+    margin-bottom: 0.5rem;
+  }
+
+  .mobile-submenu-title {
+    color: #eafff2;
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    padding: 0.4rem 0.7rem;
+    border-bottom: 1px solid rgba(111, 242, 160, 0.22);
+    margin-bottom: 0.4rem;
+  }
+
+  .mobile-submenu-list {
+    list-style: none;
+    padding-left: 0;
+    margin: 0;
+  }
+}
+
+@media (min-width: 768px) {
+  .mobile-menu-backdrop,
+  .mobile-submenu-panel {
+    display: none !important;
+  }
+}

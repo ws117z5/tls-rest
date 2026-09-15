@@ -122,15 +122,7 @@ WHERE NOT EXISTS (
   SELECT 1 FROM user_group_rights WHERE group_id = 2 AND module = 'profile'
 );
 
--- Missing guests/posts and users/posts rows, added by the fill above.
-INSERT INTO user_group_rights (group_id, module, modes, fields)
-SELECT 1, 'posts', 3, '{"title":["list","view"],"author":["list","view"]}'
-WHERE NOT EXISTS (
-  SELECT 1 FROM user_group_rights WHERE group_id = 1 AND module = 'posts'
-);
-
-INSERT INTO user_group_rights (group_id, module, modes, fields)
-SELECT 2, 'posts', 15, '{}'
-WHERE NOT EXISTS (
-  SELECT 1 FROM user_group_rights WHERE group_id = 2 AND module = 'posts'
-);
+-- guests/posts predates this file with fields left NULL (unrestricted); fixing in place.
+UPDATE user_group_rights
+SET fields = '{"title":["list","view"],"author":["list","view"]}'
+WHERE group_id = 1 AND module = 'posts' AND fields IS NULL;
