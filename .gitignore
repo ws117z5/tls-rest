@@ -22,3 +22,12 @@ tls-rest.code-workspace
 # every commit) - these dated migrations are kept locally for history but no
 # longer tracked.
 init/sql/
+
+__debug_*
+test/logs/*
+markdown/*
+logs/*
+leet/*
+.githooks/*
+.claude/*
+
