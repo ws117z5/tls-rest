@@ -111,6 +111,21 @@ var (
 	GithubID     = Env("GITHUB_ID", "")
 	GithubSecret = Env("GITHUB_SECRET", "")
 
+	// Cloudflare Realtime TURN (papers game video). Empty means unconfigured —
+	// GetIceServers falls back to public-STUN-only rather than failing.
+	CFTurnKeyID = Env("CF_TURN_TOKEN_ID", "")
+	CFTurnToken = Env("CF_TURN_TOKEN_SECRET", "")
+
+	// Cloudflare account + a token with the "Account Analytics" permission
+	// (may be the same token as CFTurnToken if it carries both permissions,
+	// or a separate one) — used to poll actual TURN byte usage against
+	// TurnMonthlyCapMB and stop issuing new TURN credentials once a
+	// self-imposed cap is hit (Cloudflare has no built-in kill switch).
+	// 0/empty disables the cap check entirely.
+	CFAccountID      = Env("CF_ACCOUNT_ID", "")
+	CFAnalyticsToken = Env("CF_ANALYTICS_TOKEN", "")
+	TurnMonthlyCapMB = EnvInt("TURN_MONTHLY_CAP_MB", 0)
+
 	// GoogleURLBlank is the OOB (out-of-band) sentinel — not a host, so it is
 	// not host-dependent and stays a constant.
 	GoogleURLBlank = Env("GOOGLE_URL_BLANK", "urn:ietf:wg:oauth:2.0:oob")

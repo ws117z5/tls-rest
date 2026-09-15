@@ -66,6 +66,19 @@ export class RoomMesh {
     };
     this.planner.onSourceStream = (id, stream) => this.onStream(id, stream);
 
+    // Short-lived TURN credentials (Cloudflare Realtime, or a STUN-only
+    // fallback — see go/modules/papers/turn.go) for peers a direct P2P
+    // connection can't reach (symmetric NAT, restrictive firewalls). Fetched
+    // once here; syncPeers() is only ever called after the room state loads,
+    // which comfortably outlasts this request in practice.
+    axios
+      .get("/papers/ice-config")
+      .then((res) => {
+        const servers = res.data?.iceServers;
+        if (Array.isArray(servers) && servers.length) this.mesh.setIceServers(servers);
+      })
+      .catch((e) => console.error("[room-mesh] GET /papers/ice-config failed", e?.message));
+
     // Pick up plans other peers' own reports produced, even when we haven't
     // reported ourselves recently (bandwidth/latency drift over time).
     this.planTimer = window.setInterval(() => this.fetchPlan(), 6000);

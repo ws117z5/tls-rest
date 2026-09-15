@@ -89,14 +89,19 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
   const [password, setPassword] = useState("");
   const [pwError, setPwError] = useState("");
 
+  // Posts to the same /join the rest of the game uses (JoinGame enforces the
+  // password itself on first join — see go/modules/papers/game.go) rather
+  // than a separate gate endpoint, so there's exactly one place a wrong
+  // password can be bypassed.
   const attemptJoin = async () => {
     setPwError("");
     try {
-      await axios.post(`/papers/${roomId}`, { uuid: "self", name, password });
+      await axios.post(`${base}/join`, { name, word: "", password });
       setJoined(true);
     } catch (e: any) {
       if (e?.response?.status === 403) {
-        navigate(`/${module}`); // wrong password -> back to the list
+        setPwError(t("Incorrect password."));
+        setPassword("");
       } else {
         setPwError(t("Could not join the room."));
       }
@@ -242,7 +247,7 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
   // Word is set through the /join endpoint (it replaces the whole identity
   // each call), sending the account name along unchanged.
   const setWordField = async () => {
-    await axios.post(`${base}/join`, { name, word: word.trim() });
+    await axios.post(`${base}/join`, { name, word: word.trim(), password });
     setEditingWord(false);
     refresh();
   };

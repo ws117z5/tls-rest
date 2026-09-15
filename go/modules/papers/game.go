@@ -1,6 +1,8 @@
 package papers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -20,10 +22,10 @@ func isRoomCreator(r *http.Request, createdBy int64) bool {
 	return s != nil && int64(s.UserID) == createdBy && createdBy > 0
 }
 
-// playerKey identifies a player by their session key (the X-Session-ID cookie or
-// bearer token), falling back to the user id. Game names are cached under this
-// key, separate from the session cache.
-func playerKey(r *http.Request) string {
+// rawPlayerIdentity is the caller's real credential (the X-Session-ID cookie or
+// bearer token), falling back to the user id — never exposed directly, see
+// playerKey.
+func rawPlayerIdentity(r *http.Request) string {
 	if c, err := r.Cookie("X-Session-ID"); err == nil && c.Value != "" {
 		return c.Value
 	}
@@ -34,6 +36,24 @@ func playerKey(r *http.Request) string {
 		return "user:" + strconv.Itoa(s.UserID)
 	}
 	return ""
+}
+
+// playerKey identifies a player by a one-way hash of their real credential
+// (rawPlayerIdentity) rather than the credential itself: writeState sends every
+// player's key to every other player in the room (so peers can address chat/
+// signaling), and the bearer token or session cookie must never be among the
+// values that leaves the server for someone else's browser. Hashing here,
+// once, at the point the identity enters the game/signal code means nothing
+// downstream ever touches the raw credential — and since the hash is one-way,
+// a player who copies another's leaked key into their own cookie just hashes
+// to a different value, not the original.
+func playerKey(r *http.Request) string {
+	raw := rawPlayerIdentity(r)
+	if raw == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:16])
 }
 
 // roomInfo reads the turn parameters from the room row. roomHash is the public
@@ -118,12 +138,30 @@ func expireTurn(st *RoomState) {
 // --- HTTP handlers --------------------------------------------------------
 
 type joinBody struct {
-	Name string `json:"name"`
-	Word string `json:"word"`
+	Name     string `json:"name"`
+	Word     string `json:"word"`
+	Password string `json:"password"`
+}
+
+// roomPassword reads a room's stored password (empty = unprotected) by its
+// public hash.
+func roomPassword(roomHash string) (string, bool) {
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		return "", false
+	}
+	row, err := db.GetOne(`SELECT password FROM papers WHERE hash = $1`, roomHash)
+	if err != nil || row == nil {
+		return "", false
+	}
+	return functions.Coerce[string](row["password"]), true
 }
 
 // JoinGame sets/updates the caller's game name + word and adds them to the room
-// (in join order = turn order). POST /papers/{roomId}/game/join
+// (in join order = turn order). A protected room requires the correct password
+// on first join — the actual gameplay entry point, so this is the real
+// enforcement point regardless of what any other route checks.
+// POST /papers/{roomId}/game/join
 func JoinGame(w http.ResponseWriter, r *http.Request) {
 	roomUUID := mux.Vars(r)["roomId"]
 	key := playerKey(r)
@@ -134,14 +172,22 @@ func JoinGame(w http.ResponseWriter, r *http.Request) {
 	var body joinBody
 	_ = json.NewDecoder(r.Body).Decode(&body)
 
-	// Persist the game identity under the session key (pre-fills next time).
-	SetGameUser(GameUser{SessionKey: key, Name: body.Name, Word: body.Word})
-
 	st, _ := GetRoomState(roomUUID)
 	if st.Players == nil {
 		st.Players = map[string]GameUser{}
 	}
-	if _, seen := st.Players[key]; !seen {
+	_, alreadyIn := st.Players[key]
+	if !alreadyIn {
+		if pw, ok := roomPassword(roomUUID); ok && pw != "" && body.Password != pw {
+			functions.JSONError(w, http.StatusForbidden, "invalid room password")
+			return
+		}
+	}
+
+	// Persist the game identity under the session key (pre-fills next time).
+	SetGameUser(GameUser{SessionKey: key, Name: body.Name, Word: body.Word})
+
+	if !alreadyIn {
 		st.Order = append(st.Order, key) // first join => turn position
 	}
 	st.Players[key] = GameUser{SessionKey: key, Name: body.Name, Word: body.Word}
@@ -359,6 +405,12 @@ func GameEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
+	// The server sets a blanket 30s WriteTimeout (server.go) for ordinary
+	// request/response routes; a stream meant to stay open for the room's
+	// whole session must opt out of it or it gets cut mid-stream regardless
+	// of activity. r.Context().Done() below is what actually ends this
+	// handler once the client disconnects.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")

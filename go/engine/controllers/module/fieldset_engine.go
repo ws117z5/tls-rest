@@ -395,12 +395,14 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 
 // shouldIncludeField reports whether field belongs in the SELECT for mode: a
 // TYPE_TABLE field only when it has SQL (a computed display value) and mode
-// is list/view; a virtual field only in edit mode.
+// is list/view; a virtual field (also computed via SQL, e.g. posts.author or
+// papers.has_password) the same — it has no real column to write, so it's
+// never meaningful in create/edit.
 func (fe *FieldsetEngine) shouldIncludeField(field Field, mode int) bool {
-	if field.Type == TYPE_TABLE {
+	if field.Type == TYPE_TABLE || field.Virtual {
 		return field.SQL != "" && mode&(MODE_LIST|MODE_VIEW) != 0
 	}
-	return !field.Virtual || (mode&MODE_EDIT != 0)
+	return true
 }
 
 // searchable reports whether a field participates in the free-text list search:

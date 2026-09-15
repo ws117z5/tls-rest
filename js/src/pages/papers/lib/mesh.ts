@@ -1,8 +1,10 @@
 import type { Control } from "./types";
 
-const ICE: RTCConfiguration = {
+// Public-STUN-only default: works for direct P2P, not behind symmetric NAT.
+// RoomMesh replaces this via setIceServers() with credentials fetched from
+// GET /papers/ice-config (Cloudflare TURN when configured server-side).
+const defaultIce: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-  // Add a TURN server here for peers behind symmetric NATs.
 };
 
 // The mesh only needs a way to send signaling to a peer; delivery (SSE) is fed
@@ -39,6 +41,7 @@ type TrackHandler = (
 
 export class MeshManager {
   private peers = new Map<string, PeerCtx>();
+  private ice: RTCConfiguration = defaultIce;
   onControl: ControlHandler = () => {};
   onTrack: TrackHandler = () => {};
   onConnected: (peerId: string) => void = () => {};
@@ -49,11 +52,17 @@ export class MeshManager {
     private sink: SignalSink,
   ) {}
 
+  // Replaces the ICE server list for every connection made from here on
+  // (already-open connections keep whatever they negotiated with).
+  setIceServers(iceServers: RTCIceServer[]) {
+    this.ice = { iceServers };
+  }
+
   connect(peerId: string): PeerCtx {
     let ctx = this.peers.get(peerId);
     if (ctx) return ctx;
 
-    const pc = new RTCPeerConnection(ICE);
+    const pc = new RTCPeerConnection(this.ice);
     const polite = this.selfId > peerId;
     const control = pc.createDataChannel("control", { negotiated: true, id: 0 });
 

@@ -126,3 +126,7 @@ WHERE NOT EXISTS (
 UPDATE user_group_rights
 SET fields = '{"title":["list","view"],"author":["list","view"]}'
 WHERE group_id = 1 AND module = 'posts' AND fields IS NULL;
+
+INSERT INTO public.translations (key, locale, value) VALUES
+('Incorrect password.', 'ru', 'Неверный пароль.')
+ON CONFLICT (key, locale) DO NOTHING;

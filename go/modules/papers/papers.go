@@ -109,6 +109,7 @@ func NewPapersModule() *PapersModule {
 	// auto /papers/{uuid} view so the literal segments (report/plan/create) win.
 	m.ModuleAbstract.CustomRoutes = []CustomRoute{
 		{Path: "/papers/create", Methods: []string{http.MethodPost}, Handler: CreateRoom, Absolute: true},
+		{Path: "/papers/ice-config", Methods: []string{http.MethodGet}, Handler: GetIceServers, Absolute: true},
 		{Path: "/papers/{roomId}/game/join", Methods: []string{http.MethodPost}, Handler: JoinGame, Absolute: true},
 		{Path: "/papers/{roomId}/game/state", Methods: []string{http.MethodGet}, Handler: GameState, Absolute: true},
 		{Path: "/papers/{roomId}/game/events", Methods: []string{http.MethodGet}, Handler: GameEvents, Absolute: true},
@@ -127,4 +128,5 @@ func NewPapersModule() *PapersModule {
 func Init() {
 	neg = NewNegotiator() // was initialised by the old page Init()
 	NewPapersModule().Initialize("papers")
+	initTurnUsageAction()
 }

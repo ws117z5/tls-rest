@@ -44,3 +44,11 @@ func (rr *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	}
 	return nil, nil, http.ErrNotSupported
 }
+
+// Unwrap exposes the underlying ResponseWriter so http.ResponseController
+// (SetWriteDeadline/SetReadDeadline) can reach through this wrapper — without
+// it, a handler like GameEvents that needs to lift the server's blanket
+// WriteTimeout for a long-lived SSE stream would silently fail to do so.
+func (rr *responseRecorder) Unwrap() http.ResponseWriter {
+	return rr.ResponseWriter
+}
