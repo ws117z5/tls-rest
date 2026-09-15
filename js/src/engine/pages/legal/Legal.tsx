@@ -2,15 +2,15 @@ import React from "react";
 import { Link } from "react-router";
 import PageComponent from "@engine/containers/PageComponent";
 
-// Static Terms of Service and Privacy Policy pages. Pure frontend — no backend
-// endpoint — so PageComponent's data fetch stays off (loadsData = false) and the
+// Static Terms of Service and Privacy Policy pages. Pure frontend - no backend
+// endpoint - so PageComponent's data fetch stays off (loadsData = false) and the
 // SPA shell serves /pages/terms and /pages/privacy directly.
 
 const EFFECTIVE_DATE = "September 10, 2026";
 const SITE = "koroteev.dev";
 const OAUTH_PROVIDERS = "Google, Facebook, X, and GitHub";
 
-// All contact routes through the on-site form — no address is published here.
+// All contact routes through the on-site form - no address is published here.
 const ContactLink: React.FC = () => (
   <Link to="/pages/contact">contact form</Link>
 );
@@ -118,7 +118,7 @@ export class TermsPage extends PageComponent<{}, {}> {
           The site is provided free of charge. To the maximum extent permitted by
           law, we will not be liable for any indirect, incidental, special,
           consequential, or punitive damages, or for lost data, profits, or
-          goodwill, arising from or related to your use of the site — whether based
+          goodwill, arising from or related to your use of the site - whether based
           on warranty, contract, tort, or any other legal theory.
         </p>
 
@@ -168,7 +168,7 @@ export class PrivacyPage extends PageComponent<{}, {}> {
         <ul>
           <li>
             <strong>Account information.</strong> When you sign in through a
-            third-party identity provider — {OAUTH_PROVIDERS} — we receive basic
+            third-party identity provider - {OAUTH_PROVIDERS} - we receive basic
             profile information from that provider, typically your name, email
             address, and profile image. The exact fields depend on the provider
             and the permissions you grant it. We use these to create your account
@@ -195,7 +195,7 @@ export class PrivacyPage extends PageComponent<{}, {}> {
           <li>to operate the site and provide the features you request;</li>
           <li>to authenticate you and maintain your session;</li>
           <li>
-            to secure the service — detect and block abuse, investigate incidents,
+            to secure the service - detect and block abuse, investigate incidents,
             and enforce our Terms;
           </li>
           <li>to diagnose and fix problems.</li>
@@ -263,7 +263,7 @@ export class PrivacyPage extends PageComponent<{}, {}> {
 
         <H>Children</H>
         <p>
-          The site is not directed to children under 13, and we do not knowingly
+          The site is not directed to children under 18, and we do not knowingly
           collect their personal information.
         </p>
 

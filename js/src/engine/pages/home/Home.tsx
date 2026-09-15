@@ -289,7 +289,7 @@ class Home extends PageComponent<IndexPageProps, IndexPageState> {
 
                   <section className="cv-section">
                     <h2>Languages</h2>
-                    <p>English — fluent, academic · Russian — native"</p>
+                    <p>English — fluent, academic · Russian — native</p>
                   </section>
                 </div>
 

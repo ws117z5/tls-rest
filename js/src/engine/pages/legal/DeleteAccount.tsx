@@ -5,7 +5,7 @@ import PageComponent from "@engine/containers/PageComponent";
 import CustomSelect from "@engine/fields/CustomSelect";
 
 // Public "request account deletion" page. Posts to /api/deletion-request, which
-// stores the request for an admin to action — nothing is deleted automatically.
+// stores the request for an admin to action - nothing is deleted automatically.
 // It is deliberately usable while logged out (a user who has lost access to
 // their identity provider must still be able to ask).
 
@@ -51,7 +51,7 @@ const DeletionForm: React.FC = () => {
     } catch {
       setStatus("error");
       setError(
-        "Sorry — the request could not be submitted. Please try again later."
+        "Sorry - the request could not be submitted. Please try again later."
       );
     }
   };
@@ -60,7 +60,7 @@ const DeletionForm: React.FC = () => {
     return (
       <div className="alert alert-success" role="status">
         Your deletion request has been received. We will verify and process it,
-        and confirm by email at the address you provided — normally within 30
+        and confirm by email at the address you provided - normally within 30
         days.
       </div>
     );
@@ -95,7 +95,7 @@ const DeletionForm: React.FC = () => {
           id="dr-reason"
           value={reason}
           onChange={setReason}
-          placeholder="—"
+          placeholder="-"
           options={REASONS.map((r) => ({ value: r, label: r }))}
         />
       </div>
