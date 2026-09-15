@@ -30,6 +30,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sort"
 	"strconv"
 	"testing"
 	"time"
@@ -438,6 +439,7 @@ func TestPosts_FieldRights(t *testing.T) {
 
 	t.Run("guest sees only the field-granted columns", func(t *testing.T) {
 		data := fetchData(t, "guest")
+		logPostsFieldRightsDiagnostics(t, "guest", 0, data)
 		if _, ok := data["title"]; !ok {
 			t.Error(`expected "title" to be visible to guest (granted in user_group_rights.fields)`)
 		}
@@ -448,6 +450,7 @@ func TestPosts_FieldRights(t *testing.T) {
 
 	t.Run("an unrestricted role sees the full record", func(t *testing.T) {
 		data := fetchData(t, "user")
+		logPostsFieldRightsDiagnostics(t, "user", fixtures.userID, data)
 		if _, ok := data["content"]; !ok {
 			t.Error(`expected "content" to be visible to the unrestricted "users" group`)
 		}
@@ -459,6 +462,43 @@ func TestPosts_FieldRights(t *testing.T) {
 			t.Error(`expected "content" to be visible to admin`)
 		}
 	})
+}
+
+// logPostsFieldRightsDiagnostics dumps what's stored and resolved for the
+// "posts" module's field rights, so a CI failure log alone — without direct
+// access to whatever database it ran against — is enough to tell "no row",
+// "wrong fields", or "wrong group_id" apart from a real app bug.
+func logPostsFieldRightsDiagnostics(t *testing.T, role string, userID int, data map[string]interface{}) {
+	t.Helper()
+	t.Logf("[diag] %s: resolved field rights for posts = %#v", role, auth.ResolveModuleFieldRights(userID)["posts"])
+	t.Logf("[diag] %s: response field names = %v", role, sortedKeys(data))
+
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		t.Logf("[diag] db unavailable: %v", err)
+		return
+	}
+	rows, err := db.RQuery(`SELECT id, group_id, modes, fields FROM user_group_rights WHERE module = 'posts' ORDER BY group_id, id`)
+	if err != nil {
+		t.Logf("[diag] could not read user_group_rights: %v", err)
+		return
+	}
+	if len(rows) == 0 {
+		t.Logf("[diag] no user_group_rights row exists for module='posts' at all")
+	}
+	for _, row := range rows {
+		t.Logf("[diag] user_group_rights: id=%v group_id=%v modes=%v fields=%v",
+			row["id"], row["group_id"], row["modes"], row["fields"])
+	}
+}
+
+func sortedKeys(m map[string]interface{}) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // --- custom bolt-on endpoints: session required, not module rights ---------

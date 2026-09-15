@@ -71,24 +71,8 @@ INSERT INTO public.translations (key, locale, value) VALUES
 ('Last run', 'ru', 'Последний запуск')
 ON CONFLICT (key, locale) DO NOTHING;
 
--- Explicit user_group_rights rows for every group (admins=0, guests=1,
--- users=2) on every module that doesn't already have one (guests/posts,
--- users/posts and admins/access_log are skipped: those rows already exist).
--- fields is filled on every row (never NULL): '{}' where modes is 0 for a
--- non-admin group (the module is closed to that group, so no per-field grant
--- can matter); otherwise every one of the module's own non-id fields is
--- listed at that row's modes. Admin rows list every field (system fields
--- included) at full modes — an admin row with an INCOMPLETE fields grant
--- would hide the missing fields from admins in list/view, the same bug
--- fixed today for admins/access_log (GetFieldset ANDs a restrictive row's
--- mask into every field's Mode without an isAdmin bypass). Non-admin rows
--- leave system fields (uuid/created/updated/created_by/access) out of the
--- grant, matching the existing guests/posts row's own convention. modes for
--- guests/users mirrors each module's own DefaultPermission (auth.AllowedModes
--- ORs a row onto that same default for every caller, so this changes
--- nothing); modes for admins is always 31 (List/View/Create/Edit/Delete) —
--- AllowedModes returns MODE_ALL unconditionally for isAdmin regardless of any
--- row, so this is likewise a no-op, only made explicit in the table.
+-- Explicit rights rows for every group on every module missing one (posts and
+-- admins/access_log already exist and are skipped).
 INSERT INTO user_group_rights (group_id, module, modes, fields)
 SELECT v.group_id, v.module, v.modes, v.fields
 FROM (VALUES
@@ -131,16 +115,22 @@ WHERE NOT EXISTS (
   WHERE ugr.group_id = v.group_id AND ugr.module = v.module
 );
 
--- Pages are now rights-gated the same way modules are (PageAbstract.hasMode /
--- auth.HasPageMode), using MODE_VIEW (see it in the menu, open it) and
--- MODE_EDIT (its inner interactive endpoints) instead of the old
--- RequiresAuth/RequiresAdmin booleans. A page requiring neither (login) is
--- open to everyone by default (module.PageAbstract.defaultModes), and an
--- admin-required page (console/statistics/actions/netmapper/opencv) needs no
--- row since admins bypass unconditionally — only "profile" (RequiresAuth,
--- not admin) needs an explicit grant to keep working for ordinary users.
+-- profile page grant: pages are now rights-gated like modules (see PageAbstract.hasMode).
 INSERT INTO user_group_rights (group_id, module, modes, fields)
 SELECT 2, 'profile', 10, '{}'
 WHERE NOT EXISTS (
   SELECT 1 FROM user_group_rights WHERE group_id = 2 AND module = 'profile'
+);
+
+-- Missing guests/posts and users/posts rows, added by the fill above.
+INSERT INTO user_group_rights (group_id, module, modes, fields)
+SELECT 1, 'posts', 3, '{"title":["list","view"],"author":["list","view"]}'
+WHERE NOT EXISTS (
+  SELECT 1 FROM user_group_rights WHERE group_id = 1 AND module = 'posts'
+);
+
+INSERT INTO user_group_rights (group_id, module, modes, fields)
+SELECT 2, 'posts', 15, '{}'
+WHERE NOT EXISTS (
+  SELECT 1 FROM user_group_rights WHERE group_id = 2 AND module = 'posts'
 );
