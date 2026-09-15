@@ -107,7 +107,7 @@ func (p *Posts) fieldset() []Field {
 			WithLabel("Visible To (Users)").
 			WithDescription("Specific users who may also view this post, besides you and admins").
 			WithOption("width", "500px").
-			InModes(MODE_VIEW | MODE_EDIT).
+			InModes(MODE_VIEW | MODE_EDIT | MODE_SUBMIT).
 			TableFieldset([]Field{
 				NewField("user", TYPE_INT, true).
 					WithLabel("User").
@@ -147,7 +147,7 @@ func (p *Posts) fieldset() []Field {
 			WithLabel("Visible To (Groups)").
 			WithDescription("User groups who may also view this post, besides you and admins").
 			WithOption("width", "500px").
-			InModes(MODE_VIEW | MODE_EDIT).
+			InModes(MODE_VIEW | MODE_EDIT | MODE_SUBMIT).
 			TableFieldset([]Field{
 				NewField("group", TYPE_INT, true).
 					WithLabel("Group").

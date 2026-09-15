@@ -5,6 +5,7 @@ import remarkMath from "remark-math";
 import remarkDirective from "remark-directive";
 import { safeUrl, resolveImageSrc } from "@engine/fields/Markdown/controllers/markdown";
 import allowedComponents, { allowedNames } from "../components";
+import CodeBlock from "./CodeBlock";
 
 // Shared markdown renderer used by both the view and the editor preview.
 //
@@ -64,6 +65,13 @@ const baseComponents: Components = {
         if (!safe) return null;
         return <img src={safe} alt={alt || ""} loading="lazy" className="md-img" {...props} />;
     },
+    // CodeBlock owns the <pre> for a fenced block itself (in both its loading
+    // and highlighted states) — this just stops react-markdown's own default
+    // `pre` from wrapping it a second time.
+    pre({ children }) {
+        return <>{children}</>;
+    },
+    code: CodeBlock,
 };
 
 // Base renderers plus the whitelisted content components (keyed by directive

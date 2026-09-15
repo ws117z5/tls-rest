@@ -85,7 +85,7 @@ func (u *Users) fieldset() []Field {
 		NewField("groups", TYPE_TABLE, false).
 			WithLabel("Groups").
 			WithDescription("Groups this user belongs to (highest id = access level; an admin group grants admin)").
-			InModes(MODE_VIEW | MODE_EDIT). // not in any SELECT, so a list column would only ever show "—"
+			InModes(MODE_VIEW | MODE_EDIT | MODE_SUBMIT). // not in any SELECT, so a list column would only ever show "—"
 			TableFieldset([]Field{
 				NewField("group", TYPE_INT, true).
 					WithLabel("Group").
