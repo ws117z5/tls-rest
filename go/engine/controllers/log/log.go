@@ -65,6 +65,31 @@ func levelByName(name string) level {
 	}
 }
 
+// levelWeight orders severities for the MinLevel threshold.
+func levelWeight(name string) int {
+	switch name {
+	case "debug":
+		return 0
+	case "info", "success":
+		return 1
+	case "warn", "warning":
+		return 2
+	case "error":
+		return 3
+	case "fatal":
+		return 4
+	default:
+		return 1
+	}
+}
+
+// MinLevel: go.config.json "log.level", below which nothing is logged.
+var MinLevel = "info"
+
+func SetMinLevel(name string) { MinLevel = name }
+
+func allowed(name string) bool { return levelWeight(name) >= levelWeight(MinLevel) }
+
 // printLine writes one uniform colored console line. Shared by the leveled API
 // here and the structured event logger in events.go, so console output looks the
 // same everywhere. source ("pkg/file.go:line") and module are optional.
@@ -203,6 +228,9 @@ func (lg *Logger) activeSinks() int {
 
 // emit is the single funnel: colored console (if enabled) → subscribers → store.
 func (lg *Logger) emit(l level, msg string) {
+	if !allowed(l.name) {
+		return
+	}
 	s := lg.activeSinks()
 	source := capture()
 	if s&LOG_PRINT == LOG_PRINT {
@@ -303,6 +331,11 @@ var db DB
 // configured file/db sinks from go.config.json "log".
 func Init(database DB) {
 	db = database
+	lvl := constants.Config.Log.Level
+	if lvl == "" {
+		lvl = "info"
+	}
+	SetMinLevel(lvl)
 	EnableFileLogging(constants.Config.Log.WriteToFile)
 	EnableDatabaseLogging(constants.Config.Log.WriteToDb)
 	if constants.Config.Log.WriteToFile || constants.Config.Log.WriteToDb {

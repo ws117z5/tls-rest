@@ -13,6 +13,7 @@ package comments
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -58,14 +59,77 @@ func Init() {
 	})
 }
 
-// node is one comment plus its nested replies, as sent to the client.
+// node is one comment plus its nested replies, as sent to the client. Likes/
+// Dislikes/Mine are embedded here (from a batched query, see commentLikes) so
+// the client never has to make a separate /api/likes/comments/{id} GET per
+// comment — that endpoint is still POSTed to for registering a reaction.
 type node struct {
 	ID       int         `json:"id"`
 	Author   string      `json:"author"`
 	AuthorID int         `json:"authorId"`
 	Body     string      `json:"body"`
 	Created  interface{} `json:"created"`
+	Likes    int         `json:"likes"`
+	Dislikes int         `json:"dislikes"`
+	Mine     int         `json:"mine"`
 	Replies  []*node     `json:"replies"`
+}
+
+// likeSummary is one comment's reaction counts + the caller's own reaction (0 if none).
+type likeSummary struct {
+	likes, dislikes, mine int
+}
+
+// commentLikes batches every id's reaction summary into one query (plus one
+// more for the caller's own reactions, skipped when userID <= 0) instead of
+// the N separate round-trips a per-comment /api/likes GET would cost.
+func commentLikes(db *pgdb.Db, ids []int, userID int) (map[int]likeSummary, error) {
+	out := make(map[int]likeSummary, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+
+	placeholders := make([]string, len(ids))
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	inList := strings.Join(placeholders, ",")
+
+	rows, err := db.GetAll(`
+		SELECT row_id,
+		       COALESCE(SUM(CASE WHEN value = 1 THEN 1 ELSE 0 END), 0)  AS likes,
+		       COALESCE(SUM(CASE WHEN value = -1 THEN 1 ELSE 0 END), 0) AS dislikes
+		FROM likes
+		WHERE module_id = '`+selfModule+`' AND row_id IN (`+inList+`)
+		GROUP BY row_id`, args...)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		out[functions.Int(row["row_id"])] = likeSummary{
+			likes:    functions.Int(row["likes"]),
+			dislikes: functions.Int(row["dislikes"]),
+		}
+	}
+
+	if userID > 0 {
+		mineArgs := append(append([]interface{}{}, args...), userID)
+		mineRows, err := db.GetAll(`
+			SELECT row_id, value FROM likes
+			WHERE module_id = '`+selfModule+`' AND row_id IN (`+inList+`) AND user_id = $`+fmt.Sprint(len(ids)+1),
+			mineArgs...)
+		if err == nil {
+			for _, row := range mineRows {
+				id := functions.Int(row["row_id"])
+				s := out[id]
+				s.mine = functions.Int(row["value"])
+				out[id] = s
+			}
+		}
+	}
+	return out, nil
 }
 
 // handleList returns the whole comment tree rooted at (module, row).
@@ -106,8 +170,14 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	userID := 0
+	if s := cache.SessionFromContext(r.Context()); s != nil {
+		userID = s.UserID
+	}
+
 	byID := make(map[int]*node, len(rows))
 	order := make([]*node, 0, len(rows))
+	ids := make([]int, 0, len(rows))
 	for _, row := range rows {
 		n := &node{
 			ID:       functions.Int(row["id"]),
@@ -118,6 +188,14 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 		}
 		byID[n.ID] = n
 		order = append(order, n)
+		ids = append(ids, n.ID)
+	}
+
+	if likes, err := commentLikes(db, ids, userID); err == nil {
+		for _, n := range order {
+			s := likes[n.ID]
+			n.Likes, n.Dislikes, n.Mine = s.likes, s.dislikes, s.mine
+		}
 	}
 
 	roots := make([]*node, 0)

@@ -3,6 +3,12 @@ import axios from "axios";
 import PageComponent from "@engine/containers/PageComponent";
 import { t, subscribe } from "@engine/i18n";
 
+interface ActionLogEntry {
+	time: string;
+	result?: string;
+	error?: string;
+}
+
 interface ActionSnapshot {
 	id: string;
 	name: string;
@@ -12,6 +18,7 @@ interface ActionSnapshot {
 	last_run?: string;
 	last_result?: string;
 	last_error?: string;
+	log?: ActionLogEntry[];
 }
 
 interface ActionsState {
@@ -128,15 +135,32 @@ class Actions extends PageComponent<{}, ActionsState> {
 									)}
 								</div>
 
-								{(a.last_run || a.last_result || a.last_error) && (
-									<div style={{ marginTop: 10, fontSize: 12, color: "#888" }}>
-										{a.last_run && (
-											<div>
-												{t("Last run")}: {new Date(a.last_run).toLocaleString()}
-											</div>
-										)}
-										{a.last_result && <div>{a.last_result}</div>}
-										{a.last_error && <div style={{ color: "#f77" }}>{a.last_error}</div>}
+								{a.log && a.log.length > 0 && (
+									<div style={{ marginTop: 10 }}>
+										<div className="small text-muted mb-1">{t("Execution log")}</div>
+										<div
+											style={{
+												background: "#111",
+												color: "#ddd",
+												fontFamily: "monospace",
+												fontSize: 12,
+												padding: "8px 10px",
+												borderRadius: 4,
+												maxHeight: 180,
+												overflowY: "auto",
+											}}
+										>
+											{a.log.map((entry, i) => (
+												<div key={i} style={{ marginBottom: 4 }}>
+													<span style={{ color: "#888" }}>{new Date(entry.time).toLocaleString()}</span>{" "}
+													{entry.error ? (
+														<span style={{ color: "#f77" }}>{entry.error}</span>
+													) : (
+														<span>{entry.result}</span>
+													)}
+												</div>
+											))}
+										</div>
 									</div>
 								)}
 							</div>

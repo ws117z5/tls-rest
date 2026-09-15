@@ -1,12 +1,11 @@
 package statistics
 
 import (
-	"fmt"
 	"net/http"
+	"strings"
 
 	"tls-rest/go/engine/controllers/accesslog"
 	"tls-rest/go/engine/controllers/db/cache"
-	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
 )
 
@@ -41,37 +40,16 @@ func GeoIPBackfill(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
-	if err != nil {
-		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
-		return
-	}
-
+	// accessLogWhere's fragment already reads "WHERE ..."; BackfillCountriesBatch
+	// wants a bare AND-able condition, so strip that prefix back off here.
 	where, args := parseFilters(r).accessLogWhere()
-	cond := "country IS NULL AND ip IS NOT NULL"
-	if where == "" {
-		where = "WHERE " + cond
-	} else {
-		where += " AND " + cond
-	}
-	rows, err := db.GetAll(fmt.Sprintf("SELECT id, ip FROM access_log %s LIMIT %d", where, geoipBackfillLimit), args...)
+	where = strings.TrimPrefix(where, "WHERE ")
+
+	resolved, checked, err := accesslog.BackfillCountriesBatch(geoipBackfillLimit, where, args)
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	resolved := 0
-	for _, row := range rows {
-		id := functions.Coerce[int64](row["id"])
-		ip := functions.Coerce[string](row["ip"])
-		country := accesslog.CountryForIP(ip)
-		if country == "" {
-			continue
-		}
-		if _, err := db.Exec("UPDATE access_log SET country = $1 WHERE id = $2", country, id); err == nil {
-			resolved++
-		}
-	}
-
-	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{"loaded": true, "resolved": resolved, "checked": len(rows)})
+	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{"loaded": true, "resolved": resolved, "checked": checked})
 }

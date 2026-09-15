@@ -18,6 +18,9 @@ export interface CommentNode {
   authorId: number;
   body: string;
   created: string;
+  likes: number;
+  dislikes: number;
+  mine: number;
   replies?: CommentNode[];
 }
 
@@ -213,7 +216,12 @@ class CommentsThread extends Component<Props, State> {
           <MarkdownRender value={n.body} />
         </div>
         <div className="d-flex align-items-center gap-2 mt-1">
-          <Likes module="comments" row={n.id} size="sm" />
+          <Likes
+            module="comments"
+            row={n.id}
+            size="sm"
+            initial={{ likes: n.likes, dislikes: n.dislikes, mine: n.mine }}
+          />
           <button
             type="button"
             className="btn btn-link btn-sm p-0 text-decoration-none"

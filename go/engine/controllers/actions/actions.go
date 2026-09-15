@@ -10,6 +10,18 @@ import (
 	"time"
 )
 
+// maxLogEntries bounds each action's kept history — old runs (manual or
+// scheduled) fall off the front once exceeded, so a frequently-scheduled
+// action can't grow this without limit.
+const maxLogEntries = 20
+
+// LogEntry is one past run of an action, newest first in Action.Log().
+type LogEntry struct {
+	Time   time.Time `json:"time"`
+	Result string    `json:"result,omitempty"`
+	Error  string    `json:"error,omitempty"`
+}
+
 // Action is one registrable unit of work. Run does the actual job and
 // returns a short human-readable result; Interval/last-run bookkeeping below
 // is unexported and managed by RunNow/SetSchedule.
@@ -26,19 +38,22 @@ type Action struct {
 	lastRun  time.Time
 	result   string
 	lastErr  string
+	log      []LogEntry
 }
 
-// Snapshot is a read-only, JSON-safe view of an action's config and last-run
-// state (Action itself holds a mutex, so it isn't serialized directly).
+// Snapshot is a read-only, JSON-safe view of an action's config, last-run
+// state, and run history (Action itself holds a mutex, so it isn't
+// serialized directly).
 type Snapshot struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	IntervalSec int    `json:"interval_seconds"`
-	Running     bool   `json:"running"`
-	LastRun     string `json:"last_run,omitempty"`
-	LastResult  string `json:"last_result,omitempty"`
-	LastError   string `json:"last_error,omitempty"`
+	ID          string     `json:"id"`
+	Name        string     `json:"name"`
+	Description string     `json:"description"`
+	IntervalSec int        `json:"interval_seconds"`
+	Running     bool       `json:"running"`
+	LastRun     string     `json:"last_run,omitempty"`
+	LastResult  string     `json:"last_result,omitempty"`
+	LastError   string     `json:"last_error,omitempty"`
+	Log         []LogEntry `json:"log,omitempty"`
 }
 
 var (
@@ -90,10 +105,16 @@ func (a *Action) RunNow() (string, error) {
 	a.running = false
 	a.lastRun = time.Now()
 	a.result = result
+	entry := LogEntry{Time: a.lastRun, Result: result}
 	if err != nil {
 		a.lastErr = err.Error()
+		entry.Error = a.lastErr
 	} else {
 		a.lastErr = ""
+	}
+	a.log = append(a.log, entry)
+	if len(a.log) > maxLogEntries {
+		a.log = a.log[len(a.log)-maxLogEntries:]
 	}
 	a.mu.Unlock()
 
@@ -142,6 +163,10 @@ func (a *Action) Snapshot() Snapshot {
 	}
 	if !a.lastRun.IsZero() {
 		s.LastRun = a.lastRun.UTC().Format(time.RFC3339)
+	}
+	s.Log = make([]LogEntry, len(a.log))
+	for i, e := range a.log {
+		s.Log[len(a.log)-1-i] = e // newest first
 	}
 	return s
 }

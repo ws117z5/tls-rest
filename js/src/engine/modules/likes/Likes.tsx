@@ -15,6 +15,10 @@ interface Props {
   module: string;
   row: number | string | null | undefined;
   size?: "sm";
+  // When the parent already has the counts (e.g. CommentsThread embeds them
+  // per comment from one batched list response), seed state from these
+  // instead of this widget's own GET — reacting still always POSTs here.
+  initial?: { likes: number; dislikes: number; mine: number };
 }
 
 interface State {
@@ -30,7 +34,11 @@ class Likes extends Component<Props, State> {
   private unsubscribeI18n?: () => void;
 
   componentDidMount() {
-    if (this.hasTarget()) this.load();
+    if (this.props.initial) {
+      this.setState({ ...this.props.initial });
+    } else if (this.hasTarget()) {
+      this.load();
+    }
     this.unsubscribeI18n = subscribe(() => this.forceUpdate());
   }
 
@@ -39,7 +47,11 @@ class Likes extends Component<Props, State> {
   }
 
   componentDidUpdate(prev: Props) {
-    if (prev.row !== this.props.row || prev.module !== this.props.module) {
+    if (this.props.initial && this.props.initial !== prev.initial) {
+      this.setState({ ...this.props.initial });
+      return;
+    }
+    if (!this.props.initial && (prev.row !== this.props.row || prev.module !== this.props.module)) {
       if (this.hasTarget()) this.load();
     }
   }

@@ -1,6 +1,7 @@
 {
   "log": {
     "writeToFile": false,
-    "writeToDb": true
+    "writeToDb": true,
+    "level": "info"
   }
 }

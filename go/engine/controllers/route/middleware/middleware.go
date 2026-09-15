@@ -114,7 +114,6 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 		ci := ManageSession(w, r)
 		ctx := context.WithValue(r.Context(), SESSION_KEY, ci)
 
-		// Log the incoming request
 		var userID *int
 		if ci.UserID > 0 {
 			userID = &ci.UserID
@@ -122,7 +121,6 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 
 		// Generate session ID from cookie or create one
 		sessionID := getSessionID(r)
-		requestID := log.LogRequest(r, userID, sessionID)
 
 		// Wrap the writer so we can record the final status for the access log.
 		rec := newResponseRecorder(w)
@@ -143,7 +141,7 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 				Blocked: true, DeniedReason: "ip_rule",
 			})
 			log.LogAuthEvent("access_denied", "Blocked by IP access rule", userID, sessionID, false, map[string]interface{}{
-				"ip": clientIP, "rule_id": ruleID, "request_id": requestID,
+				"ip": clientIP, "rule_id": ruleID,
 			})
 			controllers.Error(w, r.WithContext(ctx), http.StatusForbidden)
 			return
@@ -166,12 +164,6 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 			})
 		}()
 
-		// Log session event
-		log.LogAuthEvent("session_check", "Session validated", userID, sessionID, true, map[string]interface{}{
-			"request_id": requestID,
-			"path":       r.URL.Path,
-		})
-
 		if isAPICall(r) {
 			// Parse every parameter source once — URL query + body (JSON object,
 			// x-www-form-urlencoded, or multipart) — into a shared request-scoped
@@ -187,31 +179,19 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 
 			if !allowed {
 				if r.URL.Path == "/login" || r.URL.Path == "/" {
-					duration := time.Since(startTime).Seconds() * 1000
-					log.LogResponse(requestID, http.StatusOK, duration, userID)
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
 				log.LogAuthEvent("authorization_failed", "User lacks required module rights", userID, sessionID, false, map[string]interface{}{
-					"module":     moduleName,
-					"action":     action,
-					"request_id": requestID,
+					"module": moduleName,
+					"action": action,
 				})
-
-				duration := time.Since(startTime).Seconds() * 1000
-				log.LogResponse(requestID, http.StatusUnauthorized, duration, userID)
 				controllers.Error(w, r.WithContext(ctx), http.StatusUnauthorized)
 				return
 			}
 			// --- End module rights check ---
 
-			log.LogModuleEvent(moduleName, action, "Module access granted", userID, sessionID, map[string]interface{}{
-				"request_id": requestID,
-			})
-
 			// Authenticated and authorized, proceed to API handler (JSON response)
-			duration := time.Since(startTime).Seconds() * 1000
-			log.LogResponse(requestID, http.StatusOK, duration, userID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
@@ -220,13 +200,6 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 		// module endpoint that is also a real page (e.g. /posts) render that page;
 		// navigations to endpoints with no page (e.g. /papers) are redirected to
 		// the homepage by the client-side catch-all route.
-		log.LogSystemEvent("Rendering main page (SSR)", log.LogLevelInfo, map[string]interface{}{
-			"request_id": requestID,
-			"path":       r.URL.Path,
-		})
-
-		duration := time.Since(startTime).Seconds() * 1000
-		log.LogResponse(requestID, http.StatusOK, duration, userID)
 		controllers.Index(w, r.WithContext(ctx))
 	})
 }

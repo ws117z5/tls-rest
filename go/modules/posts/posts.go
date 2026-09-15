@@ -70,7 +70,26 @@ func (p *Posts) fieldset() []Field {
 			WithDescription("Post images").
 			WithOption("multiple", true).
 			NonSortable().
-			NonSearchable(),
+			NonSearchable().
+			WithResize(ResizeOptions{Width: 1000}),
+
+		// List-view counters, computed at read time — no stored column.
+		NewField("likes_count", TYPE_INT, false).
+			WithLabel("Likes").
+			WithSQL("(SELECT COUNT(*) FROM likes WHERE likes.module_id = 'posts' AND likes.row_id = posts.id AND likes.value = 1)").
+			AsVirtual(),
+
+		// Recursive: a reply's module_id/row_id point at its parent comment, not
+		// the post, so a plain WHERE would miss every reply. Matches the total
+		// CommentsThread shows on the post's own page (comments module's countAll).
+		NewField("comments_count", TYPE_INT, false).
+			WithLabel("Comments").
+			WithSQL(`(WITH RECURSIVE thread AS (
+				SELECT c.id FROM comments c WHERE c.module_id = 'posts' AND c.row_id = posts.id
+			  UNION ALL
+				SELECT c.id FROM comments c JOIN thread t ON c.module_id = 'comments' AND c.row_id = t.id
+			) SELECT COUNT(*) FROM thread)`).
+			AsVirtual(),
 
 		NewField("content", TYPE_MARKDOWN, true).
 			WithLabel("Content").

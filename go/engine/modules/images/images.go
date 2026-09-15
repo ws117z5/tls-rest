@@ -139,6 +139,11 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		access = recordAccess(moduleName, recordID)
 	}
 
+	resized := false
+	if out, outMime, ok := applyFieldResize(moduleName, field, raw, mimeType); ok {
+		raw, mimeType, resized = out, outMime, true
+	}
+
 	guid := uuid.NewString()
 
 	// Record the uploader so images can be listed/filtered by user.
@@ -199,8 +204,14 @@ func Process(w http.ResponseWriter, r *http.Request) {
 
 	imageCache.Set(guid, cachedImage{Id: id, Data: raw, MimeType: mimeType})
 
+	// After a resize the stored bytes are re-encoded JPEG, so the URL extension
+	// must come from mimeType, not the (now stale) original filename.
+	extFilename := header.Filename
+	if resized {
+		extFilename = ""
+	}
 	name := guid
-	if ext := imageExt(header.Filename, mimeType); ext != "" {
+	if ext := imageExt(extFilename, mimeType); ext != "" {
 		name = guid + "." + ext
 	}
 
@@ -248,6 +259,31 @@ func ServeByRef(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
 	w.Write(ci.Data)
+}
+
+// applyFieldResize looks up moduleName's fieldName field and, if it declares
+// WithResize, resizes raw accordingly. ok is false when there's no matching
+// Resize config, or the source isn't a resizable raster format (e.g. SVG) —
+// callers keep the original bytes/mime in that case.
+func applyFieldResize(moduleName, fieldName string, raw []byte, mimeType string) (resized []byte, resizedMime string, ok bool) {
+	if moduleName == "" || fieldName == "" || mimeType == "image/svg+xml" {
+		return nil, "", false
+	}
+	mod, exists := module.RegisteredModules[moduleName]
+	if !exists {
+		return nil, "", false
+	}
+	for _, f := range mod.GetFields() {
+		if f.Name != fieldName || f.Resize == nil {
+			continue
+		}
+		out, outMime, err := resizeImage(raw, f.Resize.Width, f.Resize.Height, f.Resize.MaxBytes)
+		if err != nil {
+			return nil, "", false // undecodable source: keep the original bytes
+		}
+		return out, outMime, true
+	}
+	return nil, "", false
 }
 
 // recordAccess returns the access level of an owning record, or 0 if unknown.

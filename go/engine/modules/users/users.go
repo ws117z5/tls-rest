@@ -69,7 +69,8 @@ func (u *Users) fieldset() []Field {
 			WithLabel("Profile Image").
 			WithDescription("User's profile image").
 			NonSearchable().
-			WithMode(MODE_VIEW | MODE_EDIT),
+			WithMode(MODE_VIEW | MODE_EDIT).
+			WithResize(ResizeOptions{Height: 300}),
 
 		// Group membership: a jsonb array of user_groups ids stored in the real
 		// users.groups column (created by the engine because this TYPE_TABLE

@@ -25,8 +25,9 @@ type ConfigType struct {
 // two sinks: writeToFile persists JSONL under ./logs, writeToDb inserts into the
 // logs table (see the logs module). Applied at startup in main.
 type LogParams struct {
-	WriteToFile bool `json:"writeToFile"`
-	WriteToDb   bool `json:"writeToDb"`
+	WriteToFile bool   `json:"writeToFile"`
+	WriteToDb   bool   `json:"writeToDb"`
+	Level       string `json:"level"` // minimum severity printed/stored: debug|info|warn|error (default "info")
 }
 
 // AdditionalRights self explanitory

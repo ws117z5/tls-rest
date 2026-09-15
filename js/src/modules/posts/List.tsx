@@ -1,6 +1,7 @@
 import React from "react";
 import { ModuleViewProps } from "@engine/controllers/registry";
 import useT from "@engine/useT";
+import Icon from "@engine/Icon";
 
 // Strip markdown/HTML to a short plain-text excerpt of the body.
 function excerpt(body: string, max = 180): string {
@@ -34,7 +35,15 @@ const PostsList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
           <div className="card-body py-2">
             <h5 className="card-title mb-1">{row.title || `#${row.id}`}</h5>
             <div className="text-muted small mb-2">{t("By")} {row.author || "—"}</div>
-            <div className="text-secondary small mb-0">{excerpt(row.content)}</div>
+            <div className="text-secondary small mb-2">{excerpt(row.content)}</div>
+            <div className="d-flex align-items-center gap-3 text-muted small">
+              <span>
+                <Icon name="like" /> {row.likes_count || 0}
+              </span>
+              <span>
+                <Icon name="comments" /> {row.comments_count || 0}
+              </span>
+            </div>
           </div>
         </div>
       ))}

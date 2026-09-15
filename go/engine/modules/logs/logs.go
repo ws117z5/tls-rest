@@ -6,9 +6,7 @@ import (
 	. "tls-rest/go/engine/controllers/module"
 )
 
-// fieldset maps the `logs` columns. Field names must match the columns the DB
-// sink writes (go/lib/logdb.Init); the engine auto-creates the table from this
-// fieldset, so this is the single source of truth for the schema.
+// fieldset matches what events.go's EventLog actually populates (see log package).
 func (m *Logs) fieldset() []Field {
 	return []Field{
 		NewField("ts", TYPE_DATE_TIME, false).WithLabel("Time").AsReadOnly(),
@@ -18,10 +16,6 @@ func (m *Logs) fieldset() []Field {
 		NewField("module", TYPE_STRING, false).WithLabel("Module").AsReadOnly(),
 		NewField("action", TYPE_STRING, false).WithLabel("Action").AsReadOnly(),
 		NewField("user_id", TYPE_INT, false).WithLabel("User").AsReadOnly(),
-		NewField("method", TYPE_STRING, false).WithLabel("Method").AsReadOnly(),
-		NewField("request_url", TYPE_STRING, false).WithLabel("URL").AsReadOnly().NonSortable(),
-		NewField("status_code", TYPE_INT, false).WithLabel("Status").AsReadOnly(),
-		NewField("duration_ms", TYPE_FLOAT, false).WithLabel("Duration (ms)").AsReadOnly(),
 		NewField("ip_address", TYPE_STRING, false).WithLabel("IP").AsReadOnly(),
 		NewField("session_id", TYPE_STRING, false).WithLabel("Session").AsReadOnly().NonSortable(),
 		NewField("event_id", TYPE_STRING, false).WithLabel("Event ID").AsReadOnly().NonSortable(),
@@ -29,13 +23,12 @@ func (m *Logs) fieldset() []Field {
 	}
 }
 
-// filters: GET /logs?level=&type=&module=&method=&message=&from=&to=
+// filters: GET /logs?level=&type=&module=&message=&from=&to=
 func (m *Logs) filters() *Filedset {
 	return NewFieldset(
 		NewFilter("level", TYPE_STRING).WithLabel("Level").Equals(),
 		NewFilter("type", TYPE_STRING).WithLabel("Type").Equals(),
 		NewFilter("module", TYPE_STRING).WithLabel("Module").Equals(),
-		NewFilter("method", TYPE_STRING).WithLabel("Method").Equals(),
 		NewFilter("message", TYPE_STRING).WithLabel("Message").Contains(),
 		NewFilter("from", TYPE_DATE).WithLabel("From").WithSQL("ts").GreaterOrEqual(),
 		NewFilter("to", TYPE_DATE).WithLabel("To").WithSQL("ts").LessOrEqual(),

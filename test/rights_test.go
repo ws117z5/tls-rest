@@ -36,6 +36,7 @@ import (
 	"time"
 
 	registry "tls-rest/go"
+	"tls-rest/go/engine/controllers/accesslog"
 	"tls-rest/go/engine/controllers/auth"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
@@ -58,6 +59,7 @@ var fixtures struct {
 
 func TestMain(m *testing.M) {
 	registry.InitAll()
+	accesslog.Init() // needed by TestAccessLogMatchesActualResponses
 	router = route.GetRouter()
 
 	db, err := pgdb.GetInstance()
@@ -85,10 +87,21 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 
-	// Best-effort: these rows exist solely for this run.
-	_, _ = db.DeleteRow("posts", "id", fixtures.sharedPostID)
-	_, _ = db.DeleteRow("users", "id", fixtures.userID)
-	_, _ = db.DeleteRow("users", "id", fixtures.adminID)
+	// Drop anything that might still reference the fixtures first (comments/
+	// likes/posts from a subtest whose own t.Cleanup didn't run, e.g. a
+	// panic), then the fixtures themselves — logged, not discarded, so a
+	// failure here is visible instead of silently leaving stray rows for
+	// deleteStaleFixture to find (and log about) on the next run.
+	del := func(query string, args ...interface{}) {
+		if _, err := db.Exec(query, args...); err != nil {
+			fmt.Fprintf(os.Stderr, "rights_test: cleanup %q failed: %v\n", query, err)
+		}
+	}
+	del("DELETE FROM comments WHERE created_by = $1 OR created_by = $2", fixtures.userID, fixtures.adminID)
+	del("DELETE FROM likes WHERE user_id = $1 OR user_id = $2", fixtures.userID, fixtures.adminID)
+	del("DELETE FROM posts WHERE created_by = $1 OR created_by = $2", fixtures.userID, fixtures.adminID)
+	del("DELETE FROM users WHERE id = $1", fixtures.userID)
+	del("DELETE FROM users WHERE id = $1", fixtures.adminID)
 
 	os.Exit(code)
 }
@@ -100,11 +113,17 @@ func TestMain(m *testing.M) {
 // nothing to pre-seed via SQL. groups drops it straight into one of the
 // roles init/sql/2026.09.13.sql configures (0=admin, 1=guest, 2=users); for
 // "admin" what actually grants the bypass is that group's is_admin flag, not
-// anything about this specific row.
+// anything about this specific row. Self-healing: a stale row with the same
+// user_name (left by a previous run whose TestMain cleanup never ran — a
+// panic, or the process getting killed before m.Run() returned) is deleted
+// first, so failed cleanups don't accumulate across runs.
 func createFixtureUser(db *pgdb.Db, role string, groups []int) (int, error) {
+	userName := "rights_test_" + role
+	deleteStaleFixture(db, "users", "user_name", userName)
+
 	email := fmt.Sprintf("rights-test-%s-%d@example.local", role, time.Now().UnixNano())
 	id, err := db.InsertRow("users", map[string]interface{}{
-		"user_name":  "rights_test_" + role,
+		"user_name":  userName,
 		"first_name": "RightsTest",
 		"email":      email,
 		"groups":     groups,
@@ -112,11 +131,29 @@ func createFixtureUser(db *pgdb.Db, role string, groups []int) (int, error) {
 	return int(id), err
 }
 
+// deleteStaleFixture removes a leftover row (and anything in posts/comments/
+// likes still pointing at it) matching column=value, if a previous run's
+// cleanup failed to run or failed outright — see createFixtureUser.
+func deleteStaleFixture(db *pgdb.Db, table, column, value string) {
+	row, err := db.GetOne(fmt.Sprintf("SELECT id FROM %s WHERE %s = $1", table, column), value)
+	if err != nil || row == nil {
+		return
+	}
+	id := functions.Int(row["id"])
+	if table == "users" {
+		_, _ = db.Exec("DELETE FROM comments WHERE created_by = $1", id)
+		_, _ = db.Exec("DELETE FROM likes WHERE user_id = $1", id)
+		_, _ = db.Exec("DELETE FROM posts WHERE created_by = $1", id)
+	}
+	_, _ = db.DeleteRow(table, "id", id)
+}
+
 // createSharedPostFixture inserts the post TestPosts_FieldRights compares
 // across roles: shared with both the guest and users groups (so both can
 // view the row at all — see the ACL), authored by the run's own admin
 // fixture (so any hardcoded old id can't go stale across runs).
 func createSharedPostFixture(db *pgdb.Db, authorID int) (int, error) {
+	deleteStaleFixture(db, "posts", "title", "rights_test: shared with guests and users")
 	id, err := db.InsertRow("posts", map[string]interface{}{
 		"title":          "rights_test: shared with guests and users",
 		"content":        "Full content — only visible to roles without a field restriction on posts.",
@@ -556,95 +593,56 @@ func itoa(n int) string {
 	return strconv.Itoa(n)
 }
 
-// --- structured access log verification --------------------------------------
-//
-// The app writes one JSON object per line to ./logs/events_<date>.log for
-// every request (log.EventLog — see engine/controllers/log/events.go); since
-// this binary's CWD is the test package's own directory, that resolves to
-// test/logs/events_<date>.log. A "request" event and its matching "response"
-// event share the same RequestID. This section doesn't mock or replace that
-// logger — it reads the real file the real middleware just wrote, and checks
-// it agrees with the status code the test's own HTTP client received, so a
-// future change that fixes (or breaks) the actual auth decision without
-// updating what gets logged — or vice versa — shows up as a test failure
-// instead of a silently misleading audit trail.
+// --- access_log verification --------------------------------------------
 
-// logEvent mirrors the fields of log.EventLog this file actually reads.
-type logEvent struct {
-	Timestamp  time.Time `json:"timestamp"`
-	Type       string    `json:"type"`
-	RequestID  string    `json:"request_id,omitempty"`
-	Method     string    `json:"method,omitempty"`
-	RequestURL string    `json:"request_url,omitempty"`
-	StatusCode *int      `json:"status_code,omitempty"`
+type accessLogRow struct {
+	Status int
 }
 
-// readLogEventsSince parses today's event log file and returns every entry
-// timestamped at or after `since`, in file order.
-func readLogEventsSince(t *testing.T, since time.Time) []logEvent {
+// findAccessLogRow: accesslog.Record is async, so poll briefly.
+func findAccessLogRow(t *testing.T, since time.Time, method, path string) *accessLogRow {
 	t.Helper()
 
-	filename := fmt.Sprintf("./logs/events_%s.log", time.Now().Format("2006-01-02"))
-	data, err := os.ReadFile(filename)
+	db, err := pgdb.GetInstance()
 	if err != nil {
-		t.Fatalf("reading log file %s: %v (is file logging enabled? see log.EnableFileLogging)", filename, err)
+		t.Fatalf("db unavailable: %v", err)
 	}
 
-	var events []logEvent
-	for _, line := range bytes.Split(data, []byte("\n")) {
-		if len(bytes.TrimSpace(line)) == 0 {
-			continue
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		row, err := db.GetOne(
+			`SELECT status FROM access_log WHERE method = $1 AND path = $2 AND ts >= $3
+			 ORDER BY ts DESC LIMIT 1`, method, path, since,
+		)
+		if err != nil {
+			t.Fatalf("querying access_log: %v", err)
 		}
-		var e logEvent
-		if err := json.Unmarshal(line, &e); err != nil {
-			continue // a malformed/partial line shouldn't fail the whole read
+		if row != nil {
+			return &accessLogRow{Status: functions.Int(row["status"])}
 		}
-		if e.Timestamp.Before(since) {
-			continue
+		if time.Now().After(deadline) {
+			return nil
 		}
-		events = append(events, e)
+		time.Sleep(50 * time.Millisecond)
 	}
-	return events
 }
 
-// doAndVerifyLog behaves exactly like do(), but additionally asserts that
-// ./logs/events_<date>.log recorded a request+response pair for this exact
-// call whose status code matches what the HTTP client actually received.
+// doAndVerifyLog: do(), plus asserting access_log recorded this call's status.
 func doAndVerifyLog(t *testing.T, method, path, token string, body interface{}) *http.Response {
 	t.Helper()
 
 	start := time.Now()
 	resp := do(t, method, path, token, body)
-	events := readLogEventsSince(t, start)
 
-	var reqEvent *logEvent
-	for i := range events {
-		if e := &events[i]; e.Type == "request" && e.Method == method && e.RequestURL == path {
-			reqEvent = e // last match wins if do() ever retries internally
-		}
-	}
-	if reqEvent == nil {
-		t.Errorf("access log: no request event found for %s %s in test/logs/events_*.log", method, path)
+	row := findAccessLogRow(t, start, method, path)
+	if row == nil {
+		t.Errorf("access_log: no row found for %s %s", method, path)
 		return resp
 	}
-
-	var respEvent *logEvent
-	for i := range events {
-		if e := &events[i]; e.Type == "response" && e.RequestID == reqEvent.RequestID {
-			respEvent = e
-		}
-	}
-	if respEvent == nil {
-		t.Errorf("access log: no response event for request_id %s (%s %s)", reqEvent.RequestID, method, path)
-		return resp
-	}
-
-	if respEvent.StatusCode == nil {
-		t.Errorf("access log: response event for %s %s has no status_code recorded", method, path)
-	} else if *respEvent.StatusCode != resp.StatusCode {
+	if row.Status != resp.StatusCode {
 		t.Errorf(
-			"access log mismatch for %s %s: HTTP client received %d, but the log recorded %d",
-			method, path, resp.StatusCode, *respEvent.StatusCode,
+			"access_log mismatch for %s %s: HTTP client received %d, but the log recorded %d",
+			method, path, resp.StatusCode, row.Status,
 		)
 	}
 	return resp

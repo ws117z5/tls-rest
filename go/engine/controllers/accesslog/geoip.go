@@ -3,6 +3,7 @@ package accesslog
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"net"
 	"net/http"
 	"sort"
@@ -10,6 +11,8 @@ import (
 	"sync"
 	"time"
 
+	"tls-rest/go/engine/controllers/db/pgdb"
+	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/log"
 )
 
@@ -134,6 +137,37 @@ func CountryForIP(ipStr string) string {
 		return r.country
 	}
 	return ""
+}
+
+// BackfillCountriesBatch resolves country for up to limit access_log rows
+// missing one (optionally narrowed by an extra WHERE fragment, "" for none),
+// using whichever GeoIP tables are loaded. checked > resolved means some IPs
+// matched no range.
+func BackfillCountriesBatch(limit int, extraWhere string, extraArgs []interface{}) (resolved, checked int, err error) {
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		return 0, 0, err
+	}
+	where := "WHERE country IS NULL AND ip IS NOT NULL"
+	if extraWhere != "" {
+		where += " AND " + extraWhere
+	}
+	rows, err := db.GetAll(fmt.Sprintf("SELECT id, ip FROM access_log %s LIMIT %d", where, limit), extraArgs...)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, row := range rows {
+		id := functions.Coerce[int64](row["id"])
+		ip := functions.Coerce[string](row["ip"])
+		country := CountryForIP(ip)
+		if country == "" {
+			continue
+		}
+		if _, err := db.Exec("UPDATE access_log SET country = $1 WHERE id = $2", country, id); err == nil {
+			resolved++
+		}
+	}
+	return resolved, len(rows), nil
 }
 
 // stripPort drops a ":port" suffix from a bare IPv4 host, if present (IPv6

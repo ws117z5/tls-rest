@@ -1,5 +1,7 @@
 package field
 
+import "fmt"
+
 const MODE_LIST = 0b00000001
 const MODE_VIEW = 0b00000010
 const MODE_CREATE = 0b00000100
@@ -117,6 +119,20 @@ type Field struct {
 	AutocompleteFunc   func(input string, values map[string]interface{}) []AutoOption `json:"-"`
 	AutocompleteSQL    string                                                         `json:"-"`
 	AutocompleteSource []string                                                       `json:"-"` // {table, field, match}
+
+	// Resize configures server-side resizing for TYPE_IMAGE fields, applied on
+	// upload. Set via WithResize.
+	Resize *ResizeOptions `json:"-"`
+}
+
+// ResizeOptions bounds a TYPE_IMAGE field's stored size. Width/Height (px, 0 =
+// unconstrained on that axis) scale proportionally when only one is set, or
+// fit-within when both are; MaxBytes (0 = unconstrained) re-encodes at lower
+// JPEG quality until met.
+type ResizeOptions struct {
+	Width    int
+	Height   int
+	MaxBytes int
 }
 
 func NewField(name, fieldType string, required bool) Field {
@@ -144,6 +160,24 @@ func (f Field) WithSQL(sql string) Field {
 
 func (f Field) WithSQLWhere(where string) Field {
 	f.SQLWhere = where
+	return f
+}
+
+// WithSource makes a virtual, read-only field's value come from another
+// module's row (e.g. a Legal page field sourced from a specific Posts row's
+// content, editable via the Posts admin UI) instead of this table's own
+// column — the same SELECT-time SQL as WithSQL+AsVirtual, generated for you.
+func (f Field) WithSource(module, sourceField string, id int64) Field {
+	f.SQL = fmt.Sprintf("(SELECT %s FROM %s WHERE id = %d)", sourceField, module, id)
+	f.Virtual = true
+	f.ReadOnly = true
+	return f
+}
+
+// WithResize configures a TYPE_IMAGE field to be resized on upload; see
+// ResizeOptions.
+func (f Field) WithResize(opts ResizeOptions) Field {
+	f.Resize = &opts
 	return f
 }
 

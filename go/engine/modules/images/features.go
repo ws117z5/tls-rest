@@ -138,22 +138,28 @@ func gradientAt(img image.Image, x, y int, landscape bool) float64 {
 // downscaleAverage box-averages the source rectangle down to size×size. Area
 // averaging gives clean downscales without a third-party resizer.
 func downscaleAverage(src image.Image, rect image.Rectangle, size int) *image.RGBA {
-	dst := image.NewRGBA(image.Rect(0, 0, size, size))
+	return downscaleRect(src, rect, size, size)
+}
+
+// downscaleRect box-averages the source rectangle down to tw×th (independent
+// width/height, unlike downscaleAverage's square-only case).
+func downscaleRect(src image.Image, rect image.Rectangle, tw, th int) *image.RGBA {
+	dst := image.NewRGBA(image.Rect(0, 0, tw, th))
 	sw, sh := rect.Dx(), rect.Dy()
 	if sw <= 0 || sh <= 0 {
 		draw.Draw(dst, dst.Bounds(), image.White, image.Point{}, draw.Src)
 		return dst
 	}
 
-	for dy := 0; dy < size; dy++ {
-		sy0 := rect.Min.Y + dy*sh/size
-		sy1 := rect.Min.Y + (dy+1)*sh/size
+	for dy := 0; dy < th; dy++ {
+		sy0 := rect.Min.Y + dy*sh/th
+		sy1 := rect.Min.Y + (dy+1)*sh/th
 		if sy1 <= sy0 {
 			sy1 = sy0 + 1
 		}
-		for dx := 0; dx < size; dx++ {
-			sx0 := rect.Min.X + dx*sw/size
-			sx1 := rect.Min.X + (dx+1)*sw/size
+		for dx := 0; dx < tw; dx++ {
+			sx0 := rect.Min.X + dx*sw/tw
+			sx1 := rect.Min.X + (dx+1)*sw/tw
 			if sx1 <= sx0 {
 				sx1 = sx0 + 1
 			}
@@ -174,6 +180,82 @@ func downscaleAverage(src image.Image, rect image.Rectangle, size int) *image.RG
 		}
 	}
 	return dst
+}
+
+// --- upload-time resize (field.WithResize) ----------------------------------
+
+const (
+	resizeQuality    = 88 // starting JPEG quality
+	minResizeQuality = 40 // floor when squeezing to MaxBytes
+)
+
+// fitDimensions computes the largest tw×th that fits within width/height
+// (0 = unconstrained on that axis) while preserving aspect ratio, without
+// ever upscaling. Both zero means "no resize" (sw, sh unchanged).
+func fitDimensions(sw, sh, width, height int) (int, int) {
+	if width <= 0 && height <= 0 {
+		return sw, sh
+	}
+	scale := 1.0
+	switch {
+	case width > 0 && height > 0:
+		ws, hs := float64(width)/float64(sw), float64(height)/float64(sh)
+		if ws < hs {
+			scale = ws
+		} else {
+			scale = hs
+		}
+	case width > 0:
+		scale = float64(width) / float64(sw)
+	default:
+		scale = float64(height) / float64(sh)
+	}
+	if scale >= 1 {
+		return sw, sh // never upscale
+	}
+	tw := int(float64(sw)*scale + 0.5)
+	th := int(float64(sh)*scale + 0.5)
+	if tw < 1 {
+		tw = 1
+	}
+	if th < 1 {
+		th = 1
+	}
+	return tw, th
+}
+
+// resizeImage decodes data, scales it to fit width×height (proportionally;
+// see fitDimensions), and re-encodes as JPEG — reducing quality down to
+// minResizeQuality if needed to fit maxBytes. width/height/maxBytes <= 0 are
+// unconstrained. Returns the encoded bytes and "image/jpeg".
+func resizeImage(data []byte, width, height, maxBytes int) ([]byte, string, error) {
+	src, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, "", err
+	}
+
+	b := src.Bounds()
+	sw, sh := b.Dx(), b.Dy()
+	tw, th := fitDimensions(sw, sh, width, height)
+
+	dst := image.Image(src)
+	if tw != sw || th != sh {
+		dst = downscaleRect(src, b, tw, th)
+	}
+
+	quality := resizeQuality
+	var buf bytes.Buffer
+	for {
+		buf.Reset()
+		if err := jpeg.Encode(&buf, dst, &jpeg.Options{Quality: quality}); err != nil {
+			return nil, "", err
+		}
+		if maxBytes <= 0 || buf.Len() <= maxBytes || quality <= minResizeQuality {
+			break
+		}
+		quality -= 10
+	}
+	return buf.Bytes(), "image/jpeg", nil
 }
 
 // buildMetadata merges client-supplied metadata (EXIF/dimensions/original name,

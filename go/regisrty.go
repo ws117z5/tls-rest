@@ -14,6 +14,7 @@ import (
 	friends "tls-rest/go/engine/modules/friends"
 	images "tls-rest/go/engine/modules/images"
 	likes "tls-rest/go/engine/modules/likes"
+	logs "tls-rest/go/engine/modules/logs"
 	messages "tls-rest/go/engine/modules/messages"
 	modulerights "tls-rest/go/engine/modules/modulerights"
 	publicprofile "tls-rest/go/engine/modules/publicprofile"
@@ -59,6 +60,7 @@ func InitAll() {
 	images.Init()
 	comments.Init()
 	likes.Init()
+	logs.Init()
 	messages.Init()
 	friends.Init()
 	publicprofile.Init()
