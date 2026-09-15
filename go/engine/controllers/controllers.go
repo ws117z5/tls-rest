@@ -64,7 +64,7 @@ func sendEarlyHints(w http.ResponseWriter) {
 	for _, f := range scripts {
 		h.Add("Link", "<"+f+">; rel=preload; as=script")
 	}
-	for _, f := range config.Css {
+	for _, f := range config.Css() {
 		h.Add("Link", "<"+f+">; rel=preload; as=style")
 	}
 	// NB: images are intentionally not preloaded here. The SPA shell is served
@@ -123,7 +123,7 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	tplData := config.Tmpl{
 		JsHeader:  config.JsHeader,
 		JsFooter:  config.JsFooter,
-		CssHeader: config.Css,
+		CssHeader: config.Css(),
 		Img:       config.Img,
 		Title:     "HelloWorld", //todo route.getTitle(r.URL.Path),
 		Body: map[string]interface{}{

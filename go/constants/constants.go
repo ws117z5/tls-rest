@@ -54,9 +54,6 @@ var (
 	//JsFooter js footer array todo
 	JsFooter = append(GetFiles(), "/js/static/gl-matrix-min.js")
 
-	//Css styles array
-	Css = []string{"/css/base.css", "/css/index.css", "/css/index-cv.css", "/css/menu.css", "/css/theme-dark.css"}
-
 	//Img Images array
 	//todo populate with image paths
 	Img = []string{}
@@ -267,6 +264,20 @@ func GetFiles() []string {
 	})
 
 	return result
+}
+
+// cssFiles are the stylesheets served on every page; Css() below versions them.
+var cssFiles = []string{"/css/base.css", "/css/index.css", "/css/index-cv.css", "/css/menu.css", "/css/theme-dark.css"}
+
+// Css returns cssFiles with the build version appended as a cache-busting
+// query param.
+func Css() []string {
+	version := GetProjectVersion()
+	out := make([]string, len(cssFiles))
+	for i, f := range cssFiles {
+		out[i] = fmt.Sprintf("%s?v=%s", f, version)
+	}
+	return out
 }
 
 // GetModule returns a module configuration by name.
