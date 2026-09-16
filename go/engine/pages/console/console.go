@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
 	"tls-rest/go/engine/controllers/subroutine/input"
@@ -18,15 +17,9 @@ type request struct {
 }
 
 // Run handles POST /api/console {command}. ADMIN ONLY: the console can read/alter
-// caches, run queries, change rights and touch the firewall, so non-admins are
-// refused outright (in addition to any menu gating on the client).
+// caches, run queries, change rights and touch the firewall — enforced by
+// Page's RequiresAdmin (see module.PageAbstract.guard).
 func Run(w http.ResponseWriter, r *http.Request) {
-	s := cache.SessionFromContext(r.Context())
-	if s == nil || !s.IsAdmin {
-		functions.JSONError(w, http.StatusForbidden, "admin only")
-		return
-	}
-
 	var req request
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		functions.JSONError(w, http.StatusBadRequest, "invalid request")

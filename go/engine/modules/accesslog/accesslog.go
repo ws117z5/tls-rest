@@ -29,13 +29,16 @@ func (m *AccessLog) fieldset() []Field {
 }
 
 // filters declares list-mode filters:
-// GET /access_log?status=&method=&ip=&path=&blocked=&from=&to=
+// GET /access_log?status=&method=&ip=&path=&user_agent=&blocked=&from=&to=
+// A TYPE_STRING value prefixed with "-" (e.g. -bot or -"chrome mobile")
+// excludes matches instead of including them (field.parseNegation).
 func (m *AccessLog) filters() *Filedset {
 	return NewFieldset(
 		NewFilter("status", TYPE_INT).WithLabel("Status").Equals(),
 		NewFilter("method", TYPE_STRING).WithLabel("Method").Equals(),
 		NewFilter("ip", TYPE_STRING).WithLabel("IP").Contains(),
 		NewFilter("path", TYPE_STRING).WithLabel("Path").Contains(),
+		NewFilter("user_agent", TYPE_STRING).WithLabel("User agent").Contains(),
 		NewFilter("country", TYPE_STRING).WithLabel("Country").Equals(),
 		NewFilter("blocked", TYPE_CHECKBOX).WithLabel("Blocked only").Equals(),
 		NewFilter("from", TYPE_DATE).WithLabel("From").WithSQL("ts").GreaterOrEqual(),

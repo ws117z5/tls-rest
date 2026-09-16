@@ -73,30 +73,35 @@ func filterColumn(f Field) string {
 // Equals matches rows where the column equals the value (the default behaviour).
 func (f Field) Equals() Field {
 	f.SQLWhere = filterColumn(f) + " = %s"
+	f.SQLWhereNegated = filterColumn(f) + " <> %s"
 	return f
 }
 
 // NotEquals matches rows where the column differs from the value.
 func (f Field) NotEquals() Field {
 	f.SQLWhere = filterColumn(f) + " <> %s"
+	f.SQLWhereNegated = filterColumn(f) + " = %s"
 	return f
 }
 
 // Contains does a case-insensitive substring match (col ILIKE '%value%').
 func (f Field) Contains() Field {
 	f.SQLWhere = filterColumn(f) + " ILIKE %s"
+	f.SQLWhereNegated = filterColumn(f) + " NOT ILIKE %s"
 	return f.withFilterMatch(filterMatchContains)
 }
 
 // StartsWith does a case-insensitive prefix match (col ILIKE 'value%').
 func (f Field) StartsWith() Field {
 	f.SQLWhere = filterColumn(f) + " ILIKE %s"
+	f.SQLWhereNegated = filterColumn(f) + " NOT ILIKE %s"
 	return f.withFilterMatch(filterMatchPrefix)
 }
 
 // EndsWith does a case-insensitive suffix match (col ILIKE '%value').
 func (f Field) EndsWith() Field {
 	f.SQLWhere = filterColumn(f) + " ILIKE %s"
+	f.SQLWhereNegated = filterColumn(f) + " NOT ILIKE %s"
 	return f.withFilterMatch(filterMatchSuffix)
 }
 
@@ -135,6 +140,10 @@ func (f Field) FilterMatch() string {
 // to allow all. The visibility predicate is injected so this package stays free
 // of request/session/module types. Nothing is appended for filters whose value
 // is absent, empty, invalid for its type, or hidden.
+//
+// A TYPE_STRING filter's value may be prefixed with "-" (e.g. -bot or
+// -"chrome mobile") to exclude matches instead of including them, using the
+// same match mode (Contains/StartsWith/EndsWith/Equals) as SQLWhereNegated.
 func BuildFilterConditions(filters []Field, q url.Values, visible func(Field) bool, argIndex *int, args *[]interface{}) []string {
 	var conditions []string
 
@@ -148,6 +157,14 @@ func BuildFilterConditions(filters []Field, q url.Values, visible func(Field) bo
 			continue
 		}
 
+		negated := false
+		if f.Type == TYPE_STRING {
+			raw, negated = parseNegation(raw)
+			if raw == "" {
+				continue
+			}
+		}
+
 		value, ok := castFilterValue(f, raw)
 		if !ok {
 			// Ignore values that don't match the declared type rather than
@@ -155,9 +172,14 @@ func BuildFilterConditions(filters []Field, q url.Values, visible func(Field) bo
 			continue
 		}
 
+		where := f.SQLWhere
+		if negated && f.SQLWhereNegated != "" {
+			where = f.SQLWhereNegated
+		}
+
 		placeholder := fmt.Sprintf("$%d", *argIndex)
-		if f.SQLWhere != "" {
-			conditions = append(conditions, fmt.Sprintf(f.SQLWhere, placeholder))
+		if where != "" {
+			conditions = append(conditions, fmt.Sprintf(where, placeholder))
 		} else {
 			conditions = append(conditions, fmt.Sprintf("%s = %s", filterColumn(f), placeholder))
 		}
@@ -166,6 +188,19 @@ func BuildFilterConditions(filters []Field, q url.Values, visible func(Field) bo
 	}
 
 	return conditions
+}
+
+// parseNegation strips a leading "-" from a text filter value, so a value
+// like -bot or -"chrome mobile" excludes matches instead of including them.
+func parseNegation(raw string) (string, bool) {
+	if !strings.HasPrefix(raw, "-") {
+		return raw, false
+	}
+	rest := strings.TrimSpace(raw[1:])
+	if len(rest) >= 2 && rest[0] == '"' && rest[len(rest)-1] == '"' {
+		rest = rest[1 : len(rest)-1]
+	}
+	return rest, true
 }
 
 // filterParamValue reads a filter value from the query, accepting both the plain

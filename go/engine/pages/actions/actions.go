@@ -9,24 +9,15 @@ import (
 	"time"
 
 	actionsctl "tls-rest/go/engine/controllers/actions"
-	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
 
 	"github.com/gorilla/mux"
 )
 
-func isAdmin(r *http.Request) bool {
-	s := cache.SessionFromContext(r.Context())
-	return s != nil && s.IsAdmin
-}
-
-// List handles GET /api/actions. ADMIN ONLY.
+// List handles GET /api/actions. ADMIN ONLY, enforced by Page's RequiresAdmin
+// (see module.PageAbstract.guard).
 func List(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		functions.JSONError(w, http.StatusForbidden, "admin only")
-		return
-	}
 	all := actionsctl.All()
 	out := make([]actionsctl.Snapshot, 0, len(all))
 	for _, a := range all {
@@ -35,12 +26,9 @@ func List(w http.ResponseWriter, r *http.Request) {
 	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{"actions": out})
 }
 
-// Run handles POST /api/actions/{id}/run. ADMIN ONLY.
+// Run handles POST /api/actions/{id}/run. ADMIN ONLY, enforced by Page's
+// RequiresAdmin (see module.PageAbstract.guard).
 func Run(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		functions.JSONError(w, http.StatusForbidden, "admin only")
-		return
-	}
 	a, ok := actionsctl.Get(mux.Vars(r)["id"])
 	if !ok {
 		functions.JSONError(w, http.StatusNotFound, "unknown action")
@@ -54,13 +42,10 @@ func Run(w http.ResponseWriter, r *http.Request) {
 	functions.WriteJSON(w, http.StatusOK, resp)
 }
 
-// Schedule handles POST /api/actions/{id}/schedule {interval_seconds}.
-// ADMIN ONLY. 0 (or omitted) cancels any existing schedule.
+// Schedule handles POST /api/actions/{id}/schedule {interval_seconds}. ADMIN
+// ONLY, enforced by Page's RequiresAdmin (see module.PageAbstract.guard). 0
+// (or omitted) cancels any existing schedule.
 func Schedule(w http.ResponseWriter, r *http.Request) {
-	if !isAdmin(r) {
-		functions.JSONError(w, http.StatusForbidden, "admin only")
-		return
-	}
 	a, ok := actionsctl.Get(mux.Vars(r)["id"])
 	if !ok {
 		functions.JSONError(w, http.StatusNotFound, "unknown action")
@@ -89,4 +74,7 @@ var Page = &module.PageAbstract{
 	},
 }
 
-func Init() { Page.Initialize() }
+func Init() {
+	Page.Initialize()
+	initTurnCheckAction()
+}

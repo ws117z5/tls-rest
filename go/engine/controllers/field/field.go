@@ -58,25 +58,26 @@ const TYPE_BITMASK_SELECT = "BitmaskSelect"
 
 // Field represents a field in a module.
 type Field struct {
-	Name         string                 `json:"name"`
-	Type         string                 `json:"type"`
-	Required     bool                   `json:"required"`
-	SQL          string                 `json:"sql"`                  // SQL column definition or expression
-	SQLWhere     string                 `json:"sql_where"`            // Custom SQL WHERE clause template
-	Filterable   bool                   `json:"filterable"`           // Whether this field can be used for filtering
-	Sortable     bool                   `json:"sortable"`             // Whether this field can be used for sorting
-	Searchable   bool                   `json:"searchable"`           // Whether this field is included in search
-	Virtual      bool                   `json:"virtual"`              // Whether this field is virtual (not stored in DB)
-	ReadOnly     bool                   `json:"readonly"`             // Whether this field is read-only
-	AdminOnly    bool                   `json:"admin_only,omitempty"` // Visible/appliable only to admins (fields & filters)
-	DefaultValue interface{}            `json:"default_value"`        // Default value for the field
-	Validation   map[string]interface{} `json:"validation"`           // Validation rules
-	Options      map[string]interface{} `json:"options"`              // Field-specific options (autocomplete URL, etc.)
-	Mode         int                    `json:"mode"`                 // Bit flags for which modes this field appears in
-	Label        string                 `json:"label"`                // Display label
-	Description  string                 `json:"description"`          // Field description
-	Placeholder  string                 `json:"placeholder"`          // Input placeholder (edit/create/filters)
-	Access       int                    `json:"access"`               // Minimum access level required to see this field (0 = everyone)
+	Name            string                 `json:"name"`
+	Type            string                 `json:"type"`
+	Required        bool                   `json:"required"`
+	SQL             string                 `json:"sql"`                  // SQL column definition or expression
+	SQLWhere        string                 `json:"sql_where"`            // Custom SQL WHERE clause template
+	SQLWhereNegated string                 `json:"sql_where_not"`        // SQLWhere's negated form, for a -"phrase" filter value
+	Filterable      bool                   `json:"filterable"`           // Whether this field can be used for filtering
+	Sortable        bool                   `json:"sortable"`             // Whether this field can be used for sorting
+	Searchable      bool                   `json:"searchable"`           // Whether this field is included in search
+	Virtual         bool                   `json:"virtual"`              // Whether this field is virtual (not stored in DB)
+	ReadOnly        bool                   `json:"readonly"`             // Whether this field is read-only
+	AdminOnly       bool                   `json:"admin_only,omitempty"` // Visible/appliable only to admins (fields & filters)
+	DefaultValue    interface{}            `json:"default_value"`        // Default value for the field
+	Validation      map[string]interface{} `json:"validation"`           // Validation rules
+	Options         map[string]interface{} `json:"options"`              // Field-specific options (autocomplete URL, etc.)
+	Mode            int                    `json:"mode"`                 // Bit flags for which modes this field appears in
+	Label           string                 `json:"label"`                // Display label
+	Description     string                 `json:"description"`          // Field description
+	Placeholder     string                 `json:"placeholder"`          // Input placeholder (edit/create/filters)
+	Access          int                    `json:"access"`               // Minimum access level required to see this field (0 = everyone)
 
 	// Display / formatting modifiers (list & view rendering).
 	LinkModule    string `json:"linkModule,omitempty"`    // render the value as a link into this module's record

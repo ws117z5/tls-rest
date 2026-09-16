@@ -152,9 +152,20 @@ func (p *PageAbstract) Initialize() {
 // group grants — see PageDefaultModes and auth.ResolveModuleModeRights).
 // Duplicates auth.HasMode's two lines rather than importing auth, which
 // already imports this package.
+//
+// RequiresAdmin is a hard admin-only boundary, checked here rather than left
+// to defaultModes()'s zero baseline: ResolveModuleModeRights OR's in any
+// user_group_rights/user_rights row keyed to this page's ID on top of that
+// baseline (by the same generic mechanism a module uses), so a stray or
+// malicious grant could otherwise substitute for real admin status. This
+// differs from RequiresAuth (no RequiresAdmin), which intentionally accepts
+// such a group grant — see defaultModes.
 func (p *PageAbstract) hasMode(s *cache.Session, mode int) bool {
 	if s != nil && s.IsAdmin {
 		return true
+	}
+	if p.RequiresAdmin {
+		return false
 	}
 	if s == nil {
 		return false

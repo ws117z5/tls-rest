@@ -1,9 +1,5 @@
-// Package mesh integrates the measured-overlay optimizer (the balancer +
-// resolver) into the papers WebRTC feature. Peers report the links they
-// measured to other peers; the coordinator turns those reports into the N×N
-// matrices the optimizer needs, runs BuildPlan (Frank-Wolfe balancing +
-// per-source distribution trees), and hands back a plan telling every peer what
-// to publish, relay and pull.
+// Package mesh is the reusable WebRTC mesh controller (relay planning via
+// Frank-Wolfe balancing, plus signaling relay), backing papers' video mesh.
 package mesh
 
 import (

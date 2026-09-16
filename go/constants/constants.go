@@ -19,6 +19,7 @@ import (
 type ConfigType struct {
 	Modules []ModuleParams `json:"modules"`
 	Log     LogParams      `json:"log"`
+	Turn    TurnParams     `json:"turn"`
 }
 
 // LogParams configures the structured event logger (go/lib/log), mirroring the
@@ -28,6 +29,16 @@ type LogParams struct {
 	WriteToFile bool   `json:"writeToFile"`
 	WriteToDb   bool   `json:"writeToDb"`
 	Level       string `json:"level"` // minimum severity printed/stored: debug|info|warn|error (default "info")
+}
+
+// TurnParams configures the papers video mesh's TURN provider (see
+// go/modules/papers/turn.go). Credentials (CF_TURN_TOKEN_ID/CF_TURN_TOKEN_SECRET)
+// stay in the environment, not here — go.config.json is committed to git.
+// Zero values fall back to the previous hardcoded Cloudflare/Google defaults.
+type TurnParams struct {
+	CredentialsURL   string   `json:"credentialsUrl"`   // "{keyID}" is replaced with CF_TURN_TOKEN_ID
+	TTLSeconds       int      `json:"ttlSeconds"`       // requested credential lifetime
+	FallbackStunURLs []string `json:"fallbackStunUrls"` // used when TURN is unconfigured/over cap
 }
 
 // AdditionalRights self explanitory

@@ -3,5 +3,10 @@
     "writeToFile": false,
     "writeToDb": true,
     "level": "info"
+  },
+  "turn": {
+    "credentialsUrl": "https://rtc.live.cloudflare.com/v1/turn/keys/{keyID}/credentials/generate",
+    "ttlSeconds": 86400,
+    "fallbackStunUrls": ["stun:stun.l.google.com:19302"]
   }
 }

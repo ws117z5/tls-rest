@@ -1,31 +1,16 @@
-// Signaling relay for the room's WebRTC mesh (see js/src/modules/papers/
-// videoMesh.ts, which drives lib/mesh.ts's MeshManager). A peer POSTs an SDP
-// offer/answer or ICE candidate addressed to another peer; it sits in an
-// in-memory per-room, per-recipient queue until that peer drains it. Delivery
-// piggybacks on the room's existing SSE hub (hub.go) — a send pings every
-// subscriber, exactly like a turn/state change does, so the recipient's next
-// "changed" event prompts it to drain its queue.
+// Papers-specific wrapper over mesh.QueueSignal/DrainSignal: resolves the
+// caller's playerKey and wakes the room's SSE hub.
 package papers
 
 import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"sync"
 
 	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/controllers/mesh"
 
 	"github.com/gorilla/mux"
-)
-
-type signalMsg struct {
-	From string          `json:"from"`
-	Data json.RawMessage `json:"data"`
-}
-
-var (
-	signalMu    sync.Mutex
-	signalQueue = map[string]map[string][]signalMsg{} // room hash -> recipient key -> queued messages
 )
 
 // SendSignal handles POST /papers/{roomId}/game/signal {to, data}: queues one
@@ -48,16 +33,7 @@ func SendSignal(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	signalMu.Lock()
-	room, ok := signalQueue[roomHash]
-	if !ok {
-		room = map[string][]signalMsg{}
-		signalQueue[roomHash] = room
-	}
-	room[body.To] = append(room[body.To], signalMsg{From: from, Data: body.Data})
-	queued := len(room[body.To])
-	signalMu.Unlock()
-
+	queued := mesh.QueueSignal(roomHash, body.To, from, body.Data)
 	log.Printf("[papers/signal] room=%s %s -> %s queued (pending for recipient: %d)", roomHash, from, body.To, queued)
 
 	hub.notify(roomHash) // same "something changed" ping the turn/state handlers use
@@ -74,16 +50,7 @@ func DrainSignals(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	signalMu.Lock()
-	var out []signalMsg
-	if room, ok := signalQueue[roomHash]; ok {
-		out = room[self]
-		delete(room, self)
-	}
-	signalMu.Unlock()
-	if out == nil {
-		out = []signalMsg{}
-	}
+	out := mesh.DrainSignal(roomHash, self)
 	if len(out) > 0 {
 		log.Printf("[papers/signal] room=%s %s drained %d message(s)", roomHash, self, len(out))
 	}

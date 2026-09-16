@@ -2,8 +2,8 @@
 // Server-Sent Events endpoint (GET /api/netmap/events) that runs a live network
 // topology scan of the operator's own network and streams progress + results to
 // the dashboard. It is a custom (non-fieldset) PageAbstract — like login it owns
-// its handler rather than a fieldset — and every route is wrapped in an admin
-// guard so only administrators can trigger a scan.
+// its handler rather than a fieldset — and Page's RequiresAdmin gates every
+// route so only administrators can trigger a scan (see module.PageAbstract.guard).
 //
 // The scan pipeline (modem check -> traceroute -> ARP/UPnP discovery -> port
 // scan -> link-type fingerprint) is ported from the standalone netmapper tool
@@ -18,7 +18,6 @@ import (
 	"sync"
 	"time"
 
-	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/log"
 	"tls-rest/go/engine/controllers/module"
 	"tls-rest/go/pages/netmapper/resolver"
@@ -33,20 +32,6 @@ const (
 	defaultIface  = "en0"
 	defaultModem  = "192.168.100.1"
 )
-
-// adminGuard wraps a handler so only an authenticated administrator may reach
-// it. The middleware attaches the session to the request context; a non-admin
-// (or anonymous) caller gets 403 before any scan starts.
-func adminGuard(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		s := cache.SessionFromContext(r.Context())
-		if s == nil || s.UserID <= 0 || !s.IsAdmin {
-			http.Error(w, http.StatusText(http.StatusForbidden), http.StatusForbidden)
-			return
-		}
-		next(w, r)
-	}
-}
 
 // streamScan runs the topology pipeline and streams each stage over SSE.
 func streamScan(w http.ResponseWriter, r *http.Request) {
@@ -223,7 +208,7 @@ func queryOr(r *http.Request, key, fallback string) string {
 	return fallback
 }
 
-// Page self-registers the admin-only scan endpoint; enforcement is via adminGuard below, not RequiresAdmin (which only covers fieldset GET/PUT).
+// Page self-registers the admin-only scan endpoint, gated by RequiresAdmin.
 var Page = &module.PageAbstract{
 	ID:            "netmapper",
 	Name:          "Network Mapper",

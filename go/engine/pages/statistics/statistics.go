@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
@@ -135,14 +134,9 @@ func breakdown(db *pgdb.Db, column, where string, args []interface{}) []map[stri
 }
 
 // Stats handles GET /api/statistics?module=&path=&country=&ip=&user_agent=&from=&to=.
-// ADMIN ONLY. from/to are "YYYY-MM-DD"; omitted means unbounded/all-time.
+// ADMIN ONLY, enforced by Page's RequiresAdmin (see module.PageAbstract.guard).
+// from/to are "YYYY-MM-DD"; omitted means unbounded/all-time.
 func Stats(w http.ResponseWriter, r *http.Request) {
-	s := cache.SessionFromContext(r.Context())
-	if s == nil || !s.IsAdmin {
-		functions.JSONError(w, http.StatusForbidden, "admin only")
-		return
-	}
-
 	db, err := pgdb.GetInstance()
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")

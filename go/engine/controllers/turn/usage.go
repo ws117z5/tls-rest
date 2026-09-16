@@ -1,11 +1,5 @@
-// Cloudflare's Realtime TURN has no built-in usage cap or kill switch, so this
-// polls its GraphQL Analytics API (the byte counters are authoritative —
-// there's no client-side self-reporting to trust or that could be skipped on
-// a bad disconnect) for the current calendar month's egress+ingress bytes and
-// stops GetIceServers from handing out TURN credentials once
-// config.TurnMonthlyCapMB is exceeded. Registered as a scheduled Action so it
-// runs on its own, and is also visible/runnable from the Actions admin page.
-package papers
+// Cloudflare TURN usage-cap check, backing the "turn_usage" scheduled Action.
+package turn
 
 import (
 	"bytes"
@@ -19,33 +13,30 @@ import (
 	"tls-rest/go/engine/controllers/actions"
 )
 
-var turnUsageCheckInterval = 10 * time.Minute
+var usageCheckInterval = 10 * time.Minute
 
-// turnUsage is the last-checked cap state, read by GetIceServers on every
-// request and written only by checkTurnUsage.
-var turnUsage struct {
+// usage is the last-checked cap state, read by GetIceServers, written by checkUsage.
+var usage struct {
 	mu        sync.RWMutex
 	overCap   bool
 	usedBytes int64
 	checkedAt time.Time
 }
 
-// turnCapExceeded reports whether the last usage check found the configured
+// CapExceeded reports whether the last usage check found the configured
 // monthly cap exceeded. Always false when TurnMonthlyCapMB is unset (0) or
 // before the first successful check has ever run.
-func turnCapExceeded() bool {
-	turnUsage.mu.RLock()
-	defer turnUsage.mu.RUnlock()
-	return turnUsage.overCap
+func CapExceeded() bool {
+	usage.mu.RLock()
+	defer usage.mu.RUnlock()
+	return usage.overCap
 }
 
 type cfGraphQLResponse struct {
 	Data struct {
 		Viewer struct {
 			Accounts []struct {
-				// One row per hour (query groups by datetimeHour, the coarsest
-				// dimension Cloudflare offers) — bounded to <=744 rows for a
-				// 31-day month, well under the query's own limit.
+				// One row per hour, <=744 for a 31-day month.
 				Groups []struct {
 					Sum struct {
 						EgressBytes  int64 `json:"egressBytes"`
@@ -60,10 +51,10 @@ type cfGraphQLResponse struct {
 	} `json:"errors"`
 }
 
-// checkTurnUsage queries Cloudflare's TURN analytics for bytes used since the
+// checkUsage queries Cloudflare's TURN analytics for bytes used since the
 // start of the current UTC month and updates the cached cap state. Registered
-// as the "papers_turn_usage" action.
-func checkTurnUsage() (string, error) {
+// as the "turn_usage" action.
+func checkUsage() (string, error) {
 	if config.TurnMonthlyCapMB <= 0 || config.CFAccountID == "" {
 		return "cap check disabled (TURN_MONTHLY_CAP_MB or CF_ACCOUNT_ID not set)", nil
 	}
@@ -96,9 +87,7 @@ func checkTurnUsage() (string, error) {
 			"accountId": config.CFAccountID,
 			"from":      monthStart.Format(dateFmt),
 			"to":        now.Format(dateFmt),
-			// Scopes usage to this one TURN app — without it, the sum would
-			// include every TURN key on the whole Cloudflare account.
-			"keyId": config.CFTurnKeyID,
+			"keyId":     config.CFTurnKeyID, // scopes usage to this one TURN app
 		},
 	})
 	if err != nil {
@@ -127,8 +116,6 @@ func checkTurnUsage() (string, error) {
 		return "", fmt.Errorf("cloudflare graphql: %s", cf.Errors[0].Message)
 	}
 
-	// Sum across every returned row rather than assuming a single aggregate
-	// row — correct regardless of how many hourly buckets came back.
 	var totalBytes int64
 	var rowCount int
 	for _, acc := range cf.Data.Viewer.Accounts {
@@ -141,22 +128,17 @@ func checkTurnUsage() (string, error) {
 	capBytes := int64(config.TurnMonthlyCapMB) * 1024 * 1024
 	over := totalBytes >= capBytes
 
-	// rowCount hitting the query's own limit means some hours may be missing
-	// from totalBytes — an undercount. That's still safe to act on when it
-	// already shows over-cap (the real total is at least this high), but an
-	// undercount showing under-cap is not trustworthy: the real total could
-	// be higher. Bail out (keeping whatever state was cached before) rather
-	// than risk reporting "under cap" when it might not be.
+	// Hitting the row limit under-cap is untrustworthy (real total could be higher).
 	if rowCount >= rowLimit && !over {
 		return "", fmt.Errorf("turn usage query hit its row limit (%d) with an under-cap result — "+
 			"treating as unknown rather than risking a false all-clear", rowLimit)
 	}
 
-	turnUsage.mu.Lock()
-	turnUsage.usedBytes = totalBytes
-	turnUsage.overCap = over
-	turnUsage.checkedAt = time.Now()
-	turnUsage.mu.Unlock()
+	usage.mu.Lock()
+	usage.usedBytes = totalBytes
+	usage.overCap = over
+	usage.checkedAt = time.Now()
+	usage.mu.Unlock()
 
 	usedMB := totalBytes / (1024 * 1024)
 	if over {
@@ -166,14 +148,14 @@ func checkTurnUsage() (string, error) {
 	return fmt.Sprintf("%d MB used of %d MB cap", usedMB, config.TurnMonthlyCapMB), nil
 }
 
-func initTurnUsageAction() {
+func initUsageAction() {
 	a := &actions.Action{
-		ID:          "papers_turn_usage",
-		Name:        "Papers TURN usage check",
+		ID:          "turn_usage",
+		Name:        "TURN usage check",
 		Description: "Polls Cloudflare's TURN analytics and suspends new TURN credentials once the monthly cap is hit.",
-		Run:         checkTurnUsage,
+		Run:         checkUsage,
 	}
 	actions.Register(a)
-	a.SetSchedule(turnUsageCheckInterval)
+	a.SetSchedule(usageCheckInterval)
 	go func() { _, _ = a.RunNow() }() // populate the cache once at startup rather than waiting a full interval
 }

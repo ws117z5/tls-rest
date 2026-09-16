@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
+import AppConfig from "@engine/controllers/Appconfig";
 
 // Fenced code blocks (```go, ```ts, ```js, …) get real syntax highlighting via
-// Prism (through react-syntax-highlighter), themed as VS Code's Dark+. The
-// highlighter core, the languages below, and the theme are heavy, so — same
-// pattern as KaTeX and the graph directive elsewhere in this Markdown
-// pipeline — they're only pulled in (once, cached) the first time a fenced
-// block actually renders; a document with no code blocks never pays for this.
+// Prism (through react-syntax-highlighter), themed as VS Code Dark+/Light+ to
+// match AppConfig.theme(). The highlighter core, languages, and theme are
+// heavy, so they're only pulled in (once per theme, cached) the first time a
+// fenced block actually renders.
 
 type HighlighterType = React.ComponentType<any> & {
   registerLanguage: (name: string, lang: unknown) => void;
@@ -16,13 +16,18 @@ interface Loaded {
   style: Record<string, React.CSSProperties>;
 }
 
-let loadPromise: Promise<Loaded> | null = null;
+const loadPromises = new Map<string, Promise<Loaded>>();
 
-function load(): Promise<Loaded> {
-  if (!loadPromise) {
-    loadPromise = Promise.all([
+function load(theme: string): Promise<Loaded> {
+  let p = loadPromises.get(theme);
+  if (!p) {
+    const styleImport =
+      theme === "dark"
+        ? import("react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus")
+        : import("react-syntax-highlighter/dist/esm/styles/prism/vs");
+    p = Promise.all([
       import("react-syntax-highlighter/dist/esm/prism-light"),
-      import("react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus"),
+      styleImport,
       import("react-syntax-highlighter/dist/esm/languages/prism/go"),
       import("react-syntax-highlighter/dist/esm/languages/prism/typescript"),
       import("react-syntax-highlighter/dist/esm/languages/prism/tsx"),
@@ -66,8 +71,9 @@ function load(): Promise<Loaded> {
         return { Highlighter, style: styleMod.default as Record<string, React.CSSProperties> };
       }
     );
+    loadPromises.set(theme, p);
   }
-  return loadPromise;
+  return p;
 }
 
 interface CodeBlockProps {
@@ -83,17 +89,19 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ className, children }) => {
   const match = /language-(\w+)/.exec(className || "");
   const [loaded, setLoaded] = useState<Loaded | null>(null);
 
+  const theme = AppConfig.theme();
+
   useEffect(() => {
     if (!match) return;
     let mounted = true;
-    load().then((result) => {
+    load(theme).then((result) => {
       if (mounted) setLoaded(result);
     });
     return () => {
       mounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!match]);
+  }, [!!match, theme]);
 
   if (!match) {
     return <code className={className}>{children}</code>;

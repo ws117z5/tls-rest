@@ -13,9 +13,11 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/pion/rtcp v1.2.17
+	github.com/pion/turn/v5 v5.0.13
 	github.com/pion/webrtc/v4 v4.2.18
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.24.1
+	github.com/prometheus/client_model v0.6.2
 	github.com/ws117z5/mmh3 v0.0.0-20220617011039-c14ba90b5ab7
 	//github.com/tsenart/vegeta/v12 v12.8.3 // indirect
 	go.mongodb.org/mongo-driver v1.17.9
@@ -56,8 +58,6 @@ require (
 	github.com/pion/srtp/v3 v3.0.13 // indirect
 	github.com/pion/stun/v3 v3.1.7 // indirect
 	github.com/pion/transport/v4 v4.1.0 // indirect
-	github.com/pion/turn/v5 v5.0.13 // indirect
-	github.com/prometheus/client_model v0.6.2 // indirect
 	github.com/prometheus/common v0.70.1 // indirect
 	github.com/prometheus/procfs v0.21.1 // indirect
 	github.com/vmihailenco/tagparser v0.1.2 // indirect

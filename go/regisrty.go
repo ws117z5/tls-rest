@@ -38,6 +38,11 @@ import (
 	myip "tls-rest/go/pages/myip"
 	netmapper "tls-rest/go/pages/netmapper"
 
+	// Shared controllers: reusable by any module, not owned by one (see
+	// engine/controllers/mesh, which needs no Init — its routes are
+	// registered by each consuming module, e.g. papers).
+	turnctl "tls-rest/go/engine/controllers/turn"
+
 	// Features that own arbitrary route trees with unexported handlers — their
 	// registration lives behind an exported Register() in the package.
 	papers "tls-rest/go/modules/papers"
@@ -78,6 +83,9 @@ func InitAll() {
 	actionspage.Init()
 	netmapper.Init()
 	myip.Init()
+
+	// --- Shared controllers ---
+	turnctl.Init()
 
 	// --- Features (own route trees; unexported handlers) ---
 	papers.Init()

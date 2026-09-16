@@ -1,28 +1,40 @@
 package papers
 
 import (
+	"fmt"
 	"net/http"
 
 	. "tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/mesh"
 	. "tls-rest/go/engine/controllers/module"
+	"tls-rest/go/engine/controllers/turn"
+
+	"github.com/ws117z5/mmh3"
 )
 
-// Papers as a MODULE: list = active games (rooms), view = one room (rendered by
-// the frontend modules/papers/view.tsx video grid). Rooms are soft-deleted
-// (flagged). The module keys on a stored `hash` column rather than the real
-// uuid — see the "hash" field below and roomhash.go — so the internal uuid
-// never appears in a URL or API response. The WebRTC mesh signaling stays as
-// absolute custom routes.
+// PapersModule backs the papers game module (list = rooms, view = one room).
 type PapersModule struct {
 	*ModuleAbstract[interface{}]
 }
 
-// setRoomHash is an AfterFieldset hook: on create, the engine has just
-// generated the row's uuid (see BaseController.Create) — derive and store its
-// hash right here, once, so every lookup afterwards is a plain indexed
-// `WHERE hash = $1` instead of hashing every row on every request. A no-op on
-// edit (uuid isn't in the submitted data there), which correctly leaves the
-// stored hash untouched.
+const roomHashSeed uint32 = 0x50415052 // "PAPR"
+
+// hashRoomUUID derives a room's public identifier from its real uuid via
+// MurmurHash3 (32-bit)
+func hashRoomUUID(uuid string) string {
+	h, err := mmh3.Hash32(uuid, roomHashSeed)
+	if err != nil {
+		return ""
+	}
+	sum := h.AsUint32()
+	if len(sum) == 0 {
+		return ""
+	}
+	return fmt.Sprintf("%08x", sum[0])
+}
+
+// setRoomHash is an AfterFieldset hook: derives and stores the hash on create,
+// a no-op on edit.
 func setRoomHash(_ *http.Request, data map[string]interface{}) (map[string]interface{}, error) {
 	if u, ok := data["uuid"].(string); ok && u != "" {
 		data["hash"] = hashRoomUUID(u)
@@ -32,11 +44,7 @@ func setRoomHash(_ *http.Request, data map[string]interface{}) (map[string]inter
 
 func (m *PapersModule) fieldset() []Field {
 	return []Field{
-		// The public room identifier (KeyField below): a MurmurHash3 of the real
-		// uuid, computed once at creation by the setRoomHash hook and stored —
-		// see roomhash.go. Auto-generated and read-only, so it never appears in
-		// create (nothing to show yet) or edit (nothing to change) — list/view
-		// only, same as the id/uuid system fields.
+		// KeyField below: a MurmurHash3 of the real uuid, set by setRoomHash.
 		NewField("hash", TYPE_STRING, false).
 			WithLabel("Room Code").
 			AsReadOnly().
@@ -46,10 +54,7 @@ func (m *PapersModule) fieldset() []Field {
 			WithLabel("Game").
 			WithValidation("minLength", 1),
 
-		// Password is never returned to any client (TYPE_PASSWORD fields are
-		// write-only at the engine level — see accessfilter.fieldReadableInData),
-		// so listing/viewing rooms can't leak it. Whether a room is protected is
-		// exposed via has_password below.
+		// TYPE_PASSWORD is write-only at the engine level; has_password below exposes whether it's set.
 		NewField("password", TYPE_PASSWORD, false).
 			WithLabel("Password"),
 
@@ -106,27 +111,22 @@ func NewPapersModule() *PapersModule {
 	m.ModuleAbstract.AfterFieldset = setRoomHash
 
 	// WebRTC mesh signaling — absolute paths, registered before the module's
-	// auto /papers/{uuid} view so the literal segments (report/plan/create) win.
+	// auto /papers/{uuid} view so the literal segments (report/plan) win.
 	m.ModuleAbstract.CustomRoutes = []CustomRoute{
-		{Path: "/papers/create", Methods: []string{http.MethodPost}, Handler: CreateRoom, Absolute: true},
-		{Path: "/papers/ice-config", Methods: []string{http.MethodGet}, Handler: GetIceServers, Absolute: true},
+		{Path: "/papers/ice-config", Methods: []string{http.MethodGet}, Handler: turn.GetIceServers, Absolute: true},
 		{Path: "/papers/{roomId}/game/join", Methods: []string{http.MethodPost}, Handler: JoinGame, Absolute: true},
 		{Path: "/papers/{roomId}/game/state", Methods: []string{http.MethodGet}, Handler: GameState, Absolute: true},
 		{Path: "/papers/{roomId}/game/events", Methods: []string{http.MethodGet}, Handler: GameEvents, Absolute: true},
 		{Path: "/papers/{roomId}/game/turn", Methods: []string{http.MethodPost}, Handler: TurnAction, Absolute: true},
 		{Path: "/papers/{roomId}/game/signal", Methods: []string{http.MethodPost}, Handler: SendSignal, Absolute: true},
 		{Path: "/papers/{roomId}/game/signal", Methods: []string{http.MethodGet}, Handler: DrainSignals, Absolute: true},
-		{Path: "/papers/{roomId}/report", Methods: []string{http.MethodPost}, Handler: ReportLink, Absolute: true},
-		{Path: "/papers/{roomId}/plan", Methods: []string{http.MethodGet}, Handler: GetPlan, Absolute: true},
-		{Path: "/papers/{roomId}/{userId}", Methods: []string{http.MethodPost}, Handler: RegisterUser, Absolute: true},
+		{Path: "/papers/{roomId}/report", Methods: []string{http.MethodPost}, Handler: mesh.ReportLink, Absolute: true},
+		{Path: "/papers/{roomId}/plan", Methods: []string{http.MethodGet}, Handler: mesh.GetPlan, Absolute: true},
 	}
 	return m
 }
 
-// InitModule registers papers as a module over the `papers` table. Use this
-// instead of the old page Init().
+// Init registers papers as a module; TURN/mesh init separately via go/regisrty.go.
 func Init() {
-	neg = NewNegotiator() // was initialised by the old page Init()
 	NewPapersModule().Initialize("papers")
-	initTurnUsageAction()
 }
