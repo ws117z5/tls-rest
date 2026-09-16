@@ -54,6 +54,11 @@ func isAPICall(r *http.Request) bool {
 		return true
 	}
 
+	// /myip is a plain SSR page, not the SPA shell.
+	if uri == "/myip" {
+		return true
+	}
+
 	// Image bytes are served by a real handler (ServeByRef) as a browser GET
 	// (e.g. <img src="/image/{guid}.{ext}"> or direct navigation). Without this
 	// it looks like a page navigation and the middleware would render the SPA

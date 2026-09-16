@@ -35,6 +35,7 @@ import (
 	statistics "tls-rest/go/engine/pages/statistics"
 
 	// App pages
+	myip "tls-rest/go/pages/myip"
 	netmapper "tls-rest/go/pages/netmapper"
 
 	// Features that own arbitrary route trees with unexported handlers — their
@@ -76,6 +77,7 @@ func InitAll() {
 	statistics.Init()
 	actionspage.Init()
 	netmapper.Init()
+	myip.Init()
 
 	// --- Features (own route trees; unexported handlers) ---
 	papers.Init()
