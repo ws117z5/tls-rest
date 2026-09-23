@@ -10,6 +10,8 @@ class OpenCVPage extends PageComponent {
   protected isPage = true;
   protected title = 'Open CV'
   protected submenu = "tools";
+  protected requiresAuth = true;
+  protected requiresAdmin = true;
 
   private unsubscribeI18n?: () => void;
   async componentDidMount() {

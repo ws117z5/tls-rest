@@ -42,21 +42,18 @@ func BumpRightsEpoch() { atomic.AddInt64(&rightsEpoch, 1) }
 // path (new session, restored session, anonymous) is populated consistently.
 // Anonymous sessions (UserID <= 0) resolve as a member of auth.GuestGroupID
 // (module defaults still apply on top) and are never admin.
-func fillSessionRights(s *cache.Session) {
-	s.ModuleModes = ResolveModuleModeRights(s.UserID)
-	s.FieldRights = ResolveModuleFieldRights(s.UserID)
-	s.AccessLevel = ResolveUserAccessLevel(s.UserID)
-	s.IsAdmin = ResolveIsAdmin(s.UserID)
+func fillSessionRights(ctx context.Context, s *cache.Session) {
+	s.ModuleModes, s.FieldRights, s.SpecialRights, s.FilterFieldRights, s.AccessLevel, s.IsAdmin = resolveSessionRights(ctx, s.UserID)
 	s.RightsEpoch = CurrentRightsEpoch()
 	// Resolve config alongside rights so a freshly created/refreshed session has
 	// both populated.
-	fillSessionConfig(s)
+	fillSessionConfig(ctx, s)
 }
 
 // fillSessionConfig resolves and caches the user's effective config on the
 // session, stamping the config epoch it was resolved at.
-func fillSessionConfig(s *cache.Session) {
-	s.Config = config.Resolve(s.UserID)
+func fillSessionConfig(ctx context.Context, s *cache.Session) {
+	s.Config = config.Resolve(ctx, s.UserID)
 	s.ConfigEpoch = config.CurrentConfigEpoch()
 }
 
@@ -80,7 +77,7 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 	// session cookie. When present it fully determines the session, and no cookie
 	// is set. The cookie flow below is unchanged for web clients.
 	if tok, ok := tokenFromHeader(r); ok {
-		return manageTokenSession(tok)
+		return manageTokenSession(r.Context(), tok)
 	}
 
 	cookie, err := r.Cookie("X-Session-ID")
@@ -126,7 +123,7 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 
 		http.SetCookie(w, cookie)
 
-		fillSessionRights(&ci)
+		fillSessionRights(r.Context(), &ci)
 		cache.SessionCacheInstance.Set(cookie.Value, ci)
 
 		return &ci
@@ -137,7 +134,7 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 
 		if err != nil {
 			// If the session does not exist, create a new one
-			fillSessionRights(&ci)
+			fillSessionRights(r.Context(), &ci)
 			cache.SessionCacheInstance.Set(hash, ci)
 			return &ci
 		} else {
@@ -155,9 +152,9 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 			// user/group/rights change bumped the global epoch. This avoids
 			// hitting the DB for rights on every request.
 			if rightsStale(stored) {
-				fillSessionRights(stored)
+				fillSessionRights(r.Context(), stored)
 			} else if configStale(stored) {
-				fillSessionConfig(stored)
+				fillSessionConfig(r.Context(), stored)
 			}
 
 			cache.SessionCacheInstance.Set(hash, *stored)
@@ -208,7 +205,7 @@ func Login(w http.ResponseWriter, r *http.Request, userID int, username string) 
 	s.Username = username
 	s.Expire = expire
 	s.LastAccess = time.Now()
-	fillSessionRights(s)
+	fillSessionRights(r.Context(), s)
 
 	cache.SessionCacheInstance.Set(hash, *s)
 }
@@ -223,7 +220,7 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 	if stored, e := cache.SessionCacheInstance.Get(cookie.Value); e == nil && stored != nil {
 		stored.UserID = 0
 		stored.Username = ""
-		fillSessionRights(stored)
+		fillSessionRights(r.Context(), stored)
 		cache.SessionCacheInstance.Set(cookie.Value, *stored)
 	}
 }
@@ -251,33 +248,33 @@ func tokenFromHeader(r *http.Request) (string, bool) {
 // manageTokenSession resolves the session for a bearer-token request. A valid,
 // unexpired token returns its stored session (rights refreshed); an unknown or
 // expired token yields a fresh anonymous session. No cookie is ever set.
-func manageTokenSession(tok string) *cache.Session {
+func manageTokenSession(ctx context.Context, tok string) *cache.Session {
 	if stored, err := cache.SessionCacheInstance.Get(tok); err == nil && stored != nil && stored.Expire.After(time.Now()) {
 		stored.LastAccess = time.Now()
 		if rightsStale(stored) {
-			fillSessionRights(stored)
+			fillSessionRights(ctx, stored)
 		} else if configStale(stored) {
-			fillSessionConfig(stored)
+			fillSessionConfig(ctx, stored)
 		}
 		cache.SessionCacheInstance.Set(tok, *stored)
 		return stored
 	}
 	anon := cache.Session{Expire: time.Now().Add(30 * 24 * time.Hour), LastAccess: time.Now()}
-	fillSessionRights(&anon)
+	fillSessionRights(ctx, &anon)
 	return &anon
 }
 
 // IssueToken creates an authenticated, cookie-less session for a non-web client
 // and returns its opaque bearer token and expiry. The client sends the token as
 // `Authorization: Bearer <token>` on subsequent requests.
-func IssueToken(userID int, username string) (string, time.Time, error) {
+func IssueToken(ctx context.Context, userID int, username string) (string, time.Time, error) {
 	tok, err := functions.GetRandomHash(32)
 	if err != nil {
 		return "", time.Time{}, err
 	}
 	expire := time.Now().Add(30 * 24 * time.Hour)
 	s := cache.Session{UserID: userID, Username: username, Expire: expire, LastAccess: time.Now()}
-	fillSessionRights(&s)
+	fillSessionRights(ctx, &s)
 	cache.SessionCacheInstance.Set(tok, s)
 	return tok, expire, nil
 }

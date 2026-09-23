@@ -18,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
@@ -31,7 +32,8 @@ import (
 // comment (its row_id is then the parent comment's id).
 const selfModule = "comments"
 
-// Comments module, backs the CommentsThread widget on posts and other records.
+// Comments module, backs the CommentsThread widget on posts and other
+// records, plus the thread REST API (GET/POST /api/comments/{module}/{row}).
 var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "comments",
 	Name:    "Comments",
@@ -45,18 +47,14 @@ var Module = &module.ModuleAbstract[interface{}]{
 	DefaultPermission:    module.PERMISSION_DENY,
 	DefaultPermissionSet: true,
 	Rights:               make(map[int]int),
+	CustomRoutes: []module.CustomRoute{
+		{Path: "/api/comments/{module}/{row}", Methods: []string{"GET"}, Handler: handleList, Absolute: true},
+		{Path: "/api/comments/{module}/{row}", Methods: []string{"POST"}, Handler: handleCreate, Absolute: true},
+	},
 }
 
-// Init registers the standalone comments module and the thread REST API. Call
-// from the registry.
-func Init() {
-	Module.Initialize("comments")
-
-	module.RegisterEndpointPrefix("/api/comments")
-	module.AddRouteRegistrar(func(r *mux.Router) {
-		r.HandleFunc("/api/comments/{module}/{row}", handleList).Methods("GET")
-		r.HandleFunc("/api/comments/{module}/{row}", handleCreate).Methods("POST")
-	})
+func init() {
+	app.RegisterModule(Module, "comments")
 }
 
 // node is one comment plus its nested replies, as sent to the client. Likes/
@@ -142,7 +140,7 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return
@@ -243,7 +241,7 @@ func handleCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return

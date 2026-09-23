@@ -1,6 +1,7 @@
 package statistics
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"time"
@@ -96,7 +97,7 @@ func Live(w http.ResponseWriter, r *http.Request) {
 		"memory_bytes":          metricValue(byName["process_resident_memory_bytes"]),
 		"app_heap_bytes":        heapBytes,
 		"engine_overhead_bytes": engineOverhead,
-		"db_size_bytes":         dbSizeBytes(),
+		"db_size_bytes":         dbSizeBytes(r.Context()),
 		"refresh_presets":       RefreshPresets,
 	})
 }
@@ -104,8 +105,8 @@ func Live(w http.ResponseWriter, r *http.Request) {
 // dbSizeBytes returns the current database's on-disk size (not memory — the
 // closest thing to a "database" resource figure reachable over a normal
 // connection, without superuser/pg_monitor access to server-side memory).
-func dbSizeBytes() float64 {
-	db, err := pgdb.GetInstance()
+func dbSizeBytes(ctx context.Context) float64 {
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return 0
 	}

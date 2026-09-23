@@ -1,6 +1,7 @@
 package module
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/http"
@@ -48,6 +49,13 @@ type CustomRouter interface {
 	GetCustomRoutes() []CustomRoute
 }
 
+// SpecialRight is a named permission beyond the standard modes — a module
+// declares one to gate a custom button/endpoint; see auth.HasSpecialRight.
+type SpecialRight struct {
+	ID   string // stored in user_rights/user_group_rights.special_rights
+	Name string // shown in the rights admin UI
+}
+
 type ModuleAbstract[T any] struct {
 	ID                    string
 	Name                  string
@@ -59,7 +67,8 @@ type ModuleAbstract[T any] struct {
 	Hidden                bool
 	HiddenModes           []string // modes hidden from the menu without making the module fully read-only
 	Fields                []Field
-	Filters               *Filedset // list-mode filters fieldset; nil = none declared
+	Filters               *Filedset      // list-mode filters fieldset; nil = none declared
+	SpecialRights         []SpecialRight // named permissions beyond the standard modes; see SpecialRight
 	Rights                map[int]int
 	Data                  []T
 	DefaultPermission     int
@@ -132,6 +141,10 @@ func (m *ModuleAbstract[T]) GetFields() []Field {
 	return m.Fields
 }
 
+func (m *ModuleAbstract[T]) GetSpecialRights() []SpecialRight {
+	return m.SpecialRights
+}
+
 // GetFilters returns the module's declared list-mode filters (may be nil).
 func (m *ModuleAbstract[T]) GetFilters() *Filedset {
 	return m.Filters
@@ -146,6 +159,8 @@ type ModuleInterface interface {
 	GetID() string
 	GetName() string
 	GetFields() []Field
+	GetFilters() *Filedset
+	GetSpecialRights() []SpecialRight
 	IsHidden() bool
 	IsReadOnly() bool
 	GetHiddenModes() []string
@@ -157,9 +172,14 @@ type ModuleInterface interface {
 	Delete(w http.ResponseWriter, r *http.Request)
 }
 
+// Initializer is any *ModuleAbstract[T], regardless of T; only
+// app.RegisterModule should call Initialize on one.
+type Initializer interface {
+	ModuleInterface
+	Initialize(tableName string)
+}
+
 var RegisteredModules = make(map[string]ModuleInterface)
-var GlobalRouter *mux.Router
-var AutoRegisterRoutes = true
 var ModuleDefaultPermissions = make(map[string]int)
 
 type ModuleEvent struct {
@@ -445,11 +465,6 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 	}
 	RegisterModuleDefaultPermission(m.ID, m.DefaultPermission)
 
-	if GlobalRouter != nil && AutoRegisterRoutes {
-		ModuleLog.Debugf("Auto-registering routes for module: %s", m.ID)
-		registerSingleModuleRoutes(GlobalRouter, m)
-	}
-
 	if GlobalFieldsetHandler != nil {
 		ModuleLog.Debugf("Registering module with fieldset handler: %s", m.ID)
 		GlobalFieldsetHandler.RegisterModule(moduleWrapper)
@@ -555,35 +570,39 @@ func isStoredColumn(field Field) bool {
 
 // addMissingColumns brings an existing table up to date with the fieldset,
 // adding any missing stored column; it never drops or alters existing ones.
+// All ALTER TABLEs run in one transaction (Postgres DDL is transactional) so
+// a bad field spec can't leave the table with only some of its new columns.
 func (m *ModuleAbstract[T]) addMissingColumns(db *pgdb.Db) error {
 	existing, err := tableColumns(db, m.ID)
 	if err != nil {
 		return err
 	}
-	for _, field := range m.Fields {
-		if !isStoredColumn(field) {
-			continue
+	return db.WithTransaction(func(tx *pgdb.Db) error {
+		for _, field := range m.Fields {
+			if !isStoredColumn(field) {
+				continue
+			}
+			if existing[strings.ToLower(field.Name)] {
+				continue
+			}
+			sqlType := m.fieldTypeToSQL(field)
+			sqlType = strings.Replace(sqlType, " NOT NULL", "", 1)
+			if t, ok := timestampSystemColumnType(field.Name); ok {
+				sqlType = t
+			} else if field.Name == "access" {
+				sqlType = "INTEGER DEFAULT 0"
+			}
+			alter := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s", m.ID, field.Name, sqlType)
+			if _, err := tx.Query(alter); err != nil {
+				return fmt.Errorf("add column %s.%s: %w", m.ID, field.Name, err)
+			}
 		}
-		if existing[strings.ToLower(field.Name)] {
-			continue
-		}
-		sqlType := m.fieldTypeToSQL(field)
-		sqlType = strings.Replace(sqlType, " NOT NULL", "", 1)
-		if t, ok := timestampSystemColumnType(field.Name); ok {
-			sqlType = t
-		} else if field.Name == "access" {
-			sqlType = "INTEGER DEFAULT 0"
-		}
-		alter := fmt.Sprintf("ALTER TABLE %s ADD COLUMN IF NOT EXISTS %s %s", m.ID, field.Name, sqlType)
-		if _, err := db.Query(alter); err != nil {
-			return fmt.Errorf("add column %s.%s: %w", m.ID, field.Name, err)
-		}
-	}
-	return nil
+		return nil
+	})
 }
 
-func (m *ModuleAbstract[T]) getDB() (*pgdb.Db, error) {
-	return pgdb.GetInstance()
+func (m *ModuleAbstract[T]) getDB(ctx context.Context) (*pgdb.Db, error) {
+	return pgdb.GetInstanceCtx(ctx)
 }
 
 var modules = make(map[string]*ModuleAbstract[any])
@@ -748,7 +767,7 @@ func (m *ModuleAbstract[T]) EnsureTableExists() error {
 		LogModuleEvent(event)
 	}()
 
-	db, err := m.getDB()
+	db, err := m.getDB(context.Background())
 	if err != nil {
 		event.Success = false
 		event.Error = fmt.Sprintf("failed to get database connection: %v", err)
@@ -775,23 +794,26 @@ func (m *ModuleAbstract[T]) EnsureTableExists() error {
 	event.Action = "TABLE_CREATE"
 	event.Details = fmt.Sprintf("Creating table with %d fields", len(m.Fields))
 
-	for _, field := range m.Fields {
-		if field.Name == "id" && field.Type == TYPE_INT {
-			sequenceSQL := fmt.Sprintf(`CREATE SEQUENCE IF NOT EXISTS %s_id_seq`, m.ID)
-			_, err = db.Query(sequenceSQL)
-			if err != nil {
-				return fmt.Errorf("failed to create sequence for table %s: %w", m.ID, err)
+	// The sequence and the table that defaults its id column to it are one
+	// atomic unit — either both exist afterward or neither does.
+	if txErr := db.WithTransaction(func(tx *pgdb.Db) error {
+		for _, field := range m.Fields {
+			if field.Name == "id" && field.Type == TYPE_INT {
+				sequenceSQL := fmt.Sprintf(`CREATE SEQUENCE IF NOT EXISTS %s_id_seq`, m.ID)
+				if _, err := tx.Query(sequenceSQL); err != nil {
+					return fmt.Errorf("failed to create sequence for table %s: %w", m.ID, err)
+				}
+				break
 			}
-			break
 		}
-	}
-
-	createSQL := m.generateCreateTableSQL()
-	_, err = db.Query(createSQL)
-	if err != nil {
+		if _, err := tx.Query(m.generateCreateTableSQL()); err != nil {
+			return fmt.Errorf("failed to create table %s: %w", m.ID, err)
+		}
+		return nil
+	}); txErr != nil {
 		event.Success = false
-		event.Error = fmt.Sprintf("failed to create table %s: %v", m.ID, err)
-		return fmt.Errorf("failed to create table %s: %w", m.ID, err)
+		event.Error = txErr.Error()
+		return txErr
 	}
 
 	event.Details += " - SUCCESS"
@@ -861,89 +883,6 @@ func (m *ModuleAbstract[T]) GenerateCreateTableSQL() string {
 
 func (m *ModuleAbstract[T]) FieldTypeToSQL(field Field) string {
 	return m.fieldTypeToSQL(field)
-}
-
-// registerSingleModuleRoutes registers routes for a single module
-func registerSingleModuleRoutes(router *mux.Router, module ModuleInterface) {
-	moduleID := module.GetID()
-	ModuleLog.Debugf("Registering routes for module: %s", moduleID)
-
-	subrouter := router.PathPrefix("/" + moduleID).Subrouter()
-	subrouter.HandleFunc("", module.List).Methods("GET")
-	subrouter.HandleFunc("", module.Create).Methods("POST")
-	subrouter.HandleFunc("/{id}", module.View).Methods("GET")
-	subrouter.HandleFunc("/{id}", module.Edit).Methods("PUT", "PATCH")
-	subrouter.HandleFunc("/{id}", module.Delete).Methods("DELETE")
-
-	// Absolute custom routes go on the root router; others are relative to
-	// /<moduleID>.
-	if cr, ok := module.(CustomRouter); ok {
-		for _, rt := range cr.GetCustomRoutes() {
-			methods := rt.Methods
-			if len(methods) == 0 {
-				methods = []string{"GET"}
-			}
-			if rt.Absolute {
-				router.HandleFunc(rt.Path, rt.Handler).Methods(methods...)
-			} else {
-				subrouter.HandleFunc(rt.Path, rt.Handler).Methods(methods...)
-			}
-			ModuleLog.Debugf("  custom route for %s: %v %s (absolute=%v)", moduleID, methods, rt.Path, rt.Absolute)
-		}
-	}
-
-	ModuleLog.Debugf("Routes registered for module %s: GET,POST /%s, GET,PUT,PATCH,DELETE /%s/{id}",
-		moduleID, moduleID, moduleID)
-}
-
-// RegisterModuleRoutes automatically registers CRUD routes for all registered modules
-func RegisterModuleRoutes(router *mux.Router) {
-	startTime := time.Now()
-	moduleCount := len(RegisteredModules)
-
-	ModuleLog.Debugf("Starting automatic route registration for %d modules", moduleCount)
-
-	for _, module := range RegisteredModules {
-		registerSingleModuleRoutes(router, module)
-	}
-
-	duration := time.Since(startTime).Milliseconds()
-	ModuleLog.Debugf("Route registration completed in %dms. %d modules registered.", duration, moduleCount)
-}
-
-// SetGlobalRouter sets the global router for automatic route registration.
-func SetGlobalRouter(router *mux.Router) {
-	GlobalRouter = router
-	ModuleLog.Debugf("Global router set for automatic module route registration")
-
-	if len(RegisteredModules) > 0 {
-		ModuleLog.Debugf("Registering %d existing modules with new global router", len(RegisteredModules))
-		for _, module := range RegisteredModules {
-			registerSingleModuleRoutes(router, module)
-		}
-	}
-}
-
-// EnableAutoRegistration enables or disables automatic route registration
-func EnableAutoRegistration(enabled bool) {
-	AutoRegisterRoutes = enabled
-	if enabled {
-		ModuleLog.Debugf("Automatic route registration ENABLED")
-	} else {
-		ModuleLog.Debugf("Automatic route registration DISABLED")
-	}
-}
-
-// RegisterModuleByID manually registers routes for a specific module by ID
-func RegisterModuleByID(router *mux.Router, moduleID string) error {
-	module, exists := RegisteredModules[moduleID]
-	if !exists {
-		return fmt.Errorf("module '%s' not found in registry", moduleID)
-	}
-
-	registerSingleModuleRoutes(router, module)
-	ModuleLog.Debugf("Manually registered routes for module: %s", moduleID)
-	return nil
 }
 
 // GetRegisteredModuleIDs returns a list of all registered module IDs

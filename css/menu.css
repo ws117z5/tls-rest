@@ -41,23 +41,9 @@
   padding-right: 5px;
 }
 
-/* Menu icons come from a single sprite sheet (/img/icons_bw.png — a 6x6 grid
-   of 200x200 white-on-transparent glyphs, 1200x1200 total; the last row is
-   unused). Rather than painting the white pixels as-is, the sheet is used as
-   a CSS mask so the icon is filled with `currentColor` — it then tracks the
-   surrounding link's color (including :hover/.active) for free, matching the
-   phosphor-green theme. `.menu-icon-sprite` carries the shared size/mask
-   setup; one `.icon-<name>` modifier per glyph (below) sets only its
-   mask-position — both classes go on the same element (Menu.tsx's label()).
-   Pixel math at the sheet's actual cell size: each icon is 200x200, so
-   mask-size is 1200px 1200px (6 * 200) and every mask-position below is an
-   exact multiple of -200px (col * -200px, row * -200px) — no percentages, no
-   scaled-down units. `zoom` then shrinks the whole 200x200 box down to a
-   normal 16px nav icon; unlike `transform: scale()`, `zoom` also shrinks the
-   element's layout box, so it doesn't need a wrapper to avoid overlapping
-   neighboring nav items. */
-/* Unscoped (not just .main-menu) so any button/icon elsewhere on the site —
-   e.g. Likes.tsx's like/dislike buttons — can reuse the same sprite sheet. */
+/* /img/icons_bw.png: a 6x8 grid of 200x200 glyphs, used as a CSS mask (fills
+   with currentColor) so icons track the link's color. .icon-<name> below
+   sets only mask-position (col/row * -200px); zoom shrinks to nav size. */
 .menu-icon-sprite {
   display: inline-block;
   width: 200px;
@@ -70,20 +56,50 @@
   mask-image: url("/img/icons_bw.png");
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
-  -webkit-mask-size: 1200px 1400px;
-  mask-size: 1200px 1400px;
+  -webkit-mask-size: 1200px 1800px;
+  mask-size: 1200px 1800px;
+}
+
+/* Menu icons specifically render larger than the 0.08 shared default (e.g.
+   Icon.tsx's other, non-menu uses elsewhere on the site keep that default). */
+.main-menu .menu-icon-sprite {
+  zoom: 0.12;
+}
+
+/* Reserves the same box as an icon, invisibly, so an item with no icon still
+   lines its text up with sibling items that have one. */
+.menu-icon-spacer {
+  display: inline-block;
+  width: 200px;
+  height: 200px;
+  zoom: 0.12;
+  margin-right: 6px;
+}
+
+.ic-14 {
+  zoom: 0.14 !important;
+}
+
+.ic-13 {
+  zoom: 0.13 !important;
+}
+
+.ic-12 {
+  zoom: 0.12 !important;
 }
 
 /* Per-icon cell position, row by row (col * -200px, row * -200px). */
 .icon-user-rights        { mask-position: 0px     0px;     -webkit-mask-position: 0px     0px; }
 .icon-profile             { mask-position: -200px  0px;     -webkit-mask-position: -200px  0px; }
-.icon-login               { mask-position: -400px  0px;     -webkit-mask-position: -400px  0px; }
+.icon-login               { mask-position: -400px  0px;     -webkit-mask-position: -400px  0px;  zoom: 0.14 !important; }
+.icon-logout              { mask-position: -200px  -200px;  -webkit-mask-position: -200px  -200px; zoom: 0.14 !important; }
+.icon-messages            { mask-position: -400px  -400px;  -webkit-mask-position: -400px  -400px; zoom: 0.14 !important; }
+.icon-messages-new        { mask-position: -1000px -1400px; -webkit-mask-position: -1000px -1400px; zoom: 0.14 !important; }
 .icon-home                { mask-position: -600px  0px;     -webkit-mask-position: -600px  0px; }
 .icon-access-control      { mask-position: -800px  0px;     -webkit-mask-position: -800px  0px; }
 .icon-user-groups         { mask-position: -1000px 0px;     -webkit-mask-position: -1000px 0px; }
 
 .icon-posts               { mask-position: 0px     -200px;  -webkit-mask-position: 0px     -200px; }
-.icon-logout              { mask-position: -200px  -200px;  -webkit-mask-position: -200px  -200px; }
 .icon-log                 { mask-position: -400px  -200px;  -webkit-mask-position: -400px  -200px; }
 .icon-access-log          { mask-position: -600px  -200px;  -webkit-mask-position: -600px  -200px; }
 .icon-console             { mask-position: -800px  -200px;  -webkit-mask-position: -800px  -200px; }
@@ -91,7 +107,6 @@
 
 .icon-words               { mask-position: 0px     -400px;  -webkit-mask-position: 0px     -400px; }
 .icon-statistics          { mask-position: -200px  -400px;  -webkit-mask-position: -200px  -400px; }
-.icon-messages            { mask-position: -400px  -400px;  -webkit-mask-position: -400px  -400px; }
 .icon-user-delete-request { mask-position: -600px  -400px;  -webkit-mask-position: -600px  -400px; }
 .icon-terms               { mask-position: -800px  -400px;  -webkit-mask-position: -800px  -400px; }
 .icon-messages-sm         { mask-position: -1000px -400px;  -webkit-mask-position: -1000px -400px; }
@@ -119,6 +134,44 @@
 
 .icon-dislike             { mask-position: 0px     -1200px; -webkit-mask-position: 0px     -1200px; }
 .icon-like                { mask-position: -200px  -1200px; -webkit-mask-position: -200px  -1200px; }
+.icon-legal               { mask-position: -600px  -1200px; -webkit-mask-position: -600px  -1200px; }
+.icon-hash                { mask-position: -800px  -1200px; -webkit-mask-position: -800px  -1200px; }
+.icon-markdown            { mask-position: -1000px -1200px; -webkit-mask-position: -1000px -1200px; }
+
+/* Sheet grew again, from 1200x1400 (7 rows) to 1200x1600 (8 rows) — submenu
+   icons, and papers' own module icon. */
+.icon-external            { mask-position: 0px     -1400px; -webkit-mask-position: 0px     -1400px; }
+.icon-engine              { mask-position: -200px  -1400px; -webkit-mask-position: -200px  -1400px; }
+.icon-games               { mask-position: -400px  -1400px; -webkit-mask-position: -400px  -1400px; }
+.icon-tools               { mask-position: -600px  -1400px; -webkit-mask-position: -600px  -1400px; }
+.icon-papers              { mask-position: -800px  -1400px; -webkit-mask-position: -800px  -1400px; }
+
+.icon-search              { mask-position: 0  -1600px; -webkit-mask-position: -0  -1600px; }
+
+/* Wrap size (24px) matches the icon's rendered size, so the badge's percentage
+   position (69.5%, 35%) lines up with the sprite's own circle at 139,70/200. */
+.menu-message-badge-wrap {
+  position: relative;
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.menu-message-badge-wrap .menu-icon-sprite {
+  margin-right: 0;
+}
+.menu-message-badge {
+  position: absolute;
+  left: 69.5%;
+  top: 35%;
+  transform: translate(-50%, -50%);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1;
+  color: #0b0a08;
+  pointer-events: none;
+}
 
 .main-menu .nav-link {
   display: flex;

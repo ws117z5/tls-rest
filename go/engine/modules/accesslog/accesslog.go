@@ -2,6 +2,8 @@ package accesslog
 
 import (
 	"net/http"
+
+	"tls-rest/go/app"
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/module"
 )
@@ -88,6 +90,6 @@ func NewAccessLog() *AccessLog {
 	return m
 }
 
-func Init() {
-	NewAccessLog().Initialize("access_log")
+func init() {
+	app.RegisterModule(NewAccessLog(), "access_log")
 }

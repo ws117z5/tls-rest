@@ -29,109 +29,129 @@ export default class Config {
     private static modules: MenuItem[] = [];  // flattened, for routing
     private static pages: MenuItem[] = [];    // flattened (with component), for routing
     private static initPromise: Promise<void> | null = null;
+    private static pagesSubscribers: Array<() => void> = [];
     public static serverURL = window.location.origin + "/";
 
+    // init resolves as soon as the server menu is known — modules (the bulk of
+    // the app) render immediately via the generic ModulePage, which needs no
+    // page component at all. Page components (barrel scan below) are heavy
+    // (three.js, opencv, graphviz, …) and load in the background afterward;
+    // subscribe via onPagesReady to know when they land.
     static init(): Promise<void> {
         // Idempotent: StrictMode / remounts call init() more than once.
         if (Config.initPromise) return Config.initPromise;
 
         Config.initPromise = (async () => {
-            // 1) The complete, privilege-filtered menu from the server.
             await Auth.loadMenu();
             await AppConfig.load();
+            Config.rebuild({});
 
-            // 2) Page components discovered from the filesystem, keyed by href
-            //    (the server only sends page metadata; this supplies the React
-            //    component to render each one).
-            const barrel = await Config.loadBarrel();
-
-            const covered = new Set<string>();
-
-            const toItem = (entry: MenuEntry): MenuItem => {
-                if (isModuleEntry(entry)) {
-                    const href = (entry.endpoint || "/" + entry.name).replace(/^\//, "");
-                    covered.add(href);
-                    return {
-                        kind: "module",
-                        key: entry.name,
-                        name: entry.name,
-                        title: entry.description || entry.name,
-                        href,
-                        path: "/" + href,
-                        modes: entry.modes || [],
-                        icon: entry.icon,
-                        isPage: false,
-                        keyField: entry.key_field || "id",
-                    };
-                }
-                const p = entry as BackendPage;
-                const href = (p.endpoint || "/" + p.id).replace(/^\//, "");
-                covered.add(href);
-                const b = barrel[href] || barrel[p.id];
-                const isPage = b ? b.isPage : true;
-                return {
-                    kind: "page",
-                    key: p.id,
-                    name: p.id,
-                    title: p.name,
-                    href,
-                    path: "/" + (isPage ? "pages/" : "") + href,
-                    modes: [],
-                    icon: p.icon,
-                    isPage,
-                    component: b?.component,
-                    props: b?.component?.props || {},
-                    extraRoutes: b?.component?.extraRoutes || [],
-                };
-            };
-
-            Config.head = Auth.getHead().map(toItem);
-            Config.submenus = {};
-            const subs = Auth.getSubmenus();
-            Object.keys(subs).forEach((title) => {
-                Config.submenus[title] = subs[title].map(toItem);
+            Config.loadBarrel().then((barrel) => {
+                Config.rebuild(barrel);
+                Config.pagesSubscribers.forEach((cb) => cb());
             });
-
-            // 3) Pure-frontend pages: in the barrel but not named by the server
-            //    (public tools with no backend page). Keep them reachable —
-            //    grouped by the component's own submenu, or head if none.
-            Object.keys(barrel).forEach((href) => {
-                if (covered.has(href)) return;
-                const b = barrel[href];
-                if (!b.isPage) return;
-                // Gate by the component's own auth requirements. This prevents a
-                // backend page the server hid for this user (e.g. an auth-only
-                // page for a guest) from reappearing here and 401-ing on click.
-                if (b.requiresAdmin && !Auth.isAdmin()) return;
-                if (b.requiresAuth && !Auth.isAuthenticated()) return;
-                const item: MenuItem = {
-                    kind: "page",
-                    key: href,
-                    name: href,
-                    title: b.title,
-                    href,
-                    path: "/pages/" + href,
-                    modes: [],
-                    icon: b.icon,
-                    isPage: true,
-                    component: b.component,
-                    props: b.component?.props || {},
-                    extraRoutes: b.component?.extraRoutes || [],
-                };
-                if (b.submenu) {
-                    (Config.submenus[b.submenu] = Config.submenus[b.submenu] || []).push(item);
-                } else {
-                    Config.head.push(item);
-                }
-            });
-
-            // 4) Flatten for routing.
-            const all = [...Config.head, ...Object.values(Config.submenus).flat()];
-            Config.modules = all.filter((i) => i.kind === "module");
-            Config.pages = all.filter((i) => i.kind === "page" && i.component);
         })();
 
         return Config.initPromise;
+    }
+
+    // onPagesReady notifies once page components (barrel) have loaded and
+    // Config's menu/routing lists were rebuilt with them.
+    static onPagesReady(cb: () => void): () => void {
+        Config.pagesSubscribers.push(cb);
+        return () => {
+            Config.pagesSubscribers = Config.pagesSubscribers.filter((c) => c !== cb);
+        };
+    }
+
+    // rebuild derives head/submenus/modules/pages from the server menu plus
+    // barrel (page components discovered from the filesystem, keyed by href —
+    // the server only sends page metadata). Called once with an empty barrel
+    // for the immediate render, then again once the real barrel resolves.
+    private static rebuild(barrel: Record<string, BarrelEntry>) {
+        const covered = new Set<string>();
+
+        const toItem = (entry: MenuEntry): MenuItem => {
+            if (isModuleEntry(entry)) {
+                const href = (entry.endpoint || "/" + entry.name).replace(/^\//, "");
+                covered.add(href);
+                return {
+                    kind: "module",
+                    key: entry.name,
+                    name: entry.name,
+                    title: entry.description || entry.name,
+                    href,
+                    path: "/" + href,
+                    modes: entry.modes || [],
+                    icon: entry.icon,
+                    isPage: false,
+                    keyField: entry.key_field || "id",
+                };
+            }
+            const p = entry as BackendPage;
+            const href = (p.endpoint || "/" + p.id).replace(/^\//, "");
+            covered.add(href);
+            const b = barrel[href] || barrel[p.id];
+            const isPage = b ? b.isPage : true;
+            return {
+                kind: "page",
+                key: p.id,
+                name: p.id,
+                title: p.name,
+                href,
+                path: "/" + (isPage ? "pages/" : "") + href,
+                modes: [],
+                icon: p.icon,
+                isPage,
+                component: b?.component,
+                props: b?.component?.props || {},
+                extraRoutes: b?.component?.extraRoutes || [],
+            };
+        };
+
+        Config.head = Auth.getHead().map(toItem);
+        Config.submenus = {};
+        const subs = Auth.getSubmenus();
+        Object.keys(subs).forEach((title) => {
+            Config.submenus[title] = subs[title].map(toItem);
+        });
+
+        // Pure-frontend pages: in the barrel but not named by the server
+        // (public tools with no backend page). Keep them reachable — grouped
+        // by the component's own submenu, or head if none.
+        Object.keys(barrel).forEach((href) => {
+            if (covered.has(href)) return;
+            const b = barrel[href];
+            if (!b.isPage) return;
+            // Gate by the component's own auth requirements. This prevents a
+            // backend page the server hid for this user (e.g. an auth-only
+            // page for a guest) from reappearing here and 401-ing on click.
+            if (b.requiresAdmin && !Auth.isAdmin()) return;
+            if (b.requiresAuth && !Auth.isAuthenticated()) return;
+            const item: MenuItem = {
+                kind: "page",
+                key: href,
+                name: href,
+                title: b.title,
+                href,
+                path: "/pages/" + href,
+                modes: [],
+                icon: b.icon,
+                isPage: true,
+                component: b.component,
+                props: b.component?.props || {},
+                extraRoutes: b.component?.extraRoutes || [],
+            };
+            if (b.submenu) {
+                (Config.submenus[b.submenu] = Config.submenus[b.submenu] || []).push(item);
+            } else {
+                Config.head.push(item);
+            }
+        });
+
+        const all = [...Config.head, ...Object.values(Config.submenus).flat()];
+        Config.modules = all.filter((i) => i.kind === "module");
+        Config.pages = all.filter((i) => i.kind === "page" && i.component);
     }
 
     // loadBarrel discovers page components from the filesystem, keyed by the
@@ -174,42 +194,45 @@ export default class Config {
             }),
         ];
 
+        // Fetch every matched module in parallel — the sequential "for...await"
+        // this replaced serialized what should be independent network fetches,
+        // one file behind the next (irrelevant now anyway since this whole scan
+        // runs in the background, off the critical render path — see init()).
+        const pairs: Array<{ ctx: __WebpackModuleApi.RequireContext; key: string }> = [];
+        contexts.forEach((ctx) => ctx.keys().forEach((key) => pairs.push({ ctx, key })));
+        const mods = await Promise.all(
+            pairs.map(({ ctx, key }) => ctx(key).catch(() => null)) // a module that throws on import is not a usable page
+        );
+
         const map: Record<string, BarrelEntry> = {};
-        for (const ctx of contexts) {
-            for (const key of ctx.keys()) {
-                let mod: Record<string, any>;
+        mods.forEach((mod) => {
+            if (!mod) return;
+            Object.keys(mod as Record<string, any>).forEach((exportName) => {
+                const Cls = (mod as Record<string, any>)[exportName];
+                // PageComponent subclasses carry the inherited static guid().
+                if (typeof Cls !== "function" || !("guid" in Cls)) return;
+                let inst: any;
                 try {
-                    mod = (await ctx(key)) as Record<string, any>;
+                    inst = new Cls({});
                 } catch {
-                    continue; // a module that throws on import is not a usable page
+                    return;
                 }
-                Object.keys(mod).forEach((exportName) => {
-                    const Cls = mod[exportName];
-                    // PageComponent subclasses carry the inherited static guid().
-                    if (typeof Cls !== "function" || !("guid" in Cls)) return;
-                    let inst: any;
-                    try {
-                        inst = new Cls({});
-                    } catch {
-                        return;
-                    }
-                    if (typeof inst.getHref !== "function") return;
-                    const href: string = inst.getHref();
-                    // "" is valid — it is the home page's href. Reject only a
-                    // non-string or a duplicate.
-                    if (typeof href !== "string" || map[href] !== undefined) return;
-                    map[href] = {
-                        component: Cls,
-                        title: typeof inst.getTitle === "function" ? inst.getTitle() : href,
-                        isPage: typeof inst.isPageComponent === "function" ? inst.isPageComponent() : true,
-                        submenu: typeof inst.getSubmenu === "function" ? inst.getSubmenu() : "",
-                        icon: typeof inst.getIcon === "function" ? inst.getIcon() : "",
-                        requiresAuth: typeof inst.requiresAuthentication === "function" ? inst.requiresAuthentication() : false,
-                        requiresAdmin: typeof inst.requiresAdministration === "function" ? inst.requiresAdministration() : false,
-                    };
-                });
-            }
-        }
+                if (typeof inst.getHref !== "function") return;
+                const href: string = inst.getHref();
+                // "" is valid — it is the home page's href. Reject only a
+                // non-string or a duplicate.
+                if (typeof href !== "string" || map[href] !== undefined) return;
+                map[href] = {
+                    component: Cls,
+                    title: typeof inst.getTitle === "function" ? inst.getTitle() : href,
+                    isPage: typeof inst.isPageComponent === "function" ? inst.isPageComponent() : true,
+                    submenu: typeof inst.getSubmenu === "function" ? inst.getSubmenu() : "",
+                    icon: typeof inst.getIcon === "function" ? inst.getIcon() : "",
+                    requiresAuth: typeof inst.requiresAuthentication === "function" ? inst.requiresAuthentication() : false,
+                    requiresAdmin: typeof inst.requiresAdministration === "function" ? inst.requiresAdministration() : false,
+                };
+            });
+        });
         return map;
     }
 

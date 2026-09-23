@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
@@ -43,20 +44,16 @@ var Module = &module.ModuleAbstract[interface{}]{
 	DefaultPermission:    module.PERMISSION_DENY,
 	DefaultPermissionSet: true,
 	Rights:               make(map[int]int),
+	CustomRoutes: []module.CustomRoute{
+		{Path: "/api/friends/status/{id}", Methods: []string{"GET"}, Handler: handleStatus, Absolute: true},
+		{Path: "/api/friends/request/{id}", Methods: []string{"POST"}, Handler: handleRequest, Absolute: true},
+		{Path: "/api/friends/accept/{id}", Methods: []string{"POST"}, Handler: handleAccept, Absolute: true},
+		{Path: "/api/friends/remove/{id}", Methods: []string{"POST"}, Handler: handleRemove, Absolute: true},
+	},
 }
 
-// Init registers the standalone friend-requests module and the friends REST
-// API. Call from the registry.
-func Init() {
-	Module.Initialize("friends")
-
-	module.RegisterEndpointPrefix("/api/friends")
-	module.AddRouteRegistrar(func(r *mux.Router) {
-		r.HandleFunc("/api/friends/status/{id}", handleStatus).Methods("GET")
-		r.HandleFunc("/api/friends/request/{id}", handleRequest).Methods("POST")
-		r.HandleFunc("/api/friends/accept/{id}", handleAccept).Methods("POST")
-		r.HandleFunc("/api/friends/remove/{id}", handleRemove).Methods("POST")
-	})
+func init() {
+	app.RegisterModule(Module, "friends")
 }
 
 func requireSession(w http.ResponseWriter, r *http.Request) *cache.Session {
@@ -85,7 +82,7 @@ func handleStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return
@@ -125,7 +122,7 @@ func handleRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return
@@ -178,7 +175,7 @@ func handleAccept(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return
@@ -217,7 +214,7 @@ func handleRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return

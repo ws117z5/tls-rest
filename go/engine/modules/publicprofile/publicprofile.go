@@ -20,7 +20,7 @@ import (
 )
 
 // Init registers the public profile REST API. Call from the registry.
-func Init() {
+func init() {
 	module.RegisterEndpointPrefix("/api/users")
 	module.AddRouteRegistrar(func(r *mux.Router) {
 		r.HandleFunc("/api/users/{id}/public", handleGet).Methods("GET")
@@ -50,7 +50,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return

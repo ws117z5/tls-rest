@@ -6,7 +6,7 @@ import "testing"
 //"log"
 //"testing"
 //"time"
-//config "tls-rest/go/constants"
+//config "tls-rest/go/app/constants"
 //"tls-rest/go/lib/db/mdb"
 
 //"labix.org/v2/mgo/bson"

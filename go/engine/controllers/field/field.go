@@ -1,6 +1,9 @@
 package field
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 const MODE_LIST = 0b00000001
 const MODE_VIEW = 0b00000010
@@ -94,7 +97,7 @@ type Field struct {
 	// component; the data/submit hooks are server-side only.
 	TableColumns    []Field                                                   `json:"tableFieldset,omitempty"` // column definitions (each a Field)
 	TableSourceName string                                                    `json:"tableSource,omitempty"`   // DB table with module_id,row_id to load rows from
-	TableDataFunc   func(ctx map[string]interface{}) []map[string]interface{} `json:"-"`                       // manual row provider (wins over TableSource)
+	TableDataFunc   func(ctx context.Context, data map[string]interface{}) []map[string]interface{} `json:"-"` // manual row provider (wins over TableSource)
 	TableSubmitFunc func(data []map[string]interface{}) interface{}           `json:"-"`                       // process submitted rows before storing
 	// RowsAddable lets the client add and remove rows (default: rows are fixed,
 	// supplied only by TableDataFunc). RowKey names the column that identifies a
@@ -107,17 +110,17 @@ type Field struct {
 	// when the fieldset is served. Set via WithOptions.
 	OptionsFunc func() []map[string]interface{} `json:"-"`
 
-	// OptionsCtxFunc is like OptionsFunc but receives a context map describing the
-	// requesting user (userID, isAdmin, level), so a field can scope its choices
-	// to the caller's authority. Domain policy lives in the module's closure, not
-	// the engine. Set via WithOptionsCtx.
-	OptionsCtxFunc func(ctx map[string]interface{}) []map[string]interface{} `json:"-"`
+	// OptionsCtxFunc is like OptionsFunc but also receives a viewer map
+	// describing the requesting user (userID, isAdmin, level), so a field can
+	// scope its choices to the caller's authority. Domain policy lives in the
+	// module's closure, not the engine. Set via WithOptionsCtx.
+	OptionsCtxFunc func(ctx context.Context, viewer map[string]interface{}) []map[string]interface{} `json:"-"`
 
 	// Autocomplete configuration (set via WithAutocomplete). The kind is
 	// serialized so the client renders the autocomplete widget and calls the
 	// /autocomplete endpoint; the resolution (func/sql/source) is server-side.
 	AutocompleteKind   string                                                         `json:"autocomplete,omitempty"` // "function" | "sql" | "source"
-	AutocompleteFunc   func(input string, values map[string]interface{}) []AutoOption `json:"-"`
+	AutocompleteFunc   func(ctx context.Context, input string, values map[string]interface{}) []AutoOption `json:"-"`
 	AutocompleteSQL    string                                                         `json:"-"`
 	AutocompleteSource []string                                                       `json:"-"` // {table, field, match}
 
@@ -279,7 +282,7 @@ func (f Field) WithAutocomplete(kind string, arg interface{}) Field {
 	f.AutocompleteKind = kind
 	switch kind {
 	case "function":
-		if fn, ok := arg.(func(input string, values map[string]interface{}) []AutoOption); ok {
+		if fn, ok := arg.(func(ctx context.Context, input string, values map[string]interface{}) []AutoOption); ok {
 			f.AutocompleteFunc = fn
 		}
 	case "sql":
@@ -309,7 +312,7 @@ func (f Field) WithOptions(fn func() []map[string]interface{}) Field {
 // requesting user's authority ("userID", "isAdmin", "level"), so the module can
 // scope the choices (e.g. only groups a user may assign). Takes priority over a
 // static list and over WithOptions.
-func (f Field) WithOptionsCtx(fn func(ctx map[string]interface{}) []map[string]interface{}) Field {
+func (f Field) WithOptionsCtx(fn func(ctx context.Context, viewer map[string]interface{}) []map[string]interface{}) Field {
 	f.OptionsCtxFunc = fn
 	return f
 }
@@ -346,7 +349,7 @@ func (f Field) TableSource(table string) Field {
 // TableData sets a manual row provider. It receives the current record's values
 // as context (e.g. the sibling "module" select) and returns the rows. It takes
 // priority over TableSource.
-func (f Field) TableData(fn func(ctx map[string]interface{}) []map[string]interface{}) Field {
+func (f Field) TableData(fn func(ctx context.Context, data map[string]interface{}) []map[string]interface{}) Field {
 	f.TableDataFunc = fn
 	return f
 }

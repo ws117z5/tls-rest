@@ -124,7 +124,7 @@ const CodeBlock: React.FC<CodeBlockProps> = ({ className, children }) => {
     <Highlighter
       language={match[1]}
       style={style}
-      customStyle={{ margin: "0.5em 0", borderRadius: 6, fontSize: "0.85em" }}
+      customStyle={{ margin: "0.5em 0", borderRadius: 6, fontSize: "1.02em" }}
     >
       {code}
     </Highlighter>

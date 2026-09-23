@@ -6,15 +6,16 @@ package auth
 type Mode = int
 
 const (
-	MODE_LIST   Mode = 1 << iota // 1  browse records
-	MODE_VIEW                    // 2  read a single record
-	MODE_CREATE                  // 4  create a record
-	MODE_EDIT                    // 8  update a record
-	MODE_DELETE                  // 16 delete a record
+	MODE_LIST    Mode = 1 << iota // 1  browse records
+	MODE_VIEW                     // 2  read a single record
+	MODE_CREATE                   // 4  create a record
+	MODE_EDIT                     // 8  update a record
+	MODE_DELETE                   // 16 delete a record
+	MODE_FILTERS                  // 32 use the module's declared list filters
 )
 
 // MODE_ALL is every mode — the effective rights of an administrator.
-const MODE_ALL = MODE_LIST | MODE_VIEW | MODE_CREATE | MODE_EDIT | MODE_DELETE
+const MODE_ALL = MODE_LIST | MODE_VIEW | MODE_CREATE | MODE_EDIT | MODE_DELETE | MODE_FILTERS
 
 // ModuleModeRights maps moduleID -> allowed-mode bitmask for a single user,
 // already resolved from their group memberships.
@@ -43,6 +44,12 @@ func HasPageMode(rights ModuleModeRights, pageID string, mode Mode, isAdmin bool
 	return HasMode(rights, pageID, mode, isAdmin)
 }
 
+// HasSpecialRight reports whether the user was granted rightID on module —
+// see cache.Session.SpecialRights / module.SpecialRight. Admins bypass.
+func HasSpecialRight(specialRights map[string]map[string]bool, module, rightID string, isAdmin bool) bool {
+	return isAdmin || specialRights[module][rightID]
+}
+
 // modeName pairs a bit with its stable string name. This is the single source
 // of the mode-bit -> name mapping; the API returns names (not the raw int) so
 // clients never have to know this package's bit layout, which differs from the
@@ -56,6 +63,7 @@ var modeNameTable = []struct {
 	{MODE_CREATE, "create"},
 	{MODE_EDIT, "edit"},
 	{MODE_DELETE, "delete"},
+	{MODE_FILTERS, "filters"},
 }
 
 // ModeNames converts an allowed-mode bitmask into the list of mode names set in

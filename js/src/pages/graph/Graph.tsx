@@ -57,6 +57,7 @@ class GraphPage extends PageComponent<{}, GraphPageState> {
   protected title = "Graphs";
   protected icon = "graphs";
   protected submenu = "tools";
+  protected requiresAuth = true;
 
   constructor(props: {}) {
     super(props);

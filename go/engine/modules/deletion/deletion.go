@@ -13,12 +13,11 @@ import (
 	"regexp"
 	"strings"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/module"
-
-	"github.com/gorilla/mux"
 )
 
 // Deletion module, backs the public account-deletion request page.
@@ -37,15 +36,13 @@ var Module = &module.ModuleAbstract[interface{}]{
 	DefaultPermission:    module.PERMISSION_DENY,
 	DefaultPermissionSet: true,
 	Rights:               make(map[int]int),
+	CustomRoutes: []module.CustomRoute{
+		{Path: "/api/deletion-request", Methods: []string{"POST"}, Handler: handleSubmit, Absolute: true},
+	},
 }
 
-func Init() {
-	Module.Initialize("deletion_requests")
-
-	module.RegisterEndpointPrefix("/api/deletion-request")
-	module.AddRouteRegistrar(func(r *mux.Router) {
-		r.HandleFunc("/api/deletion-request", handleSubmit).Methods("POST")
-	})
+func init() {
+	app.RegisterModule(Module, "deletion_requests")
 }
 
 var emailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
@@ -93,7 +90,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
 		row["user_id"] = s.UserID
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "unavailable", http.StatusInternalServerError)
 		return

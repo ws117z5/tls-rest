@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"tls-rest/go/constants"
+	"tls-rest/go/app/constants"
 
 	"github.com/fatih/color"
 )

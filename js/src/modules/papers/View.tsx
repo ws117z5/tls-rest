@@ -60,6 +60,7 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
   // Identity comes from the signed-in account (papers requires auth — see
   // PapersList's redirect-to-login gate), not a manually typed name.
   const name = Auth.getUserName() || t("Player");
+  const isAdmin = Auth.isAdmin();
 
   const [state, setState] = useState<GameState | null>(null);
   const [word, setWord] = useState("");
@@ -257,6 +258,19 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
     refresh();
   };
 
+  // Admin-only: deletes the room via the standard module endpoint (soft
+  // delete, same as the module list's row delete), independent of the
+  // creator's End game (which only flags it, and only the creator can call it).
+  const deleteRoom = async () => {
+    if (!window.confirm(t("Delete this room? This cannot be undone."))) return;
+    try {
+      await axios.delete(`/${module}/${roomId}`);
+      navigate(`/${module}`);
+    } catch (e: any) {
+      console.error("[papers] delete room failed", e?.message);
+    }
+  };
+
   const players = state?.players ?? [];
   const selfKey = state?.selfKey;
   const mmss = (s: number) => `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
@@ -321,53 +335,71 @@ const PapersView: React.FC<ModuleViewProps> = ({ record, module, navigate }) => 
       </div>
 
       {/* Word entry (prefilled). Word is assigned to another player. Name is
-          shown for reference only — it comes from the signed-in account. */}
-      <div className="papers-controls d-flex flex-wrap gap-2 align-items-end p-3">
-        <div className="d-flex align-items-center gap-2">
-          <span className="text-muted small">{t("Playing as")}</span>
-          <span><strong>{name}</strong></span>
-        </div>
-
-        {editingWord && !state?.roundStarted ? (
-          <div className="d-flex gap-2 align-items-end">
+          shown for reference only — it comes from the signed-in account.
+          Styled like a module's fieldset form: a card, and each field's
+          title above its value (see css/fieldset.css's .fieldset-row). */}
+      <div className="papers-controls p-3">
+        <div className="card">
+          <div className="card-body d-flex flex-wrap gap-3 align-items-start">
             <div>
-              <label className="form-label mb-1">{t("Your word")}</label>
-              <input className="form-control" style={{ maxWidth: 200 }} value={word} onChange={(e) => setWord(e.target.value)}
-                     placeholder={t("for someone else")} />
+              <div className="text-muted small text-uppercase mb-1">{t("Playing as")}</div>
+              <div><strong>{name}</strong></div>
             </div>
-            <button className="btn btn-primary" onClick={setWordField} disabled={!word.trim()}>{t("Set")}</button>
-          </div>
-        ) : (
-          <div className="d-flex align-items-center gap-2">
-            <span className="text-muted small">{t("Word set")} ✓</span>
-            {/* No Edit once the round's words are deranged — changing it now
-                would just be pointless, someone else already wears it. */}
-            {!state?.roundStarted && (
-              <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditingWord(true)}>{t("Edit")}</button>
-            )}
-          </div>
-        )}
 
-        {/* Creator-only game controls. */}
-        {state?.isCreator && (
-          <div className="ml-auto d-flex gap-2">
-            {/* Starting alone would derange nobody's word onto anybody else's
-                tile — need at least one other player in the room. */}
-            {players.length > 1 && (
-              <button className="btn btn-success" onClick={() => turn("start")}>{t("Start")}</button>
+            <div>
+              <div className="text-muted small text-uppercase mb-1">{t("Your word")}</div>
+              {editingWord && !state?.roundStarted ? (
+                <div className="d-flex gap-2">
+                  <input className="form-control" style={{ maxWidth: 200 }} value={word} onChange={(e) => setWord(e.target.value)}
+                         placeholder={t("for someone else")} />
+                  <button className="btn btn-primary" onClick={setWordField} disabled={!word.trim()}>{t("Set")}</button>
+                </div>
+              ) : (
+                <div className="d-flex align-items-center gap-2">
+                  <span>{t("Word set")} ✓</span>
+                  {/* No Edit once the round's words are deranged — changing it
+                      now would just be pointless, someone else already wears it. */}
+                  {!state?.roundStarted && (
+                    <button className="btn btn-sm btn-outline-secondary" onClick={() => setEditingWord(true)}>{t("Edit")}</button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Creator-only game controls. */}
+            {state?.isCreator && (
+              <div className="ml-auto">
+                <div className="text-muted small text-uppercase mb-1">{t("Game controls")}</div>
+                <div className="d-flex gap-2 flex-wrap">
+                  {/* Starting alone would derange nobody's word onto anybody
+                      else's tile — need at least one other player in the room. */}
+                  {players.length > 1 && (
+                    <button className="btn btn-success" onClick={() => turn("start")}>{t("Start")}</button>
+                  )}
+                  {/* Creator confirms over video that the active player said
+                      their word correctly — only meaningful while a turn is running. */}
+                  {state.started && (
+                    <button className="btn btn-outline-success" onClick={() => turn("guessed")}>{t("Word guessed")}</button>
+                  )}
+                  <button className="btn btn-warning" onClick={() => turn("wrong")} disabled={!state.started}>
+                    {t("Wrong")} ({state.wrong}/{state.wrongLimit})
+                  </button>
+                  <button className="btn btn-outline-primary" onClick={() => turn("restart")}>{t("Restart")}</button>
+                  <button className="btn btn-outline-danger" onClick={() => turn("end")}>{t("End game")}</button>
+                </div>
+              </div>
             )}
-            {/* Creator confirms over video that the active player said their
-                word correctly — only meaningful while a turn is running. */}
-            {state.started && (
-              <button className="btn btn-outline-success" onClick={() => turn("guessed")}>{t("Word guessed")}</button>
+
+            {/* Admin-only: always available, independent of the creator's End
+                game (which only the creator can trigger). */}
+            {isAdmin && (
+              <div className={state?.isCreator ? "" : "ml-auto"}>
+                <div className="text-muted small text-uppercase mb-1">{t("Admin")}</div>
+                <button className="btn btn-outline-danger" onClick={deleteRoom}>{t("Delete room")}</button>
+              </div>
             )}
-            <button className="btn btn-warning" onClick={() => turn("wrong")} disabled={!state.started}>
-              {t("Wrong")} ({state.wrong}/{state.wrongLimit})
-            </button>
-            <button className="btn btn-outline-primary" onClick={() => turn("restart")}>{t("Restart")}</button>
-            <button className="btn btn-outline-danger" onClick={() => turn("end")}>{t("End game")}</button>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Scoreboard: appears as soon as the first player guesses correctly,

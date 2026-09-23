@@ -12,10 +12,16 @@ func (fe *FieldsetEngine) buildDeclaredFilterConditions(argIndex *int, args *[]i
 		return nil
 	}
 	v := viewerForModule(fe.Request, fe.Module.ID)
+	if !v.canFilter(fe.Module.ID) {
+		return nil
+	}
+	visible := func(f field.Field) bool {
+		return v.fieldVisibleInSchema(f) && v.canFilterField(f.Name)
+	}
 	return field.BuildFilterConditions(
 		fe.Module.Filters.Fields,
 		fe.Request.URL.Query(),
-		v.fieldVisibleInSchema,
+		visible,
 		argIndex, args,
 	)
 }

@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"net/http"
 
+	"tls-rest/go/app"
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/mesh"
 	. "tls-rest/go/engine/controllers/module"
-	"tls-rest/go/engine/controllers/turn"
 
 	"github.com/ws117z5/mmh3"
 )
@@ -63,7 +63,6 @@ func (m *PapersModule) fieldset() []Field {
 			WithLabel("Protected").
 			AsVirtual().
 			AsReadOnly().
-			AsAdminOnly().
 			WithSQL("(password IS NOT NULL AND password <> '')"),
 
 		// Round countdown as a single duration (stored as total seconds).
@@ -98,7 +97,7 @@ func NewPapersModule() *PapersModule {
 		ModuleAbstract: &ModuleAbstract[interface{}]{
 			ID:         "papers",
 			Name:       "Papers",
-			Icon:       "",
+			Icon:       "papers",
 			Submenu:    "games",
 			KeyField:   "hash", // rooms are addressed by their stored hash, not uuid or id
 			SoftDelete: true,   // DELETE flags `deleted`; deleted rows are hidden
@@ -113,7 +112,6 @@ func NewPapersModule() *PapersModule {
 	// WebRTC mesh signaling — absolute paths, registered before the module's
 	// auto /papers/{uuid} view so the literal segments (report/plan) win.
 	m.ModuleAbstract.CustomRoutes = []CustomRoute{
-		{Path: "/papers/ice-config", Methods: []string{http.MethodGet}, Handler: turn.GetIceServers, Absolute: true},
 		{Path: "/papers/{roomId}/game/join", Methods: []string{http.MethodPost}, Handler: JoinGame, Absolute: true},
 		{Path: "/papers/{roomId}/game/state", Methods: []string{http.MethodGet}, Handler: GameState, Absolute: true},
 		{Path: "/papers/{roomId}/game/events", Methods: []string{http.MethodGet}, Handler: GameEvents, Absolute: true},
@@ -126,7 +124,6 @@ func NewPapersModule() *PapersModule {
 	return m
 }
 
-// Init registers papers as a module; TURN/mesh init separately via go/regisrty.go.
-func Init() {
-	NewPapersModule().Initialize("papers")
+func init() {
+	app.RegisterModule(NewPapersModule(), "papers")
 }

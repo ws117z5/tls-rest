@@ -37,8 +37,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Init registers GET /myip.
-func Init() {
+func init() {
 	module.AddRouteRegistrar(func(router *mux.Router) {
 		router.HandleFunc("/myip", handler).Methods("GET")
 	})

@@ -1,6 +1,7 @@
 package module
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -45,8 +46,11 @@ func (bc *BaseController) createFiltersMap(r *http.Request) []map[string]interfa
 	}
 
 	v := viewerForModule(r, bc.Module.ID)
+	if !v.canFilter(bc.Module.ID) {
+		return filters
+	}
 	for _, field := range bc.Module.Filters.Fields {
-		if !v.fieldVisibleInSchema(field) {
+		if !v.fieldVisibleInSchema(field) || !v.canFilterField(field.Name) {
 			continue
 		}
 		filters = append(filters, map[string]interface{}{
@@ -251,7 +255,7 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Insert record
-	id, err := bc.insertRecord(filteredData)
+	id, err := bc.insertRecord(r.Context(), filteredData)
 	if err != nil {
 		bc.respondError(w, http.StatusInternalServerError, "Failed to create record", err)
 		return
@@ -316,7 +320,7 @@ func (bc *BaseController) Edit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update record
-	err := bc.updateRecord(id, filteredData)
+	err := bc.updateRecord(r.Context(), id, filteredData)
 	if err != nil {
 		bc.respondError(w, http.StatusInternalServerError, "Failed to update record", err)
 		return
@@ -342,7 +346,7 @@ func (bc *BaseController) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := bc.deleteRecord(id)
+	err := bc.deleteRecord(r.Context(), id)
 	if err != nil {
 		bc.respondError(w, http.StatusInternalServerError, "Failed to delete record", err)
 		return
@@ -448,8 +452,8 @@ func tableRows(value interface{}) []map[string]interface{} {
 	return rows
 }
 
-func (bc *BaseController) insertRecord(data map[string]interface{}) (int64, error) {
-	db, err := bc.Engine.Module.getDB()
+func (bc *BaseController) insertRecord(ctx context.Context, data map[string]interface{}) (int64, error) {
+	db, err := bc.Engine.Module.getDB(ctx)
 	if err != nil {
 		return 0, err
 	}
@@ -470,8 +474,8 @@ func (bc *BaseController) recordKey(id string) (key string, value interface{}) {
 	return key, id
 }
 
-func (bc *BaseController) updateRecord(id string, data map[string]interface{}) error {
-	db, err := bc.Engine.Module.getDB()
+func (bc *BaseController) updateRecord(ctx context.Context, id string, data map[string]interface{}) error {
+	db, err := bc.Engine.Module.getDB(ctx)
 	if err != nil {
 		return err
 	}
@@ -481,8 +485,8 @@ func (bc *BaseController) updateRecord(id string, data map[string]interface{}) e
 	return err
 }
 
-func (bc *BaseController) deleteRecord(id string) error {
-	db, err := bc.Engine.Module.getDB()
+func (bc *BaseController) deleteRecord(ctx context.Context, id string) error {
+	db, err := bc.Engine.Module.getDB(ctx)
 	if err != nil {
 		return err
 	}

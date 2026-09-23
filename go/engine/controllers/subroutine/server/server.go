@@ -14,14 +14,16 @@ import (
 	"tls-rest/go/engine/controllers/log"
 	"tls-rest/go/engine/controllers/route"
 	"tls-rest/go/engine/controllers/route/middleware"
+
+	"github.com/gorilla/mux"
 )
 
 // shutdownTimeout bounds how long in-flight requests get to finish on shutdown.
 const shutdownTimeout = 30 * time.Second
 
-// RunServer starts the HTTPS server on port 8443 using Cloudflare Origin Certificates.
-// It blocks until receiving an interrupt or termination signal for graceful shutdown.
-func RunServer() {
+// RunServer starts the HTTPS server on port 8443 using Cloudflare Origin
+// Certificates, blocking until an interrupt/termination signal triggers graceful shutdown.
+func RunServer(registerAppRoutes func(*mux.Router)) {
 	// Load Cloudflare Origin Certificate and Private Key.
 
 	certPath := f.FirstNonEmpty(
@@ -58,7 +60,7 @@ func RunServer() {
 		NextProtos: []string{"h2", "http/1.1"},
 	}
 
-	handler := middleware.SecureHeaders(route.GetRouter())
+	handler := middleware.SecureHeaders(route.GetRouter(registerAppRoutes))
 
 	srv := &http.Server{
 		Addr:              ":8443",

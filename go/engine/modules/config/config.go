@@ -5,8 +5,10 @@
 package config
 
 import (
+	"context"
 	"strconv"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/functions"
@@ -35,12 +37,12 @@ var Module = &ModuleAbstract[interface{}]{
 			WithLabel("Scope ID").
 			WithDescription("search a user or group (by the chosen scope); 0 for global").
 			WithDefault(0).
-			WithAutocomplete("function", func(input string, values map[string]interface{}) []AutoOption {
+			WithAutocomplete("function", func(ctx context.Context, input string, values map[string]interface{}) []AutoOption {
 				scope, _ := values["scope"].(string)
 				if scope == "global" || scope == "" {
 					return []AutoOption{}
 				}
-				db, err := pgdb.GetInstance()
+				db, err := pgdb.GetInstanceCtx(ctx)
 				if err != nil {
 					return []AutoOption{}
 				}
@@ -92,4 +94,4 @@ var Module = &ModuleAbstract[interface{}]{
 	Rights:               make(map[int]int),
 }
 
-func Init() { Module.Initialize("config") }
+func init() { app.RegisterModule(Module, "config") }

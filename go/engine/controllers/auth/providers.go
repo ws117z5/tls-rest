@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	config "tls-rest/go/constants"
+	config "tls-rest/go/app/constants"
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/httpx"
 	"tls-rest/go/engine/modules/users"
@@ -324,7 +324,7 @@ func ProviderLoginWithToken(ctx context.Context, r *http.Request, providerName, 
 		acc.Email = strings.TrimSpace(strings.ToLower(emailOverride))
 	}
 
-	uid, username, err := users.FindOrCreateOAuthUser(acc)
+	uid, username, err := users.FindOrCreateOAuthUser(ctx, acc)
 	if err != nil {
 		return 0, "", err
 	}

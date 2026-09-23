@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
@@ -137,7 +138,7 @@ func breakdown(db *pgdb.Db, column, where string, args []interface{}) []map[stri
 // ADMIN ONLY, enforced by Page's RequiresAdmin (see module.PageAbstract.guard).
 // from/to are "YYYY-MM-DD"; omitted means unbounded/all-time.
 func Stats(w http.ResponseWriter, r *http.Request) {
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
@@ -187,4 +188,4 @@ var Page = &module.PageAbstract{
 	},
 }
 
-func Init() { Page.Initialize() }
+func init() { app.RegisterPage(Page) }

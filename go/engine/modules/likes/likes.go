@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
@@ -22,6 +23,16 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+// likesFilters declares GET /likes's list filters: module (by module_id) and
+// user (by name, via subquery).
+func likesFilters() *field.ListFilters {
+	return field.NewFieldset(
+		field.NewFilter("module", field.TYPE_STRING).WithLabel("Module").WithSQL("module_id").Contains(),
+		field.NewFilter("user", field.TYPE_STRING).WithLabel("User").Contains().
+			WithSQLWhere("user_id IN (SELECT id FROM users WHERE user_name ILIKE %s)"),
+	)
+}
 
 // Likes module, backs the like/dislike widget on posts, comments, and users.
 var Module = &module.ModuleAbstract[interface{}]{
@@ -35,21 +46,18 @@ var Module = &module.ModuleAbstract[interface{}]{
 		field.NewField("user_id", field.TYPE_INT, true).WithLabel("User"),
 		field.NewField("value", field.TYPE_INT, true).WithLabel("Value"),
 	},
+	Filters:              likesFilters(),
 	DefaultPermission:    module.PERMISSION_DENY,
 	DefaultPermissionSet: true,
 	Rights:               make(map[int]int),
+	CustomRoutes: []module.CustomRoute{
+		{Path: "/api/likes/{module}/{row}", Methods: []string{"GET"}, Handler: handleGet, Absolute: true},
+		{Path: "/api/likes/{module}/{row}", Methods: []string{"POST"}, Handler: handleReact, Absolute: true},
+	},
 }
 
-// Init registers the standalone likes module and the reaction REST API. Call
-// from the registry.
-func Init() {
-	Module.Initialize("likes")
-
-	module.RegisterEndpointPrefix("/api/likes")
-	module.AddRouteRegistrar(func(r *mux.Router) {
-		r.HandleFunc("/api/likes/{module}/{row}", handleGet).Methods("GET")
-		r.HandleFunc("/api/likes/{module}/{row}", handleReact).Methods("POST")
-	})
+func init() {
+	app.RegisterModule(Module, "likes")
 }
 
 // summary is what the client needs to render the widget: aggregate counts
@@ -101,7 +109,7 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return
@@ -143,7 +151,7 @@ func handleReact(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return

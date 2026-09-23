@@ -24,16 +24,21 @@ class Profile extends PageComponent {
 
     render() {
         return (
-            <>
-                <div className="container" style={{ maxWidth: 720, display: "flex", justifyContent: "flex-end", paddingTop: 12 }}>
-                    <button onClick={() => Auth.logout()}>{t("Logout")}</button>
+            <div className="container-fluid module-page pt-4">
+                <div className="module-page-header d-flex justify-content-between align-items-center mb-3">
+                    <h1 className="h4 mb-0">{t("Profile")}</h1>
+                    <button className="btn btn-secondary" onClick={() => Auth.logout()}>
+                        {t("Logout")}
+                    </button>
                 </div>
-                <Fieldset endpoint="/api/profile" moduleName="users" title="Profile" editable />
-                <div className="container" style={{ maxWidth: 720 }}>
-                    <h2 className="h5 mt-4 mb-3">{t("Messages")}</h2>
-                    <ConversationList />
+                <Fieldset endpoint="/api/profile" moduleName="users" editable />
+                <div className="card module-page-card mt-4">
+                    <div className="card-body">
+                        <h5 className="card-title h6 text-uppercase text-muted mb-3">{t("Messages")}</h5>
+                        <ConversationList />
+                    </div>
                 </div>
-            </>
+            </div>
         );
     }
 }

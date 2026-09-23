@@ -125,12 +125,10 @@ func RegisterCustomRoutes(router *mux.Router) {
 	router.HandleFunc("/users/Auth/{authType}", auth.Auth).Methods("GET", "POST")
 }
 
-// GetRouter creates the main router with automatic module route registration
-func GetRouter() *mux.Router {
+// GetRouter creates the main router. registerAppRoutes (go/app.RegisterRoutes)
+// is a parameter, not an import, since go/app orchestrating this server would cycle back here.
+func GetRouter(registerAppRoutes func(*mux.Router)) *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
-	
-	// Set this router as the global router for automatic module registration
-	module.SetGlobalRouter(router)
 
 	// Register static file routes (css, js, img) - no middleware applied to these
 	RegisterStaticRoutes(router)
@@ -140,13 +138,7 @@ func GetRouter() *mux.Router {
 
 	RegisterCustomRoutes(router)
 
-	// Flush routes registered by pages/features via AddRouteRegistrar (profile,
-	// login, images, papers, ...). They own their routes; route.go just triggers
-	// their init() via imports and flushes here.
-	module.FlushRouteRegistrars(router)
-
-	// Register any remaining module routes (in case modules were loaded before SetGlobalRouter)
-	module.RegisterModuleRoutes(router)
+	registerAppRoutes(router)
 
 	// SPA fallback: any GET that didn't match an API / module / static route
 	// serves the React shell, so client-side routes (e.g. /pages/opencv) boot on

@@ -2,6 +2,8 @@ package logs
 
 import (
 	"net/http"
+
+	"tls-rest/go/app"
 	. "tls-rest/go/engine/controllers/field"
 	. "tls-rest/go/engine/controllers/module"
 )
@@ -71,6 +73,6 @@ func NewLogs() *Logs {
 }
 
 // Register wires this package into the engine (called from go/imports.go).
-func Init() {
-	NewLogs().Initialize("logs")
+func init() {
+	app.RegisterModule(NewLogs(), "logs")
 }

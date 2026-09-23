@@ -281,17 +281,19 @@ const ModulePage: React.FC<ModulePageProps> = ({
                             {t("Save")}
                         </button>
                     )}
-                    {isView && can("edit") && Auth.isAdmin() && (
+                    {isView && can("edit") && (
                         <button className="btn btn-primary" onClick={() => go(`${base}/${id}/edit`)}>
                             <Icon name="edit" />
                             {t("Edit")}
                         </button>
                     )}
                     <LayoutToggle />
-                    <button className="btn btn-secondary" onClick={() => go(base)}>
-                        <Icon name="back" />
-                        {t("Back")}
-                    </button>
+                    {can("list") && (
+                        <button className="btn btn-secondary" onClick={() => go(base)}>
+                            <Icon name="back" />
+                            {t("Back")}
+                        </button>
+                    )}
                 </div>
             </div>
             <div className="card module-page-card">
@@ -419,17 +421,19 @@ const ModulePage: React.FC<ModulePageProps> = ({
                     {heading} — {t(mode)}
                 </h1>
                 <div className="d-flex gap-2">
-                    {isView && can("edit") && Auth.isAdmin() && (
+                    {isView && can("edit") && (
                         <button className="btn btn-primary" onClick={() => go(`${base}/${id}/edit`)}>
                             <Icon name="edit" />
                             {t("Edit")}
                         </button>
                     )}
                     <LayoutToggle />
-                    <button className="btn btn-secondary" onClick={() => go(base)}>
-                        <Icon name="back" />
-                        {t("Back")}
-                    </button>
+                    {can("list") && (
+                        <button className="btn btn-secondary" onClick={() => go(base)}>
+                            <Icon name="back" />
+                            {t("Back")}
+                        </button>
+                    )}
                 </div>
             </div>
             <div className="card module-page-card">

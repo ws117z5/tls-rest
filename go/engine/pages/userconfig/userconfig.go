@@ -23,5 +23,5 @@ func Get(w http.ResponseWriter, r *http.Request) {
 	if s != nil {
 		uid = s.UserID
 	}
-	functions.WriteJSON(w, http.StatusOK, config.Resolve(uid))
+	functions.WriteJSON(w, http.StatusOK, config.Resolve(r.Context(), uid))
 }

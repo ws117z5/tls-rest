@@ -16,6 +16,7 @@ export default class ArrayIterator extends PageComponent<{}, ArrayIteratorState>
   protected title = "Array Iterator";
   protected icon = "array-iterator";
   protected submenu = "tools";
+  protected requiresAuth = true;
 
   constructor(props: {}) {
     super(props);

@@ -1,6 +1,7 @@
 package words
 
 import (
+	"tls-rest/go/app"
 	. "tls-rest/go/engine/controllers/field"
 	. "tls-rest/go/engine/controllers/module"
 )
@@ -106,11 +107,13 @@ func NewWords() *Words {
 		{Path: "/{id}/register", Methods: []string{"POST"}, Handler: m.registerResult},
 	}
 
-	m.Initialize("words")
 	return m
 }
 
-// Module is the global instance (set by Init at startup).
+// Module is the global instance (set by init at startup).
 var Module *Words
 
-func Init() { Module = NewWords() }
+func init() {
+	Module = NewWords()
+	app.RegisterModule(Module, "words")
+}

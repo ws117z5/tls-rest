@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/module"
 	"tls-rest/go/pages/opencv/signal"
 
@@ -560,6 +561,6 @@ var Page = &module.PageAbstract{
 	},
 }
 
-func Init() {
-	Page.Initialize()
+func init() {
+	app.RegisterPage(Page)
 }

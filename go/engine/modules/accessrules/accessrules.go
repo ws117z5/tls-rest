@@ -1,6 +1,7 @@
 package accessrule
 
 import (
+	"tls-rest/go/app"
 	. "tls-rest/go/engine/controllers/field"
 	. "tls-rest/go/engine/controllers/module"
 )
@@ -84,6 +85,6 @@ func NewAccessRule() *AccessRule {
 	return m
 }
 
-func Init() {
-	NewAccessRule().Initialize("access_rule")
+func init() {
+	app.RegisterModule(NewAccessRule(), "access_rule")
 }

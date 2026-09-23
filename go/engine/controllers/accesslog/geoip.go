@@ -3,6 +3,7 @@ package accesslog
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -143,8 +144,8 @@ func CountryForIP(ipStr string) string {
 // missing one (optionally narrowed by an extra WHERE fragment, "" for none),
 // using whichever GeoIP tables are loaded. checked > resolved means some IPs
 // matched no range.
-func BackfillCountriesBatch(limit int, extraWhere string, extraArgs []interface{}) (resolved, checked int, err error) {
-	db, err := pgdb.GetInstance()
+func BackfillCountriesBatch(ctx context.Context, limit int, extraWhere string, extraArgs []interface{}) (resolved, checked int, err error) {
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return 0, 0, err
 	}

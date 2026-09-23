@@ -4,7 +4,7 @@ import (
 	"html/template"
 	"net/http"
 
-	"tls-rest/go/constants"
+	"tls-rest/go/app/constants"
 )
 
 func check(e error) {

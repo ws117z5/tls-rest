@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	constants "tls-rest/go/constants"
+	constants "tls-rest/go/app/constants"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/functions"
@@ -156,12 +156,22 @@ func (p *QueryParams) UnmarshalURL(values url.Values) error {
 	return nil
 }
 
+// totalCountAlias is the COUNT(*) OVER() column ExecuteQuery rides along
+// with the page's rows, prefixed to avoid colliding with a real column.
+const totalCountAlias = "__fieldset_total"
+
 // BuildSelectQuery constructs a SELECT for mode, withholding fields the
 // viewer can't read and any fieldset field whose column no longer exists on
 // the table (fieldset/table drift).
 func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (string, []interface{}, error) {
+	return fe.buildSelectQuery(params, mode, false)
+}
+
+// buildSelectQuery is BuildSelectQuery's implementation; includeTotal
+// prepends a COUNT(*) OVER() column so ExecuteQuery gets the paginated total
+// from the same round trip instead of a separate COUNT query.
+func (fe *FieldsetEngine) buildSelectQuery(params *QueryParams, mode int, includeTotal bool) (string, []interface{}, error) {
 	var selectFields []string
-	var whereConditions []string
 	var args []interface{}
 	argIndex := 1
 
@@ -185,9 +195,13 @@ func (fe *FieldsetEngine) BuildSelectQuery(params *QueryParams, mode int) (strin
 		selectFields = []string{"*"}
 	}
 
+	if includeTotal {
+		selectFields = append([]string{"COUNT(*) OVER() AS " + totalCountAlias}, selectFields...)
+	}
+
 	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectFields, ", "), fe.TableName)
 
-	whereConditions = fe.buildScopeConditions(params, v, &argIndex, &args)
+	whereConditions := fe.buildScopeConditions(params, v, &argIndex, &args)
 	if len(whereConditions) > 0 {
 		query += " WHERE " + strings.Join(whereConditions, " AND ")
 	}
@@ -342,34 +356,24 @@ func (fe *FieldsetEngine) BuildCountQuery(params *QueryParams) (string, []interf
 	return query, args, nil
 }
 
-// ExecuteQuery runs the query and returns results with pagination
+// ExecuteQuery runs the page's SELECT and its total count as one round trip
+// (COUNT(*) OVER() riding on the row query) instead of two.
 func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 	params, err := fe.ParseQueryParams()
 	if err != nil {
 		return nil, err
 	}
 
-	db, err := pgdb.GetInstance()
+	ctx := fe.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database instance: %w", err)
 	}
 
-	countQuery, countArgs, err := fe.BuildCountQuery(params)
-	if err != nil {
-		return nil, err
-	}
-
-	countResult, err := db.GetOne(countQuery, countArgs...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get total count: %w", err)
-	}
-
-	total := 0
-	if countResult != nil {
-		total = functions.Coerce[int](countResult["count"])
-	}
-
-	selectQuery, selectArgs, err := fe.BuildSelectQuery(params, mode)
+	selectQuery, selectArgs, err := fe.buildSelectQuery(params, mode, true)
 	if err != nil {
 		return nil, err
 	}
@@ -382,6 +386,11 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 		return nil, fmt.Errorf("failed to execute query: %w", err)
 	}
 
+	total, err := fe.totalFromResults(db, results, params)
+	if err != nil {
+		return nil, err
+	}
+
 	totalPages := (total + params.Limit - 1) / params.Limit
 
 	return &QueryResult{
@@ -391,6 +400,33 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 		Limit:      params.Limit,
 		TotalPages: totalPages,
 	}, nil
+}
+
+// totalFromResults reads totalCountAlias off the first row and strips it from
+// every row. An empty page (filter matched nothing, or params.Page overshot
+// the last page) leaves no row to read it from, so that case alone falls back
+// to a real COUNT query.
+func (fe *FieldsetEngine) totalFromResults(db *pgdb.Db, results []map[string]interface{}, params *QueryParams) (int, error) {
+	if len(results) > 0 {
+		total := functions.Coerce[int](results[0][totalCountAlias])
+		for _, row := range results {
+			delete(row, totalCountAlias)
+		}
+		return total, nil
+	}
+
+	countQuery, countArgs, err := fe.BuildCountQuery(params)
+	if err != nil {
+		return 0, err
+	}
+	countResult, err := db.GetOne(countQuery, countArgs...)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get total count: %w", err)
+	}
+	if countResult == nil {
+		return 0, nil
+	}
+	return functions.Coerce[int](countResult["count"]), nil
 }
 
 // shouldIncludeField reports whether field belongs in the SELECT for mode: a
