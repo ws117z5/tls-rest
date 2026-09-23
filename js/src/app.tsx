@@ -11,6 +11,8 @@ import ModulePage, { ModeName } from '@engine/containers/ModulePage';
 import ErrorBoundary from "@engine/pages/ErrorBoundary";
 import Toasts from "@engine/containers/Toasts";
 import { installHttpErrorToasts } from "@engine/controllers/httpSetup";
+import QueryStatsFooter from "@engine/containers/QueryStatsFooter";
+import { installQueryStatsRefresh } from "@engine/containers/QueryStatsBus";
 
 // Per-mode routes to register for a backend module. Only the modes the user is
 // allowed (reported by /api/modules) get a route; the rest simply don't exist
@@ -24,13 +26,20 @@ const MODE_ROUTES: Array<{ mode: ModeName; suffix: string }> = [
 
 const App: React.FC = () => {
   const [loaded, setLoaded] = useState<boolean>(false);
+  // Page components (barrel scan) resolve after the initial render — see
+  // Config.init(). Until they do, a route this app doesn't know about YET
+  // could just be one still loading, so the catch-all below holds off on
+  // redirecting home rather than bouncing a direct link that's about to work.
+  const [pagesReady, setPagesReady] = useState<boolean>(false);
 
   useEffect(() => {
     axios.defaults.headers.common['X-Request-Type'] = 'api';
     installHttpErrorToasts(); // global error -> toast (reads {status,message,log_id})
+    installQueryStatsRefresh(); // admin-only per-request DB query count/duration
     Config.init().then(() => {
       setLoaded(true);
     });
+    return Config.onPagesReady(() => setPagesReady(true));
   }, []);
 
   if (!loaded) {
@@ -40,6 +49,7 @@ const App: React.FC = () => {
   return (
     <div>
       <Toasts />
+      <QueryStatsFooter />
       <Menu />
       <ErrorBoundary>
         <Routes>
@@ -96,8 +106,10 @@ const App: React.FC = () => {
             ) : null
           ))}
 
-          {/* Unknown paths fall through to the homepage. */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Unknown paths fall through to the homepage — but only once page
+              components have finished loading, so a direct link to one that's
+              still loading isn't redirected away before its route exists. */}
+          <Route path="*" element={pagesReady ? <Navigate to="/" replace /> : <></>} />
         </Routes>
       </ErrorBoundary>
     </div>

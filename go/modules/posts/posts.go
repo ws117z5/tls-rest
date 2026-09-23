@@ -1,6 +1,9 @@
 package posts
 
 import (
+	"context"
+
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
 
@@ -11,8 +14,8 @@ import (
 // shareableUsers lists every user as a {value, name} option for the
 // visible_users sharing table. Simple and unfiltered — sharing your own post
 // with someone doesn't need the authority scoping a group-grant does.
-func shareableUsers(ctx map[string]interface{}) []map[string]interface{} {
-	db, err := pgdb.GetInstance()
+func shareableUsers(ctx context.Context, viewer map[string]interface{}) []map[string]interface{} {
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return nil
 	}
@@ -29,8 +32,8 @@ func shareableUsers(ctx map[string]interface{}) []map[string]interface{} {
 
 // shareableGroups lists every user group as a {value, name} option for the
 // visible_groups sharing table.
-func shareableGroups(ctx map[string]interface{}) []map[string]interface{} {
-	db, err := pgdb.GetInstance()
+func shareableGroups(ctx context.Context, viewer map[string]interface{}) []map[string]interface{} {
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return nil
 	}
@@ -116,12 +119,12 @@ func (p *Posts) fieldset() []Field {
 					WithOptionsCtx(shareableUsers),
 			}).
 			TableRowsAddable("user").
-			TableData(func(ctx map[string]interface{}) []map[string]interface{} {
-				pid := functions.Int(ctx["id"])
+			TableData(func(ctx context.Context, data map[string]interface{}) []map[string]interface{} {
+				pid := functions.Int(data["id"])
 				if pid <= 0 {
 					return nil
 				}
-				db, err := pgdb.GetInstance()
+				db, err := pgdb.GetInstanceCtx(ctx)
 				if err != nil {
 					return nil
 				}
@@ -156,12 +159,12 @@ func (p *Posts) fieldset() []Field {
 					WithOptionsCtx(shareableGroups),
 			}).
 			TableRowsAddable("group").
-			TableData(func(ctx map[string]interface{}) []map[string]interface{} {
-				pid := functions.Int(ctx["id"])
+			TableData(func(ctx context.Context, data map[string]interface{}) []map[string]interface{} {
+				pid := functions.Int(data["id"])
 				if pid <= 0 {
 					return nil
 				}
-				db, err := pgdb.GetInstance()
+				db, err := pgdb.GetInstanceCtx(ctx)
 				if err != nil {
 					return nil
 				}
@@ -232,8 +235,6 @@ func NewPosts() *Posts {
 	}
 	**/
 
-	m.Initialize("posts")
-
 	return m
 }
 
@@ -248,7 +249,7 @@ var Module *Posts
 // GET    /posts/{id} -> View()
 // PUT    /posts/{id} -> Edit()
 // DELETE /posts/{id} -> Delete()
-func Init() {
-	// Create module instance
+func init() {
 	Module = NewPosts()
+	app.RegisterModule(Module, "posts")
 }

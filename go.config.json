@@ -2,7 +2,7 @@
   "log": {
     "writeToFile": false,
     "writeToDb": true,
-    "level": "info"
+    "level": "debug"
   },
   "turn": {
     "credentialsUrl": "https://rtc.live.cloudflare.com/v1/turn/keys/{keyID}/credentials/generate",

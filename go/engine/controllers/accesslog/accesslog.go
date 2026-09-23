@@ -6,6 +6,7 @@
 package accesslog
 
 import (
+	"context"
 	"fmt"
 	stdlog "log"
 	"net"
@@ -93,7 +94,7 @@ func Init() {
 				const maxBatches = 50 // caps one run at 250k rows so a stuck loop can't run forever
 				var resolved, checked int
 				for i := 0; i < maxBatches; i++ {
-					r, c, berr := BackfillCountriesBatch(batch, "", nil)
+					r, c, berr := BackfillCountriesBatch(context.Background(), batch, "", nil)
 					if berr != nil {
 						return fmt.Sprintf("%d IPv4 + %d IPv6 ranges loaded; backfill failed after %d rows (%d resolved): %v",
 							n4, n6, checked, resolved, berr), berr

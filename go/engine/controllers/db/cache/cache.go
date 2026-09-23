@@ -80,7 +80,9 @@ type Session struct {
 	// see/write. A module ABSENT from the map is unrestricted (all fields). A
 	// module PRESENT maps to the exact allowed field set (system fields like id
 	// are always kept). Built by auth.ResolveModuleFieldRights.
-	FieldRights map[string]map[string]int
+	FieldRights       map[string]map[string]int
+	SpecialRights     map[string]map[string]bool // granted module.SpecialRight ids, per module
+	FilterFieldRights map[string]map[string]bool // allowed filters.go field names, per module; absent module = unrestricted
 
 	// Fieldset caches, per module, the hashsum of the fieldset last computed and
 	// served to this session (authority-scoped). GetFieldset compares an incoming

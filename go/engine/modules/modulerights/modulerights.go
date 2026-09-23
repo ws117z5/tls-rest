@@ -1,8 +1,10 @@
 package modulerights
 
 import (
+	"context"
 	"encoding/json"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/auth"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
@@ -31,6 +33,7 @@ func modeBitOptions() []map[string]interface{} {
 		{"name": "Create", "label": "Create", "value": auth.MODE_CREATE},
 		{"name": "Edit", "label": "Edit", "value": auth.MODE_EDIT},
 		{"name": "Delete", "label": "Delete", "value": auth.MODE_DELETE},
+		{"name": "Filters", "label": "Filters", "value": auth.MODE_FILTERS},
 	}
 }
 
@@ -78,6 +81,83 @@ func parseFieldGrants(v interface{}) map[string][]string {
 	return out
 }
 
+// parseSpecialRights unmarshals a stored `special_rights` value (a JSON
+// string/[]byte array of right ids) into a slice; unparseable yields none.
+func parseSpecialRights(v interface{}) []string {
+	var raw []byte
+	switch t := v.(type) {
+	case string:
+		raw = []byte(t)
+	case []byte:
+		raw = t
+	default:
+		return nil
+	}
+	var out []string
+	_ = json.Unmarshal(raw, &out)
+	return out
+}
+
+// specialRightsField shows one checkbox per right the sibling "module"
+// select's module declares, pre-filled from the record's stored grants.
+func specialRightsField(rightsTable string) Field {
+	return NewField("special_rights", TYPE_TABLE, false).
+		WithLabel("Special Rights").
+		WithDescription("Custom permissions the module declares (e.g. a gated button or endpoint)").
+		TableFieldset([]Field{
+			NewField("id", TYPE_STRING, false).WithLabel("Key").AsReadOnly(),
+			NewField("name", TYPE_STRING, false).WithLabel("Right").AsReadOnly(),
+			NewField("granted", TYPE_CHECKBOX, false).WithLabel("Granted"),
+		}).
+		TableData(func(ctx context.Context, data map[string]interface{}) []map[string]interface{} {
+			modID, _ := data["module"].(string)
+			if modID == "" {
+				return nil
+			}
+			m, ok := RegisteredModules[modID]
+			if !ok {
+				return nil
+			}
+			rights := m.GetSpecialRights()
+			if len(rights) == 0 {
+				return nil
+			}
+
+			granted := map[string]bool{}
+			if recID := functions.Int(data["id"]); recID > 0 {
+				if db, err := pgdb.GetInstanceCtx(ctx); err == nil {
+					if row, e := db.GetOne(
+						"SELECT special_rights FROM "+rightsTable+" WHERE id = $1", recID,
+					); e == nil && row != nil {
+						for _, id := range parseSpecialRights(row["special_rights"]) {
+							granted[id] = true
+						}
+					}
+				}
+			}
+
+			rows := []map[string]interface{}{}
+			for _, sr := range rights {
+				rows = append(rows, map[string]interface{}{
+					"id":      sr.ID,
+					"name":    sr.Name,
+					"granted": granted[sr.ID],
+				})
+			}
+			return rows
+		}).
+		TableOnSubmit(func(rows []map[string]interface{}) interface{} {
+			out := []interface{}{}
+			for _, r := range rows {
+				id, _ := r["id"].(string)
+				if id != "" && functions.Truthy(r["granted"]) {
+					out = append(out, id)
+				}
+			}
+			return out
+		})
+}
+
 // fieldsField builds the shared per-field access control as a TYPE_TABLE.
 // Columns are a fieldset: a read-only "field" name plus one checkbox per mode.
 // Rows are the fields of the module named by the sibling "module" select, with
@@ -102,8 +182,8 @@ func fieldsField(rightsTable string) Field {
 		// Rows are provided server-side by TableData: the fields of the module
 		// chosen in the sibling "module" select (passed as context), each with
 		// its mode checkboxes filled from this record's stored grants.
-		TableData(func(ctx map[string]interface{}) []map[string]interface{} {
-			modID, _ := ctx["module"].(string)
+		TableData(func(ctx context.Context, data map[string]interface{}) []map[string]interface{} {
+			modID, _ := data["module"].(string)
 			if modID == "" {
 				return nil
 			}
@@ -114,8 +194,8 @@ func fieldsField(rightsTable string) Field {
 
 			// Load the record's stored per-field grants, if it's an existing row.
 			stored := map[string][]string{}
-			if recID := functions.Int(ctx["id"]); recID > 0 {
-				if db, err := pgdb.GetInstance(); err == nil {
+			if recID := functions.Int(data["id"]); recID > 0 {
+				if db, err := pgdb.GetInstanceCtx(ctx); err == nil {
 					if row, e := db.GetOne(
 						"SELECT fields FROM "+rightsTable+" WHERE id = $1", recID,
 					); e == nil && row != nil {
@@ -169,6 +249,96 @@ func fieldsField(rightsTable string) Field {
 		})
 }
 
+// parseFilterFieldGrants unmarshals a stored `filter_fields` value (a JSON
+// array of allowed filter names) into a set. Anything unparseable yields an
+// empty set, meaning "no per-filter grants recorded".
+func parseFilterFieldGrants(v interface{}) map[string]bool {
+	out := map[string]bool{}
+	var raw []byte
+	switch t := v.(type) {
+	case string:
+		raw = []byte(t)
+	case []byte:
+		raw = t
+	default:
+		return out
+	}
+	var names []string
+	if json.Unmarshal(raw, &names) == nil {
+		for _, n := range names {
+			out[n] = true
+		}
+	}
+	return out
+}
+
+// filterFieldsField is fieldsField's counterpart for filters.go's own
+// fieldset (a module's declared list filters, separate from its data fields).
+func filterFieldsField(rightsTable string) Field {
+	return NewField("filter_fields", TYPE_TABLE, false).
+		WithLabel("Filter Access").
+		WithDescription("Which declared filters may be used; leave empty to allow all").
+		WithOption("syncColumnsFromBitmask", "modes").
+		TableFieldset([]Field{
+			NewField("filter", TYPE_STRING, false).WithLabel("Filter").AsReadOnly(),
+			NewField("filters", TYPE_CHECKBOX, false).WithLabel("Filters"),
+		}).
+		TableData(func(ctx context.Context, data map[string]interface{}) []map[string]interface{} {
+			modID, _ := data["module"].(string)
+			if modID == "" {
+				return nil
+			}
+			m, ok := RegisteredModules[modID]
+			if !ok || m.GetFilters() == nil {
+				return nil
+			}
+
+			granted := map[string]bool{}
+			if recID := functions.Int(data["id"]); recID > 0 {
+				if db, err := pgdb.GetInstanceCtx(ctx); err == nil {
+					if row, e := db.GetOne(
+						"SELECT filter_fields FROM "+rightsTable+" WHERE id = $1", recID,
+					); e == nil && row != nil {
+						granted = parseFilterFieldGrants(row["filter_fields"])
+					}
+				}
+			}
+
+			rows := []map[string]interface{}{}
+			for _, f := range m.GetFilters().Fields {
+				rows = append(rows, map[string]interface{}{
+					"filter":  f.Name,
+					"filters": granted[f.Name],
+				})
+			}
+			return rows
+		}).
+		TableOnSubmit(func(rows []map[string]interface{}) interface{} {
+			out := []string{}
+			for _, r := range rows {
+				name, _ := r["filter"].(string)
+				if name != "" && functions.Truthy(r["filters"]) {
+					out = append(out, name)
+				}
+			}
+			return out
+		})
+}
+
+// groupRightsFilters declares GET /user_group_rights's list filters: group
+// (by name, via subquery) and module (direct substring match).
+func groupRightsFilters() *ListFilters {
+	return NewFieldset(
+		NewFilter("group", TYPE_STRING).
+			WithLabel("Group").
+			Contains().
+			WithSQLWhere("group_id IN (SELECT id FROM user_groups WHERE name ILIKE %s)"),
+		NewFilter("module", TYPE_STRING).
+			WithLabel("Module").
+			Contains(),
+	)
+}
+
 // GroupRightsModule holds per-group module rights.
 var GroupRightsModule = &ModuleAbstract[interface{}]{
 	ID:              "user_group_rights",
@@ -187,7 +357,10 @@ var GroupRightsModule = &ModuleAbstract[interface{}]{
 		moduleField(),
 		modesField(),
 		fieldsField("user_group_rights"),
+		filterFieldsField("user_group_rights"),
+		specialRightsField("user_group_rights"),
 	},
+	Filters: groupRightsFilters(),
 	// Administration module: no access unless explicitly granted (or admin).
 	DefaultPermission:    PERMISSION_DENY,
 	DefaultPermissionSet: true,
@@ -212,6 +385,8 @@ var UserRightsModule = &ModuleAbstract[interface{}]{
 		moduleField(),
 		modesField(),
 		fieldsField("user_rights"),
+		filterFieldsField("user_rights"),
+		specialRightsField("user_rights"),
 	},
 	// Administration module: no access unless explicitly granted (or admin).
 	DefaultPermission:    PERMISSION_DENY,
@@ -219,7 +394,7 @@ var UserRightsModule = &ModuleAbstract[interface{}]{
 	Rights:               make(map[int]int),
 }
 
-func Init() {
-	GroupRightsModule.Initialize("user_group_rights")
-	UserRightsModule.Initialize("user_rights")
+func init() {
+	app.RegisterModule(GroupRightsModule, "user_group_rights")
+	app.RegisterModule(UserRightsModule, "user_rights")
 }

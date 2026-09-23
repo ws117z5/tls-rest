@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -8,7 +9,7 @@ import (
 	"strings"
 	"text/template"
 
-	config "tls-rest/go/constants"
+	config "tls-rest/go/app/constants"
 
 	"tls-rest/go/engine/controllers/auth"
 	"tls-rest/go/engine/controllers/db/pgdb"
@@ -99,7 +100,7 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	// the user has no rights to is simply absent from "available", so the frontend
 	// never loads it. Modules the backend doesn't govern (custom/frontend pages)
 	// are not in "managed" and are always loaded.
-	rights := auth.ResolveModuleModeRights(userID)
+	rights := auth.ResolveModuleModeRights(r.Context(), userID)
 	managed := make([]string, 0, len(auth.ModuleDefaults()))
 	available := make([]string, 0, len(auth.ModuleDefaults()))
 	for module := range auth.ModuleDefaults() {
@@ -195,15 +196,17 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 	isAdmin := false
 	username := ""
 	var rights auth.ModuleModeRights
+	var specialRights map[string]map[string]bool
 
 	if s, ok := r.Context().Value(auth.SESSION_KEY).(*cache.Session); ok && s != nil {
 		userID = s.UserID
 		isAdmin = s.IsAdmin
 		rights = s.ModuleModes
+		specialRights = s.SpecialRights
 		username = s.Username
 	}
 	if rights == nil {
-		rights = auth.ResolveModuleModeRights(userID)
+		rights = auth.ResolveModuleModeRights(r.Context(), userID)
 	}
 
 	// head = top-level entries; submenus groups entries by submenu title. Entries
@@ -221,11 +224,12 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 	// --- Modules: authoritative list from the Go registry (auth.ModuleDefaults),
 	// enriched with description/submenu from the menu registry when available. ---
 	type moduleEntry struct {
-		Name        string   `json:"name"`
-		Description string   `json:"description"`
-		Endpoint    string   `json:"endpoint"`
-		Modes       []string `json:"modes"`
-		Icon        string   `json:"icon,omitempty"`
+		Name          string   `json:"name"`
+		Description   string   `json:"description"`
+		Endpoint      string   `json:"endpoint"`
+		Modes         []string `json:"modes"`
+		SpecialRights []string `json:"specialRights,omitempty"`
+		Icon          string   `json:"icon,omitempty"`
 		// KeyField is the column records are addressed by ("" -> "id"). A module
 		// keyed on uuid (e.g. papers) must be linked to by uuid, not the row's
 		// numeric id, so the frontend needs to know which one to use.
@@ -275,13 +279,18 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 				modeNames = removeModes(modeNames, hidden)
 			}
 		}
+		var grantedRights []string
+		for rightID := range specialRights[id] {
+			grantedRights = append(grantedRights, rightID)
+		}
 		add(submenu, moduleEntry{
-			Name:        id,
-			Description: desc,
-			Endpoint:    "/" + id,
-			Modes:       modeNames,
-			Icon:        icon,
-			KeyField:    keyField,
+			Name:          id,
+			Description:   desc,
+			Endpoint:      "/" + id,
+			Modes:         modeNames,
+			SpecialRights: grantedRights,
+			Icon:          icon,
+			KeyField:      keyField,
 		})
 	}
 
@@ -312,7 +321,7 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 		"authenticated": userID > 0,
 	}
 	if userID > 0 {
-		if av := userAvatar(userID); av != "" {
+		if av := userAvatar(r.Context(), userID); av != "" {
 			user["avatar"] = av
 		}
 		if username != "" {
@@ -360,8 +369,8 @@ func intersectModes(have, allow []string) []string {
 }
 
 // userAvatar returns the menu avatar URL for a user, or "" if none.
-func userAvatar(userID int) string {
-	db, err := pgdb.GetInstance()
+func userAvatar(ctx context.Context, userID int) string {
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return ""
 	}
@@ -388,7 +397,7 @@ func PagesAPI(w http.ResponseWriter, r *http.Request) {
 		rights = s.ModuleModes
 	}
 	if rights == nil {
-		rights = auth.ResolveModuleModeRights(userID)
+		rights = auth.ResolveModuleModeRights(r.Context(), userID)
 	}
 
 	type pageInfo struct {

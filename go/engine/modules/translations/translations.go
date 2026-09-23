@@ -14,13 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
-
-	"github.com/gorilla/mux"
 )
 
 // Translation module, used in every t("string").
@@ -37,15 +36,13 @@ var Module = &module.ModuleAbstract[interface{}]{
 	DefaultPermission:    module.PERMISSION_DENY,
 	DefaultPermissionSet: true,
 	Rights:               make(map[int]int),
+	CustomRoutes: []module.CustomRoute{
+		{Path: "/api/i18n/resolve", Methods: []string{"POST"}, Handler: handleResolve, Absolute: true},
+	},
 }
 
-func Init() {
-	Module.Initialize("translations")
-
-	module.RegisterEndpointPrefix("/api/i18n")
-	module.AddRouteRegistrar(func(r *mux.Router) {
-		r.HandleFunc("/api/i18n/resolve", handleResolve).Methods("POST")
-	})
+func init() {
+	app.RegisterModule(Module, "translations")
 }
 
 var errMiss = errors.New("translations: not cached")

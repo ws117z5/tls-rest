@@ -1,6 +1,9 @@
 package users
 
 import (
+	"context"
+
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
@@ -13,13 +16,13 @@ import (
 // group; anyone else only groups at or below their access level, and never an
 // admin group. Change this closure to change the policy — the engine has no
 // knowledge of it.
-func assignableGroups(ctx map[string]interface{}) []map[string]interface{} {
-	db, err := pgdb.GetInstance()
+func assignableGroups(ctx context.Context, viewer map[string]interface{}) []map[string]interface{} {
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return nil
 	}
-	isAdmin, _ := ctx["isAdmin"].(bool)
-	level := functions.Int(ctx["level"])
+	isAdmin, _ := viewer["isAdmin"].(bool)
+	level := functions.Int(viewer["level"])
 	rows, err := db.GetAll(
 		`SELECT id AS value, name FROM user_groups
 		 WHERE $1 OR (id <= $2 AND NOT is_admin)
@@ -93,12 +96,12 @@ func (u *Users) fieldset() []Field {
 					WithOptionsCtx(assignableGroups),
 			}).
 			TableRowsAddable("group").
-			TableData(func(ctx map[string]interface{}) []map[string]interface{} {
-				uid := functions.Int(ctx["id"])
+			TableData(func(ctx context.Context, data map[string]interface{}) []map[string]interface{} {
+				uid := functions.Int(data["id"])
 				if uid <= 0 {
 					return nil
 				}
-				db, err := pgdb.GetInstance()
+				db, err := pgdb.GetInstanceCtx(ctx)
 				if err != nil {
 					return nil
 				}
@@ -182,12 +185,9 @@ func NewUsers() *Users {
 	return module
 }
 
-func Init() {
-	// Create module instance
+func init() {
 	UserModule = NewUsers()
-
-	// Initialize with database table - routes are automatically registered
-	UserModule.Initialize("users")
+	app.RegisterModule(UserModule, "users")
 }
 
 // All CRUD operations are handled automatically by the module system.

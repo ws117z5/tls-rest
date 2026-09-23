@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	config "tls-rest/go/constants"
+	config "tls-rest/go/app/constants"
 	"tls-rest/go/engine/controllers/actions"
 )
 

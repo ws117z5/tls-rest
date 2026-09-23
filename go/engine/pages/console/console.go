@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
 	"tls-rest/go/engine/controllers/subroutine/input"
@@ -47,4 +48,4 @@ var Page = &module.PageAbstract{
 	},
 }
 
-func Init() { Page.Initialize() }
+func init() { app.RegisterPage(Page) }

@@ -3,12 +3,14 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"tls-rest/go/engine/controllers"
 	"tls-rest/go/engine/controllers/accesslog"
 	"tls-rest/go/engine/controllers/db/cache"
+	"tls-rest/go/engine/controllers/db/querystats"
 	"tls-rest/go/engine/controllers/log"
 	"tls-rest/go/engine/controllers/module"
 	"tls-rest/go/engine/controllers/request"
@@ -115,6 +117,10 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		startTime := time.Now()
 
+		// Attached before ManageSession so its queries are recorded too.
+		qsCtx, qs := querystats.NewContext(r.Context())
+		r = r.WithContext(qsCtx)
+
 		// Check or set session cookie
 		ci := ManageSession(w, r)
 		ctx := context.WithValue(r.Context(), SESSION_KEY, ci)
@@ -168,6 +174,22 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 				Module: recModule, Action: recAction, DeniedReason: reason,
 			})
 		}()
+
+		// Admin requests tagged by the frontend (QueryStatsBus.ts) get their query
+		// totals written onto this same response's headers, once the handler is
+		// done — buffering the body is what makes that possible (headers can't be
+		// added after a normal write has already committed them). Registered after
+		// the accesslog defer above so it runs first (LIFO), and rec.status is set
+		// in time for that defer to log it.
+		if ci.IsAdmin && r.Header.Get(querystats.RequestHeader) != "" && !querystats.Excluded(r.URL.Path) {
+			sbuf := newStatsBuffer(w)
+			w = sbuf
+			defer func() {
+				sbuf.ResponseWriter.Header().Set(querystats.CountHeader, strconv.FormatInt(qs.Count(), 10))
+				sbuf.ResponseWriter.Header().Set(querystats.MillisHeader, strconv.FormatFloat(qs.Millis(), 'f', 1, 64))
+				sbuf.release()
+			}()
+		}
 
 		if isAPICall(r) {
 			// Parse every parameter source once — URL query + body (JSON object,

@@ -23,6 +23,7 @@ package tests
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -35,7 +36,8 @@ import (
 	"testing"
 	"time"
 
-	registry "tls-rest/go"
+	app "tls-rest/go/app"
+	_ "tls-rest/go/app/bootstrap"
 	"tls-rest/go/engine/controllers/accesslog"
 	"tls-rest/go/engine/controllers/auth"
 	"tls-rest/go/engine/controllers/db/pgdb"
@@ -58,9 +60,8 @@ var fixtures struct {
 }
 
 func TestMain(m *testing.M) {
-	registry.InitAll()
 	accesslog.Init() // needed by TestAccessLogMatchesActualResponses
-	router = route.GetRouter()
+	router = route.GetRouter(app.RegisterRoutes)
 
 	db, err := pgdb.GetInstance()
 	if err != nil {
@@ -164,19 +165,19 @@ func createSharedPostFixture(db *pgdb.Db, authorID int) (int, error) {
 }
 
 // tokens issues one bearer token per role for this test run, including a
-// guest token via the same anonymous auth.IssueToken(0, "") path.
+// guest token via the same anonymous auth.IssueToken(ctx, 0, "") path.
 func tokens(t *testing.T) map[string]string {
 	t.Helper()
 
-	adminTok, _, err := auth.IssueToken(fixtures.adminID, "rights_test_admin")
+	adminTok, _, err := auth.IssueToken(context.Background(), fixtures.adminID, "rights_test_admin")
 	if err != nil {
 		t.Fatalf("issue admin token: %v", err)
 	}
-	userTok, _, err := auth.IssueToken(fixtures.userID, "rights_test_user")
+	userTok, _, err := auth.IssueToken(context.Background(), fixtures.userID, "rights_test_user")
 	if err != nil {
 		t.Fatalf("issue user token: %v", err)
 	}
-	guestTok, _, err := auth.IssueToken(0, "")
+	guestTok, _, err := auth.IssueToken(context.Background(), 0, "")
 	if err != nil {
 		t.Fatalf("issue guest token: %v", err)
 	}
@@ -290,13 +291,13 @@ func TestAllModules_ListMode(t *testing.T) {
 	roleRights := map[string]auth.ModuleModeRights{}
 	roleIsAdmin := map[string]bool{}
 	for role, uid := range roleUserIDs {
-		roleRights[role] = auth.ResolveModuleModeRights(uid)
+		roleRights[role] = auth.ResolveModuleModeRights(context.Background(), uid)
 		roleIsAdmin[role] = auth.ResolveIsAdmin(uid)
 	}
 
 	modules := auth.ModuleDefaults()
 	if len(modules) == 0 {
-		t.Fatal("auth.ModuleDefaults() returned no modules — registry.InitAll() didn't run?")
+		t.Fatal("auth.ModuleDefaults() returned no modules — did the bootstrap import run?")
 	}
 
 	for modName := range modules {
@@ -447,15 +448,20 @@ func TestPosts_VisibilityIsPrivateByDefault(t *testing.T) {
 
 // --- posts: per-field rights (user_group_rights.fields) ---------------------
 
-// The seed field-restricts group 1 (guest) on "posts" to title+author only
-// (user_group_rights.fields), and leaves group 2 ("users") unrestricted —
-// exercising accessfilter.go's fieldVisibleInSchema/fieldReadableInData, a
-// layer independent of both the coarse list/view/create/edit/delete modes
-// and posts' own row-level sharing ACL. The fixture post
-// ("rights_test: shared with guests and users") is shared with both groups
-// specifically so this test can compare what the SAME record looks like to
-// each — a field difference here can only come from the fields grant, not
-// from one role failing to see the row at all.
+// Group 1 (guest) is field-restricted on "posts" (user_group_rights.fields);
+// group 2 ("users") is left unrestricted — exercising accessfilter.go's
+// fieldVisibleInSchema/fieldReadableInData, a layer independent of both the
+// coarse list/view/create/edit/delete modes and posts' own row-level sharing
+// ACL. The fixture post ("rights_test: shared with guests and users") is
+// shared with both groups specifically so this test can compare what the
+// SAME record looks like to each — a field difference here can only come
+// from the fields grant, not from one role failing to see the row at all.
+//
+// The guest case doesn't hardcode which fields are granted — it reads the
+// live grant via auth.ResolveModuleFieldRights (the same resolver the server
+// itself uses) and asserts the response matches it exactly, so the test
+// tracks whatever this database is actually configured to allow instead of
+// drifting out of sync with it.
 func TestPosts_FieldRights(t *testing.T) {
 	toks := tokens(t)
 	postID := fixtures.sharedPostID
@@ -474,14 +480,20 @@ func TestPosts_FieldRights(t *testing.T) {
 		return data
 	}
 
-	t.Run("guest sees only the field-granted columns", func(t *testing.T) {
+	t.Run("guest sees exactly the field-granted columns", func(t *testing.T) {
 		data := fetchData(t, "guest")
 		logPostsFieldRightsDiagnostics(t, "guest", 0, data)
-		if _, ok := data["title"]; !ok {
-			t.Error(`expected "title" to be visible to guest (granted in user_group_rights.fields)`)
+
+		rights := auth.ResolveModuleFieldRights(0)["posts"]
+		if len(rights) == 0 {
+			t.Fatal("guest's posts field rights must be restricted (non-empty in user_group_rights.fields) for this test to exercise anything")
 		}
-		if _, ok := data["content"]; ok {
-			t.Error(`expected "content" to be hidden from guest (not granted in user_group_rights.fields)`)
+		for field, mask := range rights {
+			_, visible := data[field]
+			wantVisible := mask&auth.MODE_VIEW != 0
+			if visible != wantVisible {
+				t.Errorf("field %q: visible=%v, want %v (per user_group_rights.fields grant, mask=%d)", field, visible, wantVisible, mask)
+			}
 		}
 	})
 
@@ -536,6 +548,151 @@ func sortedKeys(m map[string]interface{}) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// --- posts: filter rights (MODE_FILTERS + user_group_rights/user_rights.filter_fields) ---
+
+// TestPosts_Filters exercises the filters-rights layer end to end: MODE_FILTERS
+// is no longer part of a module's default permission (defaultModesFor), so a
+// role with only the "users" group's baseline list/view rights must see and be
+// able to apply no filters at all; granting MODE_FILTERS unlocks every declared
+// filter (bar admin-only ones); and a filter_fields grant narrows that down to
+// a named subset — checked both in the Filters metadata AND against the actual
+// query results, since a hidden filter that still applies server-side would be
+// a worse bug than a merely-visible one.
+func TestPosts_Filters(t *testing.T) {
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		t.Fatalf("db unavailable: %v", err)
+	}
+
+	tempID, err := createFixtureUser(db, "filters", []int{auth.UsersGroupID})
+	if err != nil {
+		t.Fatalf("creating temp user: %v", err)
+	}
+	t.Cleanup(func() { _, _ = db.DeleteRow("users", "id", tempID) })
+
+	token := func(t *testing.T) string {
+		t.Helper()
+		tok, _, err := auth.IssueToken(context.Background(), tempID, "rights_test_filters")
+		if err != nil {
+			t.Fatalf("issue token: %v", err)
+		}
+		return tok
+	}
+
+	listPosts := func(t *testing.T, tok, query string) map[string]interface{} {
+		t.Helper()
+		resp := do(t, http.MethodGet, "/posts"+query, tok, nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /posts%s: got %d, want 200", query, resp.StatusCode)
+		}
+		return decode(t, resp)
+	}
+
+	filterNames := func(out map[string]interface{}) map[string]bool {
+		names := map[string]bool{}
+		arr, _ := out["Filters"].([]interface{})
+		for _, f := range arr {
+			if m, ok := f.(map[string]interface{}); ok {
+				if n, ok := m["name"].(string); ok {
+					names[n] = true
+				}
+			}
+		}
+		return names
+	}
+
+	// Guest (group 1) is this suite's canonical zero-filters baseline: its live
+	// grant is modes=3 (list|view only, confirmed via the diagnostics below),
+	// unlike "users" which — as this test itself discovered — now carries a
+	// real, admin-configured Filters grant. Asserting against guest keeps this
+	// case meaningful instead of chasing whatever "users" happens to have.
+	t.Run("guest has no MODE_FILTERS: no filters listed, and a filter param has no effect", func(t *testing.T) {
+		guestTok := tokens(t)["guest"]
+		mask := auth.ResolveModuleModeRights(context.Background(), 0)["posts"]
+		if mask&auth.MODE_FILTERS != 0 {
+			t.Fatalf("test assumption broken: guest's live posts modes (%d) now include MODE_FILTERS", mask)
+		}
+
+		out := listPosts(t, guestTok, "")
+		if names := filterNames(out); len(names) != 0 {
+			t.Errorf("expected no filters listed without MODE_FILTERS, got %v", names)
+		}
+
+		unfiltered := listPosts(t, guestTok, "")
+		filtered := listPosts(t, guestTok, "?title=no-such-post-zzz")
+		if fmt.Sprint(unfiltered["Total"]) != fmt.Sprint(filtered["Total"]) {
+			t.Errorf("expected title= to be ignored server-side without MODE_FILTERS; Total %v vs %v",
+				unfiltered["Total"], filtered["Total"])
+		}
+	})
+
+	t.Run("MODE_FILTERS granted, filter_fields unrestricted: every non-admin-only filter listed and usable", func(t *testing.T) {
+		rightsID, err := db.InsertRow("user_rights", map[string]interface{}{
+			"user_id": tempID,
+			"module":  "posts",
+			"modes":   auth.MODE_LIST | auth.MODE_VIEW | auth.MODE_FILTERS,
+		})
+		if err != nil {
+			t.Fatalf("inserting user_rights: %v", err)
+		}
+		t.Cleanup(func() { _, _ = db.DeleteRow("user_rights", "id", int(rightsID)) })
+
+		tok := token(t)
+		names := filterNames(listPosts(t, tok, ""))
+		if !names["title"] || !names["created_from"] {
+			t.Errorf("expected \"title\" and \"created_from\" filters listed once MODE_FILTERS is granted, got %v", names)
+		}
+		if names["user"] || names["user_group"] {
+			t.Errorf("expected admin-only filters to stay hidden from a non-admin regardless of MODE_FILTERS, got %v", names)
+		}
+
+		unfiltered := listPosts(t, tok, "")
+		match := listPosts(t, tok, "?title=shared")
+		noMatch := listPosts(t, tok, "?title=no-such-post-zzz")
+		if fmt.Sprint(match["Total"]) == fmt.Sprint(noMatch["Total"]) {
+			t.Errorf("expected title= to actually filter results once granted; got the same Total (%v) for a match and a non-match", match["Total"])
+		}
+		if fmt.Sprint(unfiltered["Total"]) == fmt.Sprint(noMatch["Total"]) {
+			t.Errorf("fixture setup: expected the no-such-post title to narrow results below the unfiltered Total (%v)", unfiltered["Total"])
+		}
+	})
+
+	t.Run("MODE_FILTERS granted, filter_fields restricts to title only", func(t *testing.T) {
+		rightsID, err := db.InsertRow("user_rights", map[string]interface{}{
+			"user_id":       tempID,
+			"module":        "posts",
+			"modes":         auth.MODE_LIST | auth.MODE_VIEW | auth.MODE_FILTERS,
+			"filter_fields": []string{"title"},
+		})
+		if err != nil {
+			t.Fatalf("inserting user_rights: %v", err)
+		}
+		t.Cleanup(func() { _, _ = db.DeleteRow("user_rights", "id", int(rightsID)) })
+
+		tok := token(t)
+		names := filterNames(listPosts(t, tok, ""))
+		if !names["title"] {
+			t.Errorf(`expected "title" filter listed (explicitly granted via filter_fields), got %v`, names)
+		}
+		if names["created_from"] {
+			t.Errorf(`expected "created_from" filter hidden (not in filter_fields grant), got %v`, names)
+		}
+
+		unfiltered := listPosts(t, tok, "")
+		byCreatedFrom := listPosts(t, tok, "?created_from=2099-01-01")
+		if fmt.Sprint(unfiltered["Total"]) != fmt.Sprint(byCreatedFrom["Total"]) {
+			t.Errorf("expected created_from= to be ignored server-side (not in filter_fields grant); Total %v vs %v",
+				unfiltered["Total"], byCreatedFrom["Total"])
+		}
+
+		match := listPosts(t, tok, "?title=shared")
+		noMatch := listPosts(t, tok, "?title=no-such-post-zzz")
+		if fmt.Sprint(match["Total"]) == fmt.Sprint(noMatch["Total"]) {
+			t.Errorf("expected the granted title= filter to still work; got the same Total (%v) for a match and a non-match", match["Total"])
+		}
+	})
 }
 
 // --- custom bolt-on endpoints: session required, not module rights ---------
@@ -789,7 +946,7 @@ func TestFieldRights_RandomPerUser(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = db.DeleteRow("users", "id", tempID) })
 
-	candidates := candidateFieldRightsModules(auth.ResolveModuleModeRights(tempID))
+	candidates := candidateFieldRightsModules(auth.ResolveModuleModeRights(context.Background(), tempID))
 	if len(candidates) == 0 {
 		t.Fatal("no candidate module has >=2 restrictable fields with VIEW granted to group 2")
 	}
@@ -828,7 +985,7 @@ func TestFieldRights_RandomPerUser(t *testing.T) {
 			}
 			t.Cleanup(func() { _, _ = db.DeleteRow("user_rights", "id", int(rightsID)) })
 
-			tok, _, err := auth.IssueToken(tempID, "rights_test_fieldrights")
+			tok, _, err := auth.IssueToken(context.Background(), tempID, "rights_test_fieldrights")
 			if err != nil {
 				t.Fatalf("issue token: %v", err)
 			}

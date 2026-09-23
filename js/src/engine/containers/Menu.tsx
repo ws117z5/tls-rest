@@ -1,24 +1,32 @@
 import React, { Component, useEffect, useRef, useState } from "react";
 import { Link, NavLink as RouterNavLink } from "react-router";
+import axios from "axios";
 import Config, { MenuItem } from "@engine/Config";
 import Auth from "@controllers/auth";
 import { t, getLocale, setLocale, locales, subscribe } from "@engine/i18n";
 
+const UNREAD_POLL_MS = 30000;
+
 const iconStyle: React.CSSProperties = { height: "1.2em", verticalAlign: "middle", marginRight: 4 };
 
-// A module/page's icon is one of:
-//   a bare name ("home", "user-rights", …) — a cell of the /img/icons_bw.png
-//     sprite sheet, picked out by the matching `.icon-<name>` class in
-//     menu.css (that class sets only mask-position; size/masking is shared
-//     via .menu-icon-sprite, applied alongside it below)
-//   a path/URL ("/image/<uuid>", or similar) — an arbitrary image
-//   "" (falsy) — no icon
+// Submenu dropdown-header icons, keyed by raw submenu name (not translated).
+const SUBMENU_ICONS: Record<string, string> = {
+  engine: "engine",
+  games: "games",
+  tools: "tools",
+  External: "external",
+  Legal: "legal",
+};
+
+// An icon is a sprite name, an image URL/path, or "" (none) — see menu.css.
 const isImageIcon = (icon: string) => /^(?:https?:)?\//.test(icon);
 
-// Render an item's label: "icon name", or just name, or just icon.
+// Renders an item's label: icon (or an equal-width invisible spacer, so
+// icon-less items still line their text up with sibling items) + title.
 function label(item: MenuItem): React.ReactNode {
-  if (!item.icon) return t(item.title);
-  const icon = isImageIcon(item.icon) ? (
+  const icon = !item.icon ? (
+    <span className="menu-icon-spacer" aria-hidden="true" />
+  ) : isImageIcon(item.icon) ? (
     <img src={item.icon} alt="" className="menu-icon" style={iconStyle} />
   ) : (
     <span className={`menu-icon-sprite icon-${item.icon}`} aria-hidden="true" />
@@ -32,6 +40,7 @@ function label(item: MenuItem): React.ReactNode {
 // dropdown markup (styled by base.css).
 interface NavDropdownProps {
   title: string;
+  icon?: string;
   items: MenuItem[];
   onNavigate: () => void;
   // Mobile only: the dropdown-menu below is CSS-hidden under the mobile
@@ -39,7 +48,7 @@ interface NavDropdownProps {
   // this opens by name — see mobileSubmenu in Menu's state.
   onExpand: () => void;
 }
-const NavDropdown: React.FC<NavDropdownProps> = ({ title, items, onNavigate, onExpand }) => {
+const NavDropdown: React.FC<NavDropdownProps> = ({ title, icon, items, onNavigate, onExpand }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLLIElement>(null);
 
@@ -63,6 +72,7 @@ const NavDropdown: React.FC<NavDropdownProps> = ({ title, items, onNavigate, onE
           onExpand();
         }}
       >
+        {icon && <span className={`menu-icon-sprite icon-${icon}`} aria-hidden="true" />}
         {title}
       </a>
       <div className={`dropdown-menu${open ? " show" : ""}`}>
@@ -90,24 +100,38 @@ interface MenuState {
   // Mobile drawer only: the submenu title whose flyout panel is open, or null
   // for the main drawer view. Unused above the mobile breakpoint.
   mobileSubmenu: string | null;
+  unreadMessages: number;
 }
 
 // The menu is server-driven: Config.getHead() are the top-level entries and
 // Config.getSubmenus() the dropdown groups, both already privilege-filtered.
 class Menu extends Component<{}, MenuState> {
-  state: MenuState = { isOpen: false, langOpen: false, mobileSubmenu: null };
+  state: MenuState = { isOpen: false, langOpen: false, mobileSubmenu: null, unreadMessages: 0 };
   private unsubscribeI18n?: () => void;
+  private unreadTimer?: ReturnType<typeof setInterval>;
 
   // Class component, so useT()'s hook isn't available: subscribe manually and
   // force a re-render whenever the locale or a translation resolves.
   componentDidMount() {
     this.unsubscribeI18n = subscribe(() => this.forceUpdate());
     document.addEventListener("click", this.handleDocClick);
+    if (Auth.isAuthenticated()) {
+      this.pollUnreadMessages();
+      this.unreadTimer = setInterval(this.pollUnreadMessages, UNREAD_POLL_MS);
+    }
   }
   componentWillUnmount() {
     this.unsubscribeI18n?.();
     document.removeEventListener("click", this.handleDocClick);
+    if (this.unreadTimer != null) clearInterval(this.unreadTimer);
   }
+
+  pollUnreadMessages = () => {
+    axios
+      .get("/api/messages/unread-count")
+      .then((res) => this.setState({ unreadMessages: res.data?.count || 0 }))
+      .catch(() => {});
+  };
 
   // Close the language switcher on any outside click (same pattern as
   // FieldsetList's column-chooser menu).
@@ -127,11 +151,17 @@ class Menu extends Component<{}, MenuState> {
     const submenus = Config.getSubmenus();
     const authed = Auth.isAuthenticated();
     const avatar = Auth.getAvatar();
-    // Profile and login/logout get their own slots on the right, after the
-    // language switcher, so they're pulled out of the left-aligned items.
+    // Profile, login/logout, and messages get their own slots on the right,
+    // after the language switcher, so they're pulled out of the left-aligned items.
     const profileItem = head.find((i) => i.key === "profile");
     const loginItem = head.find((i) => i.key === "login");
-    const leftHead = head.filter((i) => i.key !== "profile" && i.key !== "login");
+    const messagesItem = head.find((i) => i.key === "messages");
+    // A module needs MODE_LIST to get a menu link — routes for its other
+    // granted modes (e.g. view-only) still register in app.tsx regardless.
+    const showsInMenu = (i: MenuItem) => i.kind !== "module" || i.modes.indexOf("list") !== -1;
+    const leftHead = head
+      .filter((i) => i.key !== "profile" && i.key !== "login" && i.key !== "messages")
+      .filter(showsInMenu);
 
     const renderHeadItem = (item: MenuItem, idx: number): React.ReactNode => {
       // The login item becomes a Logout button for authenticated users.
@@ -205,12 +235,13 @@ class Menu extends Component<{}, MenuState> {
               {leftHead.map(renderHeadItem)}
 
               {Object.keys(submenus).map((title) => {
-                const items = submenus[title];
-                if (!items || items.length === 0) return null;
+                const items = (submenus[title] || []).filter(showsInMenu);
+                if (items.length === 0) return null;
                 return (
                   <NavDropdown
                     key={"s" + title}
                     title={t(title)}
+                    icon={SUBMENU_ICONS[title]}
                     items={items}
                     onNavigate={this.close}
                     onExpand={() => this.setState({ mobileSubmenu: title })}
@@ -254,6 +285,30 @@ class Menu extends Component<{}, MenuState> {
                   </div>
                 </div>
               </li>
+
+              {authed && messagesItem && (
+                <li className="nav-item">
+                  <RouterNavLink
+                    to={messagesItem.path}
+                    onClick={this.close}
+                    title={t("Messages")}
+                    aria-label={t("Messages")}
+                    className={({ isActive }: { isActive: boolean }) => `nav-link${isActive ? " active" : ""}`}
+                  >
+                    <span className="menu-message-badge-wrap">
+                      <span
+                        className={`menu-icon-sprite ${this.state.unreadMessages > 0 ? "icon-messages-new" : "icon-messages"}`}
+                        aria-hidden="true"
+                      />
+                      {this.state.unreadMessages > 0 && (
+                        <span className="menu-message-badge">
+                          {this.state.unreadMessages > 99 ? "99+" : this.state.unreadMessages}
+                        </span>
+                      )}
+                    </span>
+                  </RouterNavLink>
+                </li>
+              )}
 
               {authed && profileItem && (
                 <li className="nav-item">
@@ -300,10 +355,15 @@ class Menu extends Component<{}, MenuState> {
             <span className="menu-icon-sprite icon-back" aria-hidden="true" />
             {t("Back")}
           </button>
-          <div className="mobile-submenu-title">{this.state.mobileSubmenu && t(this.state.mobileSubmenu)}</div>
+          <div className="mobile-submenu-title">
+            {this.state.mobileSubmenu && SUBMENU_ICONS[this.state.mobileSubmenu] && (
+              <span className={`menu-icon-sprite icon-${SUBMENU_ICONS[this.state.mobileSubmenu]}`} aria-hidden="true" />
+            )}
+            {this.state.mobileSubmenu && t(this.state.mobileSubmenu)}
+          </div>
           <ul className="mobile-submenu-list">
             {this.state.mobileSubmenu &&
-              submenus[this.state.mobileSubmenu]?.map((item, key) => (
+              (submenus[this.state.mobileSubmenu] || []).filter(showsInMenu).map((item, key) => (
                 <li key={key}>
                   <RouterNavLink to={item.path} className="nav-link" onClick={this.close}>
                     {label(item)}

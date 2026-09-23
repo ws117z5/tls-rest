@@ -9,10 +9,8 @@
 //	POST     /api/images/process     upload + preprocess + store  (CustomRoute)
 //	GET      /image/{guid}.{ext}     serve bytes, access-controlled (CustomRoute)
 //
-// Access: serving asks the engine (module.CanViewRecord) whether the request may
-// read the specific image record — the same row-level rule every module uses. An
-// image's access is defaulted at upload from the record it's attached to
-// (module + record_id) and overridable with an explicit level.
+// Access: serving (canViewImage) follows the owning module.field's fieldset
+// rights when set at upload, else the images table's own row access.
 //
 // The bytes live in a `data BYTEA` column that the fieldset engine does not
 // create (it has no binary field type), so create/migrate the table explicitly:
@@ -27,6 +25,7 @@
 package images
 
 import (
+	"context"
 	"io"
 	"mime"
 	"net/http"
@@ -35,6 +34,7 @@ import (
 	"strings"
 	"time"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	. "tls-rest/go/engine/controllers/field"
@@ -54,6 +54,9 @@ type cachedImage struct {
 	Id       int64
 	Data     []byte
 	MimeType string
+	Module   string // owning module (e.g. "users", "posts"), "" for a standalone upload
+	Field    string // owning field name on Module (e.g. "images")
+	RecordID int64  // owning record's id on Module
 }
 
 const (
@@ -73,7 +76,7 @@ func loadImage(ref string) (cachedImage, error) {
 		return cachedImage{}, err
 	}
 
-	const cols = "id, data, mime_type"
+	const cols = "id, data, mime_type, module, field, record_id"
 	var row map[string]interface{}
 	if isAllDigits(ref) {
 		id, _ := strconv.ParseInt(ref, 10, 64)
@@ -92,6 +95,9 @@ func loadImage(ref string) (cachedImage, error) {
 		Id:       functions.Coerce[int64](row["id"]),
 		Data:     functions.Coerce[[]byte](row["data"]),
 		MimeType: functions.Coerce[string](row["mime_type"]),
+		Module:   functions.Coerce[string](row["module"]),
+		Field:    functions.Coerce[string](row["field"]),
+		RecordID: functions.Coerce[int64](row["record_id"]),
 	}, nil
 }
 
@@ -136,7 +142,7 @@ func Process(w http.ResponseWriter, r *http.Request) {
 			access = a
 		}
 	} else if moduleName != "" && recordID != 0 {
-		access = recordAccess(moduleName, recordID)
+		access = recordAccess(r.Context(), moduleName, recordID)
 	}
 
 	resized := false
@@ -152,7 +158,7 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		uploaderID = s.UserID
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
@@ -244,7 +250,7 @@ func ServeByRef(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ok, err := module.CanViewRecord(r, "images", ci.Id); err != nil || !ok {
+	if !canViewImage(r, ci) {
 		http.NotFound(w, r) // 404, not 403: don't reveal restricted images exist
 		return
 	}
@@ -259,6 +265,20 @@ func ServeByRef(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", ct)
 	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
 	w.Write(ci.Data)
+}
+
+// canViewImage: owned images follow the owning field's rights; standalone
+// ones fall back to the images row's own access.
+func canViewImage(r *http.Request, ci *cachedImage) bool {
+	if ci.Module != "" && ci.RecordID != 0 && isValidIdent(ci.Module) {
+		ok, err := module.CanViewRecord(r, ci.Module, ci.RecordID)
+		if err != nil || !ok {
+			return false
+		}
+		return module.CanViewField(r, ci.Module, ci.Field)
+	}
+	ok, err := module.CanViewRecord(r, "images", ci.Id)
+	return err == nil && ok
 }
 
 // applyFieldResize looks up moduleName's fieldName field and, if it declares
@@ -287,11 +307,11 @@ func applyFieldResize(moduleName, fieldName string, raw []byte, mimeType string)
 }
 
 // recordAccess returns the access level of an owning record, or 0 if unknown.
-func recordAccess(moduleName string, recordID int64) int {
+func recordAccess(ctx context.Context, moduleName string, recordID int64) int {
 	if !isValidIdent(moduleName) {
 		return 0
 	}
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return 0
 	}
@@ -407,12 +427,13 @@ func (m *Images) filters() *Filedset {
 func NewImages() *Images {
 	m := &Images{
 		ModuleAbstract: &ModuleAbstract[interface{}]{
-			ID:                   "images",
-			Name:                 "Images",
-			Icon:                 "images",
-			Submenu:              "engine",
-			Rights:               make(map[int]int),
-			DefaultPermission:    PERMISSION_READ,
+			ID:                "images",
+			Name:              "Images",
+			Icon:              "images",
+			Submenu:           "engine",
+			Rights:            make(map[int]int),
+			DefaultPermission: PERMISSION_DENY, // no floor; groups need an explicit grant
+
 			DefaultPermissionSet: true,
 			OmitSystemFields:     []string{"updated"},
 			// A non-admin browsing the images module sees only images they
@@ -443,9 +464,9 @@ func NewImages() *Images {
 // (Process) can run the same BeforeFieldset/AfterFieldset hooks as standard CRUD.
 var Module *Images
 
-func Init() {
+func init() {
 	Module = NewImages()
-	Module.Initialize("images")
+	app.RegisterModule(Module, "images")
 }
 
 // fillMimeType is an AfterFieldset hook: guarantees a non-empty mime_type by

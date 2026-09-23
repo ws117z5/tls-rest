@@ -1,6 +1,7 @@
 package papers
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -59,8 +60,8 @@ func playerKey(r *http.Request) string {
 // roomInfo reads the turn parameters from the room row. roomHash is the public
 // identifier (see roomhash.go), stored on the row itself, so this is a direct
 // indexed lookup — no scanning or re-hashing.
-func roomInfo(roomHash string) (createdBy int64, timerSecs int, wrongLimit int, ok bool) {
-	db, err := pgdb.GetInstance()
+func roomInfo(ctx context.Context, roomHash string) (createdBy int64, timerSecs int, wrongLimit int, ok bool) {
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return 0, 60, 3, false
 	}
@@ -145,8 +146,8 @@ type joinBody struct {
 
 // roomPassword reads a room's stored password (empty = unprotected) by its
 // public hash.
-func roomPassword(roomHash string) (string, bool) {
-	db, err := pgdb.GetInstance()
+func roomPassword(ctx context.Context, roomHash string) (string, bool) {
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return "", false
 	}
@@ -178,7 +179,7 @@ func JoinGame(w http.ResponseWriter, r *http.Request) {
 	}
 	_, alreadyIn := st.Players[key]
 	if !alreadyIn {
-		if pw, ok := roomPassword(roomUUID); ok && pw != "" && body.Password != pw {
+		if pw, ok := roomPassword(r.Context(), roomUUID); ok && pw != "" && body.Password != pw {
 			functions.JSONError(w, http.StatusForbidden, "invalid room password")
 			return
 		}
@@ -194,8 +195,8 @@ func JoinGame(w http.ResponseWriter, r *http.Request) {
 	SetRoomState(st)
 	hub.notify(roomUUID)
 
-	cb, _, _, _ := roomInfo(roomUUID)
-	writeState(w, roomUUID, key, isRoomCreator(r, cb))
+	cb, _, _, _ := roomInfo(r.Context(), roomUUID)
+	writeState(r.Context(), w, roomUUID, key, isRoomCreator(r, cb))
 }
 
 // GameState returns the caller's view of the room: everyone else's assigned word
@@ -203,8 +204,8 @@ func JoinGame(w http.ResponseWriter, r *http.Request) {
 // GET /papers/{roomId}/game/state
 func GameState(w http.ResponseWriter, r *http.Request) {
 	roomUUID := mux.Vars(r)["roomId"]
-	cb, _, _, _ := roomInfo(roomUUID)
-	writeState(w, roomUUID, playerKey(r), isRoomCreator(r, cb))
+	cb, _, _, _ := roomInfo(r.Context(), roomUUID)
+	writeState(r.Context(), w, roomUUID, playerKey(r), isRoomCreator(r, cb))
 }
 
 type turnBody struct {
@@ -214,7 +215,7 @@ type turnBody struct {
 // TurnAction runs a creator-only turn command. POST /papers/{roomId}/game/turn
 func TurnAction(w http.ResponseWriter, r *http.Request) {
 	roomUUID := mux.Vars(r)["roomId"]
-	createdBy, timerSecs, wrongLimit, ok := roomInfo(roomUUID)
+	createdBy, timerSecs, wrongLimit, ok := roomInfo(r.Context(), roomUUID)
 	if !ok {
 		functions.JSONError(w, http.StatusNotFound, "room not found")
 		return
@@ -297,7 +298,7 @@ func TurnAction(w http.ResponseWriter, r *http.Request) {
 
 	case "end":
 		// Flag the room for deletion and drop the live state.
-		if db, err := pgdb.GetInstance(); err == nil {
+		if db, err := pgdb.GetInstanceCtx(r.Context()); err == nil {
 			_, _ = db.Exec(`UPDATE papers SET deleted = true WHERE hash = $1`, roomUUID)
 		}
 		RoomStateCache.Delete(roomUUID)
@@ -311,12 +312,12 @@ func TurnAction(w http.ResponseWriter, r *http.Request) {
 
 	SetRoomState(st)
 	hub.notify(roomUUID)
-	writeState(w, roomUUID, playerKey(r), true)
+	writeState(r.Context(), w, roomUUID, playerKey(r), true)
 }
 
 // writeState returns the room state as the given caller should see it.
-func writeState(w http.ResponseWriter, roomUUID, selfKey string, isCreator bool) {
-	createdBy, timerSecs, wrongLimit, _ := roomInfo(roomUUID)
+func writeState(ctx context.Context, w http.ResponseWriter, roomUUID, selfKey string, isCreator bool) {
+	createdBy, timerSecs, wrongLimit, _ := roomInfo(ctx, roomUUID)
 	st, _ := GetRoomState(roomUUID)
 	expireTurn(&st)
 	SetRoomState(st)

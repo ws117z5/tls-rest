@@ -19,6 +19,7 @@ export interface BackendModule {
     description: string; // human label
     endpoint: string;    // e.g. "/posts"
     modes: string[];     // subset of ["list","view","create","edit","delete"]
+    specialRights?: string[]; // granted module.SpecialRight ids (see modulerights.go)
     icon?: string;       // menu icon URL (e.g. /image/<uuid>)
     // Column records are addressed by; absent/"" means "id". A module keyed on
     // uuid (e.g. papers) must be linked to by uuid, not a row's numeric id.
@@ -122,6 +123,13 @@ export default class Auth {
     /** Whether the current user may perform a given mode on a module. */
     static canMode(name: string, mode: string): boolean {
         return Auth.moduleModes(name).indexOf(mode) !== -1;
+    }
+
+    /** Whether the user was granted a module's named special right (admins: always). */
+    static hasSpecialRight(name: string, rightId: string): boolean {
+        if (Auth.isAdmin()) return true;
+        const rights = Auth.getModule(name)?.specialRights;
+        return !!rights && rights.indexOf(rightId) !== -1;
     }
 
     // Identity comes from the server menu response (see /api/modules "user").

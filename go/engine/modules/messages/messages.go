@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
@@ -43,19 +44,16 @@ var Module = &module.ModuleAbstract[interface{}]{
 	DefaultPermission:    module.PERMISSION_DENY,
 	DefaultPermissionSet: true,
 	Rights:               make(map[int]int),
+	CustomRoutes: []module.CustomRoute{
+		{Path: "/api/messages/inbox", Methods: []string{"GET"}, Handler: handleInbox, Absolute: true},
+		{Path: "/api/messages/unread-count", Methods: []string{"GET"}, Handler: handleUnreadCount, Absolute: true},
+		{Path: "/api/messages/thread/{id}", Methods: []string{"GET"}, Handler: handleThread, Absolute: true},
+		{Path: "/api/messages/thread/{id}", Methods: []string{"POST"}, Handler: handleSend, Absolute: true},
+	},
 }
 
-// Init registers the standalone messages module and the messaging REST API.
-// Call from the registry.
-func Init() {
-	Module.Initialize("messages")
-
-	module.RegisterEndpointPrefix("/api/messages")
-	module.AddRouteRegistrar(func(r *mux.Router) {
-		r.HandleFunc("/api/messages/inbox", handleInbox).Methods("GET")
-		r.HandleFunc("/api/messages/thread/{id}", handleThread).Methods("GET")
-		r.HandleFunc("/api/messages/thread/{id}", handleSend).Methods("POST")
-	})
+func init() {
+	app.RegisterModule(Module, "messages")
 }
 
 type conversation struct {
@@ -93,7 +91,7 @@ func handleInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return
@@ -136,6 +134,29 @@ func handleInbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"conversations": out})
 }
 
+// handleUnreadCount returns the caller's total unread count, for the menu badge.
+func handleUnreadCount(w http.ResponseWriter, r *http.Request) {
+	s := requireSession(w, r)
+	if s == nil {
+		return
+	}
+
+	db, err := pgdb.GetInstanceCtx(r.Context())
+	if err != nil {
+		http.Error(w, "db unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	row, err := db.GetOne(
+		`SELECT COUNT(*) AS n FROM messages WHERE recipient_id = $1 AND read_at IS NULL`, s.UserID,
+	)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"count": functions.Int(row["n"])})
+}
+
 // handleThread returns every message between the caller and {id}, oldest
 // first, and marks the caller's incoming messages in it as read.
 func handleThread(w http.ResponseWriter, r *http.Request) {
@@ -150,7 +171,7 @@ func handleThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return
@@ -215,7 +236,7 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "db unavailable", http.StatusInternalServerError)
 		return

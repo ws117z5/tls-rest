@@ -10,7 +10,8 @@ import (
 	"sync"
 	"time"
 
-	"tls-rest/go/constants"
+	"tls-rest/go/app/constants"
+	"tls-rest/go/engine/controllers/db/querystats"
 	"tls-rest/go/engine/controllers/log"
 
 	"github.com/jackc/pgx/v5"
@@ -28,6 +29,49 @@ var queriesTotal = promauto.NewCounter(prometheus.CounterOpts{
 	Name: "db_queries_total",
 	Help: "Total Postgres queries executed, across all *Db instances.",
 })
+
+// Pool health, sampled on every /metrics scrape (GaugeFunc, no polling
+// goroutine) — makes exhaustion of the tuned pool_max_conns above visible
+// before it stalls requests, instead of only after.
+var (
+	_ = promauto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "db_pool_acquired_conns",
+		Help: "Postgres pool connections currently checked out.",
+	}, poolGauge(func(s *pgxpool.Stat) float64 { return float64(s.AcquiredConns()) }))
+
+	_ = promauto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "db_pool_idle_conns",
+		Help: "Postgres pool connections currently idle.",
+	}, poolGauge(func(s *pgxpool.Stat) float64 { return float64(s.IdleConns()) }))
+
+	_ = promauto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "db_pool_total_conns",
+		Help: "Postgres pool connections currently open (acquired + idle + constructing).",
+	}, poolGauge(func(s *pgxpool.Stat) float64 { return float64(s.TotalConns()) }))
+
+	_ = promauto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "db_pool_max_conns",
+		Help: "Postgres pool's configured maximum connections (PG_POOL_MAX_CONNS).",
+	}, poolGauge(func(s *pgxpool.Stat) float64 { return float64(s.MaxConns()) }))
+
+	_ = promauto.NewGaugeFunc(prometheus.GaugeOpts{
+		Name: "db_pool_empty_acquire_total",
+		Help: "Cumulative pool acquires that had to wait because no connection was free.",
+	}, poolGauge(func(s *pgxpool.Stat) float64 { return float64(s.EmptyAcquireCount()) }))
+)
+
+// poolGauge adapts a *pgxpool.Stat reader into a GaugeFunc, reporting 0
+// instead of calling it when the pool doesn't exist yet or failed to
+// initialize (pgxpool.Stat's zero value isn't safe to call methods on).
+func poolGauge(read func(*pgxpool.Stat) float64) func() float64 {
+	return func() float64 {
+		pool, err := getPool()
+		if err != nil || pool == nil {
+			return 0
+		}
+		return read(pool.Stat())
+	}
+}
 
 // This package wraps pgx v5 (github.com/jackc/pgx/v5). pgx speaks PostgreSQL's
 // native protocol and uses $1/$2 placeholders directly, so raw SQL written with
@@ -69,10 +113,15 @@ func dsn() string {
 			host = addr
 		}
 	}
+	// pool_max_conns/pool_min_conns are pgxpool-specific DSN keys; left unset,
+	// pgxpool defaults max to max(4, NumCPU()), which is untuned for this
+	// single-box deployment and invisible without the db_pool_* gauges below.
 	return fmt.Sprintf(
-		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s pool_max_conns=%s pool_min_conns=%s",
 		host, port, constants.PDb.User, constants.PDb.Password, constants.PDb.Database,
 		constants.Env("PG_SSLMODE", "disable"),
+		constants.Env("PG_POOL_MAX_CONNS", "20"),
+		constants.Env("PG_POOL_MIN_CONNS", "2"),
 	)
 }
 
@@ -83,13 +132,22 @@ func getPool() (*pgxpool.Pool, error) {
 	return sharedPool, poolErr
 }
 
-// GetInstance returns a *Db backed by the shared pgx pool.
+// GetInstance returns a *Db backed by the shared pgx pool, untracked by
+// querystats (background/startup code with no request behind it). Prefer
+// GetInstanceCtx wherever a request context is available.
 func GetInstance() (*Db, error) {
+	return GetInstanceCtx(context.Background())
+}
+
+// GetInstanceCtx is GetInstance, but ties the returned *Db to ctx so its
+// queries are recorded against ctx's querystats.Stats when it carries one
+// (see querystats.NewContext, attached per request by the auth middleware).
+func GetInstanceCtx(ctx context.Context) (*Db, error) {
 	pool, err := getPool()
 	if err != nil {
 		return nil, err
 	}
-	return &Db{pool: pool}, nil
+	return &Db{pool: pool, ctx: ctx}, nil
 }
 
 type DefaultDb struct {
@@ -99,8 +157,18 @@ type DefaultDb struct {
 	Updated string `db:"updated"`
 }
 
+// querier is the common subset of *pgxpool.Pool and pgx.Tx that Db's own
+// methods use, so the same *Db type runs unmodified against the shared pool
+// or inside a transaction (see WithTransaction).
+type querier interface {
+	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+}
+
 type Db struct {
-	pool         *pgxpool.Pool
+	pool         querier
+	ctx          context.Context
 	queriesCount int
 	queriesTime  float64
 
@@ -114,20 +182,63 @@ func NewDb(connString string) (*Db, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Db{pool: pool}, nil
+	return &Db{pool: pool, ctx: context.Background()}, nil
 }
 
 func (db *Db) track(start time.Time) {
+	d := time.Since(start)
+	ctx := db.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	querystats.Track(ctx, d)
 	db.queriesCount++
-	db.queriesTime += time.Since(start).Seconds()
+	db.queriesTime += d.Seconds()
 	queriesTotal.Inc()
 }
 
 // Close releases the shared pool. Note the pool is shared across all *Db
-// wrappers; closing it affects every caller.
+// wrappers; closing it affects every caller. A no-op on a transaction-scoped
+// *Db (from WithTransaction) — commit/rollback ends that, not Close.
 func (db *Db) Close() error {
-	db.pool.Close()
+	if p, ok := db.pool.(*pgxpool.Pool); ok {
+		p.Close()
+	}
 	return nil
+}
+
+// WithTransaction runs fn inside one Postgres transaction: every query fn
+// issues through the *Db it receives runs on that transaction, committed on
+// a nil return and rolled back otherwise (a panic inside fn also rolls back,
+// then re-panics). Nesting — calling WithTransaction again on fn's *Db — is
+// not supported; pass the tx straight to fn's own logic instead.
+func (db *Db) WithTransaction(fn func(tx *Db) error) (err error) {
+	pool, ok := db.pool.(*pgxpool.Pool)
+	if !ok {
+		return fmt.Errorf("pgdb: nested transactions are not supported")
+	}
+
+	ctx := db.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	pgxTx, err := pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if p := recover(); p != nil {
+			_ = pgxTx.Rollback(ctx)
+			panic(p)
+		}
+	}()
+
+	if err = fn(&Db{pool: pgxTx, ctx: ctx}); err != nil {
+		_ = pgxTx.Rollback(ctx)
+		return err
+	}
+	return pgxTx.Commit(ctx)
 }
 
 // Query executes a statement that returns no rows (INSERT/UPDATE/DELETE/DDL) and

@@ -52,7 +52,7 @@ func (m *Words) registerResult(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return

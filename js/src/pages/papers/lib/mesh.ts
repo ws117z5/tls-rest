@@ -2,7 +2,7 @@ import type { Control } from "./types";
 
 // Public-STUN-only default: works for direct P2P, not behind symmetric NAT.
 // RoomMesh replaces this via setIceServers() with credentials fetched from
-// GET /papers/ice-config (Cloudflare TURN when configured server-side).
+// GET /api/config/ice (Cloudflare TURN when configured server-side).
 const defaultIce: RTCConfiguration = {
   iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
 };

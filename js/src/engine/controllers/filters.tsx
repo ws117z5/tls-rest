@@ -72,6 +72,7 @@ const PostsFilters: React.FC<ModuleFiltersProps> = ({
 
                 <div className="col-auto">
                     <button type="button" className="btn btn-primary btn-sm" onClick={onApply}>
+                        <span className="menu-icon-sprite icon-search" aria-hidden="true" />
                         Apply
                     </button>
                     <button type="button" className="btn btn-link btn-sm" onClick={onReset}>

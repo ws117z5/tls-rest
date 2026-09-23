@@ -11,7 +11,7 @@ interface SelectListProps {
 }
 
 const SelectList: React.FC<SelectListProps> = ({ value, options = [] }) => {
-    const selected = options.find(opt => opt.value === value);
+    const selected = options.find(opt => String(opt.value ?? "") === String(value ?? ""));
     return <span>{selected ? selected.name : ""}</span>;
 };
 

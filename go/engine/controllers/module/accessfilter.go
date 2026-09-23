@@ -68,6 +68,28 @@ type viewer struct {
 	// fields are visible/readable. Empty moduleID = no field restriction.
 	moduleID    string
 	fieldRights map[string]map[string]int
+	moduleModes map[string]int
+	// filterFieldRights is filters.go's own rights table (auth.ResolveModuleFilterFieldRights),
+	// separate from fieldRights: a module absent is unrestricted.
+	filterFieldRights map[string]map[string]bool
+}
+
+// modeFilters mirrors auth.MODE_FILTERS's bit value; module can't import auth (auth imports module).
+const modeFilters = 32
+
+// canFilter reports whether the viewer may use moduleID's declared filters —
+// gates both the filter bar response and applying any filter server-side.
+func (v viewer) canFilter(moduleID string) bool {
+	return v.isAdmin || v.moduleModes[moduleID]&modeFilters != 0
+}
+
+// canFilterField is canFilter's per-field counterpart, on top of it.
+func (v viewer) canFilterField(name string) bool {
+	if v.isAdmin {
+		return true
+	}
+	allowed, restricted := v.filterFieldRights[v.moduleID]
+	return !restricted || allowed[name]
 }
 
 // viewerFromRequest derives the viewer without a module context (no field-level
@@ -87,11 +109,13 @@ func viewerForModule(r *http.Request, moduleID string) viewer {
 		return viewer{}
 	}
 	return viewer{
-		isAdmin:     s.IsAdmin,
-		level:       s.AccessLevel,
-		userID:      s.UserID,
-		moduleID:    moduleID,
-		fieldRights: s.FieldRights,
+		isAdmin:           s.IsAdmin,
+		level:             s.AccessLevel,
+		userID:            s.UserID,
+		moduleID:          moduleID,
+		fieldRights:       s.FieldRights,
+		moduleModes:       s.ModuleModes,
+		filterFieldRights: s.FilterFieldRights,
 	}
 }
 
@@ -131,7 +155,7 @@ func (v viewer) fieldModeMask(name string) int {
 func CanViewRecord(r *http.Request, tableName string, id int64) (bool, error) {
 	v := viewerFromRequest(r)
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		return false, err
 	}
@@ -150,6 +174,24 @@ func CanViewRecord(r *http.Request, tableName string, id int64) (bool, error) {
 		access = functions.Coerce[int](row["access"])
 	}
 	return access <= v.level, nil
+}
+
+// CanViewField is CanViewRecord's field-level counterpart; used by images.
+func CanViewField(r *http.Request, moduleID, fieldName string) bool {
+	v := viewerForModule(r, moduleID)
+	if v.isAdmin {
+		return true
+	}
+	mod, ok := RegisteredModules[moduleID]
+	if !ok {
+		return false
+	}
+	for _, f := range mod.GetFields() {
+		if f.Name == fieldName {
+			return v.fieldReadableInData(f)
+		}
+	}
+	return false
 }
 
 // fieldVisibleInSchema reports whether a field should be described to the user

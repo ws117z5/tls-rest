@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bufio"
+	"bytes"
 	"net"
 	"net/http"
 )
@@ -51,4 +52,41 @@ func (rr *responseRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 // WriteTimeout for a long-lived SSE stream would silently fail to do so.
 func (rr *responseRecorder) Unwrap() http.ResponseWriter {
 	return rr.ResponseWriter
+}
+
+// statsBuffer holds a response entirely in memory instead of forwarding
+// writes, so the middleware can add the X-Query-Stats-* headers *after* the
+// handler finishes (query totals aren't known until then) and still have
+// them land on the same response — no follow-up request, so nothing can ever
+// race it. Only installed for requests opted into instrumentation (see
+// middleware.go), never for streaming responses (SSE/WebSocket), which don't
+// carry the opt-in header in the first place.
+type statsBuffer struct {
+	http.ResponseWriter
+	status int
+	body   bytes.Buffer
+}
+
+func newStatsBuffer(w http.ResponseWriter) *statsBuffer {
+	return &statsBuffer{ResponseWriter: w}
+}
+
+func (sb *statsBuffer) WriteHeader(code int) {
+	if sb.status == 0 {
+		sb.status = code
+	}
+}
+
+func (sb *statsBuffer) Write(b []byte) (int, error) {
+	return sb.body.Write(b)
+}
+
+// release writes the buffered status/body through to the real writer, after
+// the caller has set any extra headers it wants on the response.
+func (sb *statsBuffer) release() {
+	if sb.status == 0 {
+		sb.status = http.StatusOK
+	}
+	sb.ResponseWriter.WriteHeader(sb.status)
+	sb.ResponseWriter.Write(sb.body.Bytes())
 }

@@ -86,7 +86,7 @@ func completeOAuth(w http.ResponseWriter, r *http.Request, p *providerDef) {
 	}
 	acc.Provider = p.name
 
-	userID, username, err := users.FindOrCreateOAuthUser(acc)
+	userID, username, err := users.FindOrCreateOAuthUser(r.Context(), acc)
 	if err != nil {
 		http.Redirect(w, r, "/login?error=oauth", http.StatusTemporaryRedirect)
 		return

@@ -7,6 +7,7 @@
 package config
 
 import (
+	"context"
 	"sync/atomic"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
@@ -32,13 +33,13 @@ func BumpConfigEpoch()          { atomic.AddInt64(&configEpoch, 1) }
 // Resolve returns the effective config for a user: defaults, then global, then
 // the user's group(s), then the user's own row — later levels overriding earlier
 // ones, per non-empty column. userID <= 0 resolves defaults + global only.
-func Resolve(userID int) map[string]string {
+func Resolve(ctx context.Context, userID int) map[string]string {
 	out := make(map[string]string, len(Defaults))
 	for k, v := range Defaults {
 		out[k] = v
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return out
 	}

@@ -9,7 +9,7 @@ import (
 
 	pionturn "github.com/pion/turn/v5"
 
-	config "tls-rest/go/constants"
+	config "tls-rest/go/app/constants"
 	actionsctl "tls-rest/go/engine/controllers/actions"
 	"tls-rest/go/engine/controllers/turn"
 )

@@ -4,11 +4,13 @@
 package login
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/auth"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
@@ -29,13 +31,13 @@ type credentials struct {
 // writeAuthResult returns the standard {ok,user} body and, for external clients,
 // additionally issues and includes a bearer token. It writes the HTTP response
 // (including any error) itself.
-func writeAuthResult(w http.ResponseWriter, id int, username string, external bool) {
+func writeAuthResult(ctx context.Context, w http.ResponseWriter, id int, username string, external bool) {
 	resp := map[string]interface{}{
 		"ok":   true,
 		"user": map[string]interface{}{"id": id, "user_name": username},
 	}
 	if external {
-		token, expire, err := auth.IssueToken(id, username)
+		token, expire, err := auth.IssueToken(ctx, id, username)
 		if err != nil {
 			functions.JSONError(w, http.StatusInternalServerError, "could not issue token")
 			return
@@ -61,7 +63,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
@@ -89,7 +91,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 	username := functions.Coerce[string](row["user_name"])
 	auth.Login(w, r, id, username)
 
-	writeAuthResult(w, id, username, c.External)
+	writeAuthResult(r.Context(), w, id, username, c.External)
 }
 
 // Logout handles POST /api/logout, dropping the session back to anonymous.
@@ -129,7 +131,7 @@ func OAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	auth.Login(w, r, id, username)
-	writeAuthResult(w, id, username, c.External)
+	writeAuthResult(r.Context(), w, id, username, c.External)
 }
 
 // Register handles POST /api/register {email, password, user_name?, first_name?,
@@ -146,7 +148,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
@@ -190,7 +192,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 
 	auth.Login(w, r, int(id), userName)
 
-	writeAuthResult(w, int(id), userName, c.External)
+	writeAuthResult(r.Context(), w, int(id), userName, c.External)
 }
 
 // Page registers the login/auth HTTP endpoints.
@@ -206,6 +208,6 @@ var Page = &module.PageAbstract{
 	},
 }
 
-func Init() {
-	Page.Initialize()
+func init() {
+	app.RegisterPage(Page)
 }

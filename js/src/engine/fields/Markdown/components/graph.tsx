@@ -3,17 +3,25 @@ import React, { useEffect, useState } from 'react';
 type Format = "svg" | "dot" | "json" | "dot_json" | "xdot_json" | "plain" | "plain-ext";
 type Engine = "circo" | "dot" | "fdp" | "neato" | "osage" | "patchwork" | "twopi";
 
+const RENDER_SCALE = 0.8;
+
+// Shrinks the SVG root's width/height (leaving viewBox untouched, which makes
+// the browser scale the drawing to fit the smaller box).
+function scaleSvg(svg: string, factor: number): string {
+  return svg.replace(
+    /(<svg[^>]*\bwidth=")([\d.]+)(pt|px)?("[^>]*\bheight=")([\d.]+)(pt|px)?(")/,
+    (_m, pre, w, wUnit = "", mid, h, hUnit = "", post) =>
+      `${pre}${(parseFloat(w) * factor).toFixed(2)}${wUnit}${mid}${(parseFloat(h) * factor).toFixed(2)}${hUnit}${post}`
+  );
+}
+
 // The graphviz WASM is heavy, so it's code-split and loaded on demand — only when
 // a graph is actually rendered — and awaited before use.
 async function renderGraph(dotSource: string, format: Format, engine: Engine): Promise<string> {
-  // 1. Lazily import + initialize graphviz (WASM) the first time a graph renders.
   const { Graphviz } = await import("@hpcc-js/wasm-graphviz");
   const graphviz = await Graphviz.load();
-
-  // 2. Execute layout: layout(dotSource, outputFormat, layoutEngine)
   const svg: string = graphviz.layout(dotSource, format, engine);
-
-  return svg;
+  return scaleSvg(svg, RENDER_SCALE);
 };
 
 interface DotGraphProps {

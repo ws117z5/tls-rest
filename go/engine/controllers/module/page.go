@@ -1,6 +1,7 @@
 package module
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -13,24 +14,20 @@ import (
 // --- Shared route-registrar seam ---------------------------------------------
 //
 // Routes can't be added at package init() time because the mux router doesn't
-// exist yet. Packages therefore queue a registrar here at init(); the router
-// builder flushes them once the router exists (FlushRouteRegistrars). This is
-// the same deferred idea the module system already uses (SetGlobalRouter), made
-// available to pages and features so they can own their own routes instead of
-// route.go hardcoding them.
+// exist yet. Packages therefore queue a registrar here at init(); app.App
+// flushes them once the router exists (FlushRouteRegistrars), after every
+// module/page package's init() has already run — so there is no "router
+// already exists" case to handle here.
 
 var routeRegistrars []func(*mux.Router)
 
-// AddRouteRegistrar queues a route registration. If the router already exists
-// (registration after startup), it is applied immediately.
+// AddRouteRegistrar queues a route registration, applied later by
+// FlushRouteRegistrars.
 func AddRouteRegistrar(fn func(*mux.Router)) {
 	if fn == nil {
 		return
 	}
 	routeRegistrars = append(routeRegistrars, fn)
-	if GlobalRouter != nil {
-		fn(GlobalRouter)
-	}
 }
 
 // FlushRouteRegistrars applies all queued registrars to the router. Called once
@@ -80,11 +77,13 @@ type PageAbstract struct {
 
 	// Load returns the single record for this page (given the session, so a page
 	// can be "the current user", "this org", ...). Save persists an update.
-	Load func(s *cache.Session) (map[string]interface{}, error)
-	Save func(s *cache.Session, data map[string]interface{}) error
+	Load func(ctx context.Context, s *cache.Session) (map[string]interface{}, error)
+	Save func(ctx context.Context, s *cache.Session, data map[string]interface{}) error
 
 	// Custom routes with their own handlers (non-fieldset pages).
 	Routes []PageRoute
+
+	SpecialRights []SpecialRight // named permissions beyond RequiresAuth/RequiresAdmin
 }
 
 // PageDefaultModes maps page ID -> baseline field.MODE_VIEW|field.MODE_EDIT
@@ -207,7 +206,7 @@ func (p *PageAbstract) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := p.Load(s)
+	data, err := p.Load(r.Context(), s)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -257,7 +256,7 @@ func (p *PageAbstract) handlePut(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := p.Save(s, update); err != nil {
+	if err := p.Save(r.Context(), s, update); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

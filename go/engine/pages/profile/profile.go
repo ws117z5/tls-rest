@@ -5,7 +5,10 @@
 package profile
 
 import (
+	"context"
 	"errors"
+
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
@@ -33,9 +36,9 @@ var Page = &module.PageAbstract{
 			WithLabel("Avatar URL").WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
 	},
 
-	Load: func(s *cache.Session) (map[string]interface{}, error) {
+	Load: func(ctx context.Context, s *cache.Session) (map[string]interface{}, error) {
 
-		db, err := pgdb.GetInstance()
+		db, err := pgdb.GetInstanceCtx(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -52,11 +55,11 @@ var Page = &module.PageAbstract{
 		return row, nil
 	},
 
-	Save: func(s *cache.Session, data map[string]interface{}) error {
+	Save: func(ctx context.Context, s *cache.Session, data map[string]interface{}) error {
 		if len(data) == 0 {
 			return nil
 		}
-		db, err := pgdb.GetInstance()
+		db, err := pgdb.GetInstanceCtx(ctx)
 		if err != nil {
 			return err
 		}
@@ -65,6 +68,6 @@ var Page = &module.PageAbstract{
 	},
 }
 
-func Init() {
-	Page.Initialize()
+func init() {
+	app.RegisterPage(Page)
 }

@@ -1,11 +1,12 @@
 package auth
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
-	config "tls-rest/go/constants"
+	config "tls-rest/go/app/constants"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
 )
@@ -35,11 +36,12 @@ func groupIDsExpr(userID int) (expr string, args []interface{}) {
 }
 
 // defaultModesFor maps a module's default permission to a mode bitmask:
-// DENY -> nothing, READ -> browse/read, WRITE -> everything.
+// DENY -> nothing, READ -> browse/read, WRITE -> everything. MODE_FILTERS is
+// never part of a default — it's always an explicit grant (see canFilter).
 func defaultModesFor(perm int) int {
 	switch {
 	case perm >= PERMISSION_WRITE:
-		return MODE_ALL
+		return MODE_ALL &^ MODE_FILTERS
 	case perm >= PERMISSION_READ:
 		return MODE_LIST | MODE_VIEW
 	default:
@@ -99,6 +101,62 @@ func ResolveModuleFieldRights(userID int) map[string]map[string]int {
 	for m, fields := range acc {
 		if !unrestricted[m] {
 			result[m] = fields
+		}
+	}
+	return result
+}
+
+// ResolveModuleFilterFieldRights is ResolveModuleFieldRights' counterpart for
+// filters.go's own fieldset (see filterFieldsFromValue / user_group_rights,
+// user_rights.filter_fields): a module absent from the result is unrestricted.
+func ResolveModuleFilterFieldRights(ctx context.Context, userID int) map[string]map[string]bool {
+	db, err := pgdb.GetInstanceCtx(ctx)
+	if err != nil {
+		return map[string]map[string]bool{}
+	}
+
+	acc := map[string]map[string]bool{}
+	unrestricted := map[string]bool{}
+	consume := func(rows []map[string]interface{}) {
+		for _, row := range rows {
+			m, _ := row["module"].(string)
+			if m == "" {
+				continue
+			}
+			allowed, empty := filterFieldsFromValue(row["filter_fields"])
+			if empty || len(allowed) == 0 {
+				unrestricted[m] = true
+				continue
+			}
+			if acc[m] == nil {
+				acc[m] = map[string]bool{}
+			}
+			for name := range allowed {
+				acc[m][name] = true
+			}
+		}
+	}
+
+	groupExpr, groupArgs := groupIDsExpr(userID)
+	if rows, e := db.RQuery(`
+		SELECT ugr.module AS module, ugr.filter_fields AS filter_fields
+		FROM user_group_rights ugr
+		WHERE ugr.group_id IN (`+groupExpr+`)
+	`, groupArgs...); e == nil {
+		consume(rows)
+	}
+	if userID > 0 {
+		if rows, e := db.RQuery(`
+			SELECT module, filter_fields FROM user_rights WHERE user_id = $1
+		`, userID); e == nil {
+			consume(rows)
+		}
+	}
+
+	result := map[string]map[string]bool{}
+	for m, names := range acc {
+		if !unrestricted[m] {
+			result[m] = names
 		}
 	}
 	return result
@@ -189,10 +247,193 @@ func allModesMask() int {
 	return mask
 }
 
+// resolveSessionRights is fillSessionRights's single-query path: module mode
+// rights, per-module field/filter rights, access level and admin status in
+// one round trip, instead of calling the Resolve* functions below separately.
+// Those stay as-is for their other, narrower callers.
+func resolveSessionRights(ctx context.Context, userID int) (modes ModuleModeRights, fieldRights map[string]map[string]int, specialRights map[string]map[string]bool, filterFieldRights map[string]map[string]bool, accessLevel int, isAdmin bool) {
+	modes = ModuleModeRights{}
+	for module, def := range ModuleDefaults() {
+		modes[module] = defaultModesFor(def)
+	}
+	for page, m := range PageDefaults() {
+		modes[page] = m
+	}
+	accessLevel = AccessAll
+	fieldRights = map[string]map[string]int{}
+	specialRights = map[string]map[string]bool{}
+	filterFieldRights = map[string]map[string]bool{}
+
+	db, err := pgdb.GetInstanceCtx(ctx)
+	if err != nil {
+		return modes, fieldRights, specialRights, filterFieldRights, accessLevel, false
+	}
+
+	query, args := combinedRightsQuery(userID)
+	rows, err := db.RQuery(query, args...)
+	if err != nil || len(rows) == 0 {
+		return modes, fieldRights, specialRights, filterFieldRights, accessLevel, false
+	}
+	row := rows[0]
+
+	accessLevel = functions.Int(row["access_level"])
+	if userID > 0 {
+		isAdmin, _ = row["is_admin"].(bool)
+	}
+
+	acc := map[string]map[string]int{}
+	unrestricted := map[string]bool{}
+	filterAcc := map[string]map[string]bool{}
+	filterUnrestricted := map[string]bool{}
+	applyRights := func(list interface{}) {
+		items, _ := list.([]interface{})
+		for _, item := range items {
+			entry, _ := item.(map[string]interface{})
+			if entry == nil {
+				continue
+			}
+			m, _ := entry["module"].(string)
+			if m == "" {
+				continue
+			}
+			modes[m] |= functions.Int(entry["modes"])
+
+			perField, empty := fieldRightsFromValue(entry["fields"])
+			if empty || len(perField) == 0 {
+				unrestricted[m] = true
+			} else {
+				if acc[m] == nil {
+					acc[m] = map[string]int{}
+				}
+				for field, mask := range perField {
+					acc[m][field] |= mask
+				}
+			}
+
+			allowedFilters, filtersEmpty := filterFieldsFromValue(entry["filter_fields"])
+			if filtersEmpty || len(allowedFilters) == 0 {
+				filterUnrestricted[m] = true
+			} else {
+				if filterAcc[m] == nil {
+					filterAcc[m] = map[string]bool{}
+				}
+				for name := range allowedFilters {
+					filterAcc[m][name] = true
+				}
+			}
+
+			for _, id := range specialRightIDs(entry["special_rights"]) {
+				if specialRights[m] == nil {
+					specialRights[m] = map[string]bool{}
+				}
+				specialRights[m][id] = true
+			}
+		}
+	}
+	applyRights(row["group_rights"])
+	applyRights(row["user_rights"])
+
+	for m, names := range filterAcc {
+		if !filterUnrestricted[m] {
+			filterFieldRights[m] = names
+		}
+	}
+
+	for m, fields := range acc {
+		if !unrestricted[m] {
+			fieldRights[m] = fields
+		}
+	}
+
+	return modes, fieldRights, specialRights, filterFieldRights, accessLevel, isAdmin
+}
+
+// filterFieldsFromValue is fieldRightsFromValue's counterpart for a stored
+// `filter_fields` value — a JSON array of allowed filter names, not a
+// per-field mode map, since a filter is only ever usable or not.
+func filterFieldsFromValue(v interface{}) (map[string]bool, bool) {
+	var raw []byte
+	switch t := v.(type) {
+	case nil:
+		return nil, true
+	case string:
+		raw = []byte(t)
+	case []byte:
+		raw = t
+	default:
+		return nil, true
+	}
+	if strings.TrimSpace(string(raw)) == "" {
+		return nil, true
+	}
+	var names []string
+	if err := json.Unmarshal(raw, &names); err != nil || len(names) == 0 {
+		return nil, true
+	}
+	out := make(map[string]bool, len(names))
+	for _, n := range names {
+		out[n] = true
+	}
+	return out, false
+}
+
+// specialRightIDs parses a stored `special_rights` value (a JSON string/[]byte
+// array of right ids) into a slice; unparseable yields none.
+func specialRightIDs(v interface{}) []string {
+	var raw []byte
+	switch t := v.(type) {
+	case string:
+		raw = []byte(t)
+	case []byte:
+		raw = t
+	default:
+		return nil
+	}
+	var out []string
+	_ = json.Unmarshal(raw, &out)
+	return out
+}
+
+// combinedRightsQuery builds resolveSessionRights's single query: the
+// caller's group ids (GuestGroupID when anonymous), their module mode/field
+// rights from both user_group_rights and user_rights, access level (highest
+// group id), and admin status — all as one row via CTEs and json_agg.
+func combinedRightsQuery(userID int) (string, []interface{}) {
+	var args []interface{}
+
+	groupsCTE := fmt.Sprintf("SELECT %d AS group_id", GuestGroupID)
+	userRightsFilter := "NULL"
+	if userID > 0 {
+		args = append(args, userID)
+		groupsCTE = fmt.Sprintf("SELECT jsonb_array_elements_text(groups)::int AS group_id FROM users WHERE id = $%d", len(args))
+
+		args = append(args, userID)
+		userRightsFilter = fmt.Sprintf("$%d", len(args))
+	}
+
+	query := fmt.Sprintf(`
+		WITH groups AS (%s),
+		gr AS (
+			SELECT module, modes, fields, special_rights, filter_fields FROM user_group_rights WHERE group_id IN (SELECT group_id FROM groups)
+		),
+		ur AS (
+			SELECT module, modes, fields, special_rights, filter_fields FROM user_rights WHERE user_id = %s
+		)
+		SELECT
+			COALESCE(MAX(group_id), 0) AS access_level,
+			EXISTS (SELECT 1 FROM user_groups ug WHERE ug.is_admin AND ug.id IN (SELECT group_id FROM groups)) AS is_admin,
+			COALESCE((SELECT jsonb_agg(jsonb_build_object('module', module, 'modes', modes, 'fields', fields, 'special_rights', special_rights, 'filter_fields', filter_fields)) FROM gr), '[]'::jsonb) AS group_rights,
+			COALESCE((SELECT jsonb_agg(jsonb_build_object('module', module, 'modes', modes, 'fields', fields, 'special_rights', special_rights, 'filter_fields', filter_fields)) FROM ur), '[]'::jsonb) AS user_rights
+		FROM groups
+	`, groupsCTE, userRightsFilter)
+
+	return query, args
+}
+
 // ResolveModuleModeRights builds the per-module allowed-mode bitmask for a
 // user: module default, OR-ed with group rights, OR-ed with the user's own
 // rights. An anonymous caller (id <= 0) resolves as a member of GuestGroupID.
-func ResolveModuleModeRights(userID int) ModuleModeRights {
+func ResolveModuleModeRights(ctx context.Context, userID int) ModuleModeRights {
 	rights := ModuleModeRights{}
 	for module, def := range ModuleDefaults() {
 		rights[module] = defaultModesFor(def)
@@ -201,7 +442,7 @@ func ResolveModuleModeRights(userID int) ModuleModeRights {
 		rights[page] = modes
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return rights
 	}

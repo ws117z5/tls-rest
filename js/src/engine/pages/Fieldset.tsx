@@ -15,10 +15,9 @@ interface FieldsetProps {
     endpoint: string;      // GET returns {Data, Fieldset}; PUT saves (when editable)
     editable?: boolean;    // render an editable form (fields still gated by rights)
     moduleName?: string;   // logical fieldset name (context only; not fetched)
-    title?: string;
 }
- 
-const Fieldset: React.FC<FieldsetProps> = ({ endpoint, editable = false, moduleName = "", title }) => {
+
+const Fieldset: React.FC<FieldsetProps> = ({ endpoint, editable = false, moduleName = "" }) => {
     const t = useT();
     const [data, setData] = useState<any>(null);
     const [fieldset, setFieldset] = useState<any>(null);
@@ -73,17 +72,18 @@ const Fieldset: React.FC<FieldsetProps> = ({ endpoint, editable = false, moduleN
     const mode = editable ? MODES.EDIT : MODES.VIEW;
  
     return (
-        <div className="container-fluid">
-            {title && <h1 className="h4 mb-3">{t(title)}</h1>}
-            {saved && <div className="alert alert-success">{t("Saved.")}</div>}
-            <FieldsetProvider module={moduleName} mode={mode} fieldset={fieldset}>
-                <FieldsetForm
-                    mode={mode}
-                    data={data || {}}
-                    onSubmit={editable ? save : undefined}
-                    disabled={!editable}
-                />
-            </FieldsetProvider>
+        <div className="card module-page-card">
+            <div className="card-body">
+                {saved && <div className="alert alert-success">{t("Saved.")}</div>}
+                <FieldsetProvider module={moduleName} mode={mode} fieldset={fieldset}>
+                    <FieldsetForm
+                        mode={mode}
+                        data={data || {}}
+                        onSubmit={editable ? save : undefined}
+                        disabled={!editable}
+                    />
+                </FieldsetProvider>
+            </div>
         </div>
     );
 };

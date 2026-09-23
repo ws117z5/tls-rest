@@ -1,6 +1,7 @@
 package module
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -84,7 +85,7 @@ func (fh *FieldsetHandler) GetAutocomplete(w http.ResponseWriter, r *http.Reques
 
 	options := []AutoOption{}
 	if target != nil {
-		options = resolveAutocomplete(target, input, body.Values)
+		options = resolveAutocomplete(r.Context(), target, input, body.Values)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -94,15 +95,15 @@ func (fh *FieldsetHandler) GetAutocomplete(w http.ResponseWriter, r *http.Reques
 // resolveAutocomplete runs a field's autocomplete config against the input,
 // returning value/label options. `values` carries the sibling field values of
 // the record being edited, so a function-kind autocomplete can branch on them.
-func resolveAutocomplete(f *Field, input string, values map[string]interface{}) []AutoOption {
+func resolveAutocomplete(ctx context.Context, f *Field, input string, values map[string]interface{}) []AutoOption {
 	switch f.AutocompleteKind {
 	case "function":
 		if f.AutocompleteFunc != nil {
-			return f.AutocompleteFunc(input, values)
+			return f.AutocompleteFunc(ctx, input, values)
 		}
 	case "sql":
 		if f.AutocompleteSQL != "" {
-			return stringsToOptions(autocompleteQuery(f.AutocompleteSQL, "%"+input+"%"))
+			return stringsToOptions(autocompleteQuery(ctx, f.AutocompleteSQL, "%"+input+"%"))
 		}
 	case "source":
 		if len(f.AutocompleteSource) >= 2 && validIdent(f.AutocompleteSource[0]) && validIdent(f.AutocompleteSource[1]) {
@@ -119,7 +120,7 @@ func resolveAutocomplete(f *Field, input string, values map[string]interface{}) 
 				pattern = "%" + input + "%"
 			}
 			q := "SELECT DISTINCT " + col + " FROM " + table + " WHERE " + col + " LIKE $1 ORDER BY " + col + " LIMIT 20"
-			return stringsToOptions(autocompleteQuery(q, pattern))
+			return stringsToOptions(autocompleteQuery(ctx, q, pattern))
 		}
 	}
 	return []AutoOption{}
@@ -146,8 +147,8 @@ func stringsToOptions(ss []string) []AutoOption {
 }
 
 // autocompleteQuery runs a single-column LIKE query and returns the values.
-func autocompleteQuery(query, pattern string) []string {
-	db, err := pgdb.GetInstance()
+func autocompleteQuery(ctx context.Context, query, pattern string) []string {
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return []string{}
 	}
@@ -184,18 +185,18 @@ func (fh *FieldsetHandler) GetTableData(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	var ctx map[string]interface{}
+	var data map[string]interface{}
 	if r.Body != nil {
-		_ = json.NewDecoder(r.Body).Decode(&ctx)
+		_ = json.NewDecoder(r.Body).Decode(&data)
 	}
-	if ctx == nil {
-		ctx = map[string]interface{}{}
+	if data == nil {
+		data = map[string]interface{}{}
 	}
 
 	target := findField(module.Fields, fieldName)
 	rows := []map[string]interface{}{}
 	if target != nil && target.TableDataFunc != nil {
-		if got := target.TableDataFunc(ctx); got != nil {
+		if got := target.TableDataFunc(r.Context(), data); got != nil {
 			rows = got
 		}
 	}
@@ -252,7 +253,14 @@ func (fh *FieldsetHandler) GetFieldset(w http.ResponseWriter, r *http.Request) {
 				continue // not granted in any mode -> omit entirely
 			}
 		}
-		visibleFields = append(visibleFields, resolveFieldOptions(field, v))
+		visibleFields = append(visibleFields, field)
+	}
+
+	// Every table-backed select's options come from one combined query (see
+	// fetchTableFieldOptions) instead of a separate round trip per field.
+	tableOpts := fetchTableFieldOptions(ctx, collectTableFieldRefs(visibleFields, "f"))
+	for i, field := range visibleFields {
+		visibleFields[i] = resolveFieldOptions(ctx, field, v, fmt.Sprintf("f%d", i), tableOpts)
 	}
 
 	// Hashsum of the authority-scoped fieldset. Returned to the client (stored in
@@ -321,22 +329,8 @@ func (fh *FieldsetHandler) GetModules(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// resolveFieldOptions populates a select-style field's concrete `options` from
-// its dataSource table, so the frontend (which renders a static options list)
-// shows choices for table-backed selects. A field is treated as a select when
-// its type is a select type or it carries the widget:"select" hint. The source
-// table is taken from sourceTable, or from dataSource when that names a table
-// (i.e. it isn't one of the reserved static/database/query keywords). The value
-// and label columns default to id/name. Non-select fields are returned as-is.
-// registeredModuleOptions builds select options {value:id, name:label} from the
-// registered modules (menu registry). Called at request time so the registry is
-// populated. Falls back to the module id when no label is registered.
-// registeredModuleOptions builds select options {value:id, name:label} from the
-// registered modules. The list comes from RegisteredModules, which is populated
-// unconditionally for every module during Initialize (so it is never empty when
-// modules exist) — unlike RegisteredModuleMenu, which is only populated when the
-// menu writer is wired. Nicer labels are taken from the menu registry when
-// present, falling back to the module id.
+// registeredModuleOptions builds select options {value:id, name:label} from
+// RegisteredModules, labeled via the menu registry when present.
 func registeredModuleOptions() []map[string]interface{} {
 	labels := map[string]string{}
 	for _, m := range RegisteredModuleMenu() {
@@ -348,10 +342,18 @@ func registeredModuleOptions() []map[string]interface{} {
 			labels[m.ID] = name
 		}
 	}
+	for _, p := range RegisteredPageMenu() {
+		if p.Name != "" {
+			labels[p.ID] = p.Name
+		}
+	}
 
-	ids := make([]string, 0, len(RegisteredModules))
+	ids := make([]string, 0, len(RegisteredModules)+len(RegisteredPageMenu()))
 	for id := range RegisteredModules {
 		ids = append(ids, id)
+	}
+	for _, p := range RegisteredPageMenu() {
+		ids = append(ids, p.ID)
 	}
 	sort.Strings(ids)
 
@@ -368,16 +370,18 @@ func registeredModuleOptions() []map[string]interface{} {
 
 // resolveFieldOptions fills in a field's concrete `options` list at request time
 // (from a WithOptions provider, the registered-modules source, or a table-backed
-// select) so the client can render it. For a TYPE_TABLE field it recurses into
-// the column fieldset, resolving each column the same way. v is the requesting
+// select, the latter pre-fetched in tableOpts by fetchTableFieldOptions) so the
+// client can render it. For a TYPE_TABLE field it recurses into the column
+// fieldset, resolving each column the same way. key must match the one
+// collectTableFieldRefs generated for this same field. v is the requesting
 // viewer, so an option source can scope its choices to the user's authority.
-func resolveFieldOptions(field Field, v viewer) Field {
+func resolveFieldOptions(ctx context.Context, field Field, v viewer, key string, tableOpts map[string][]map[string]interface{}) Field {
 	// TYPE_TABLE: the table field carries no options list of its own; resolve
 	// each column so select columns arrive with their choices populated.
 	if field.Type == TYPE_TABLE && len(field.TableColumns) > 0 {
 		cols := make([]Field, len(field.TableColumns))
 		for i, c := range field.TableColumns {
-			cols[i] = resolveFieldOptions(c, v)
+			cols[i] = resolveFieldOptions(ctx, c, v, fmt.Sprintf("%s_c%d", key, i), tableOpts)
 		}
 		field.TableColumns = cols
 		return field
@@ -393,7 +397,7 @@ func resolveFieldOptions(field Field, v viewer) Field {
 		for k, val := range field.Options {
 			newOpts[k] = val
 		}
-		newOpts["options"] = field.OptionsCtxFunc(map[string]interface{}{
+		newOpts["options"] = field.OptionsCtxFunc(ctx, map[string]interface{}{
 			"userID":  v.userID,
 			"isAdmin": v.isAdmin,
 			"level":   v.level,
@@ -435,30 +439,11 @@ func resolveFieldOptions(field Field, v viewer) Field {
 		return out
 	}
 
-	table, _ := opts["sourceTable"].(string)
-	if table == "" {
-		if ds, ok := opts["dataSource"].(string); ok && ds != "static" && ds != "database" && ds != "query" {
-			table = ds
-		}
-	}
-	if table == "" {
-		return field // options already provided statically, or nothing to resolve
-	}
-
-	valueField, _ := opts["valueField"].(string)
-	if valueField == "" {
-		valueField = "id"
-	}
-	displayField, _ := opts["displayField"].(string)
-	if displayField == "" {
-		displayField = "name"
-	}
-	if !validIdent(table) || !validIdent(valueField) || !validIdent(displayField) {
-		return field
-	}
-
-	options := selectOptionsFromTable(table, valueField, displayField)
-	if options == nil {
+	// Table-backed select: options were already fetched for every field in one
+	// combined query (fetchTableFieldOptions); absent here means the field had
+	// no table configured, or table/column identifiers didn't validate.
+	options, ok := tableOpts[key]
+	if !ok {
 		return field
 	}
 
@@ -472,9 +457,137 @@ func resolveFieldOptions(field Field, v viewer) Field {
 	return field
 }
 
-// selectOptionsFromTable reads {name, value} option rows for a select field.
-func selectOptionsFromTable(table, valueField, displayField string) []map[string]interface{} {
-	db, err := pgdb.GetInstance()
+// tableFieldRef is a table-backed select awaiting resolution, keyed to match
+// the field tree position resolveFieldOptions will later look it up with.
+type tableFieldRef struct {
+	key          string
+	table        string
+	valueField   string
+	displayField string
+}
+
+// collectTableFieldRefs walks fields (recursing into TYPE_TABLE columns) and
+// returns every table-backed select field, keyed the same way
+// resolveFieldOptions derives keys for its own field tree walk.
+func collectTableFieldRefs(fields []Field, prefix string) []tableFieldRef {
+	var refs []tableFieldRef
+	for i, field := range fields {
+		key := fmt.Sprintf("%s%d", prefix, i)
+		if field.Type == TYPE_TABLE && len(field.TableColumns) > 0 {
+			refs = append(refs, collectTableFieldRefs(field.TableColumns, key+"_c")...)
+			continue
+		}
+		if ref, ok := tableFieldRefFor(field, key); ok {
+			refs = append(refs, ref)
+		}
+	}
+	return refs
+}
+
+// tableFieldRefFor reports whether field is a table-backed select with valid
+// identifiers, applying the same rules resolveFieldOptions's table branch used to.
+func tableFieldRefFor(field Field, key string) (tableFieldRef, bool) {
+	if field.OptionsCtxFunc != nil || field.OptionsFunc != nil {
+		return tableFieldRef{}, false
+	}
+	opts := field.Options
+	if opts == nil {
+		return tableFieldRef{}, false
+	}
+	widget, _ := opts["widget"].(string)
+	if field.Type != TYPE_SELECT && field.Type != TYPE_SELECT_ADDNEW && widget != "select" {
+		return tableFieldRef{}, false
+	}
+	if src, _ := opts["optionsSource"].(string); src == "modules" {
+		return tableFieldRef{}, false
+	}
+
+	table, _ := opts["sourceTable"].(string)
+	if table == "" {
+		if ds, ok := opts["dataSource"].(string); ok && ds != "static" && ds != "database" && ds != "query" {
+			table = ds
+		}
+	}
+	if table == "" {
+		return tableFieldRef{}, false
+	}
+
+	valueField, _ := opts["valueField"].(string)
+	if valueField == "" {
+		valueField = "id"
+	}
+	displayField, _ := opts["displayField"].(string)
+	if displayField == "" {
+		displayField = "name"
+	}
+	if !validIdent(table) || !validIdent(valueField) || !validIdent(displayField) {
+		return tableFieldRef{}, false
+	}
+	return tableFieldRef{key: key, table: table, valueField: valueField, displayField: displayField}, true
+}
+
+//https://data.statmt.org/opus-100-corpus/v1.0/supervised/en-ru/opus.en-ru-train.en
+//https://data.statmt.org/opus-100-corpus/v1.0/supervised/en-ru/opus.en-ru-train.ru
+
+// fetchTableFieldOptions resolves every ref's {value, label} options in one
+// UNION ALL query — one round trip for a whole fieldset instead of one query
+// per table-backed select field. Falls back to querying each ref on its own
+// (fetchTableFieldOptionsIndividually) only if the combined query itself
+// fails, so one stale table/column doesn't cost every other field its options.
+func fetchTableFieldOptions(ctx context.Context, refs []tableFieldRef) map[string][]map[string]interface{} {
+	if len(refs) == 0 {
+		return nil
+	}
+	db, err := pgdb.GetInstanceCtx(ctx)
+	if err != nil {
+		return nil
+	}
+
+	branches := make([]string, len(refs))
+	for i, ref := range refs {
+		branches[i] = fmt.Sprintf(
+			"SELECT '%s' AS __field, %s::text AS value, %s AS label FROM %s",
+			ref.key, db.Quote(ref.valueField), db.Quote(ref.displayField), db.Quote(ref.table),
+		)
+	}
+	query := "SELECT * FROM (" + strings.Join(branches, " UNION ALL ") + ") t ORDER BY __field, label"
+
+	rows, err := db.GetAll(query)
+	if err != nil {
+		return fetchTableFieldOptionsIndividually(ctx, refs)
+	}
+
+	out := make(map[string][]map[string]interface{}, len(refs))
+	for _, ref := range refs {
+		out[ref.key] = []map[string]interface{}{}
+	}
+	for _, row := range rows {
+		key := functions.Coerce[string](row["__field"])
+		out[key] = append(out[key], map[string]interface{}{
+			"value": row["value"],
+			"name":  functions.Coerce[string](row["label"]),
+		})
+	}
+	return out
+}
+
+// fetchTableFieldOptionsIndividually is fetchTableFieldOptions's per-ref
+// fallback: same {value, label} shape, one query per ref.
+func fetchTableFieldOptionsIndividually(ctx context.Context, refs []tableFieldRef) map[string][]map[string]interface{} {
+	out := make(map[string][]map[string]interface{}, len(refs))
+	for _, ref := range refs {
+		if options := selectOptionsFromTable(ctx, ref.table, ref.valueField, ref.displayField); options != nil {
+			out[ref.key] = options
+		}
+	}
+	return out
+}
+
+// selectOptionsFromTable reads {name, value} option rows for a single
+// table-backed select field — used only by fetchTableFieldOptionsIndividually's
+// per-ref fallback when the combined query fails.
+func selectOptionsFromTable(ctx context.Context, table, valueField, displayField string) []map[string]interface{} {
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return nil
 	}

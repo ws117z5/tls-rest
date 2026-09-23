@@ -1,7 +1,7 @@
 package mdb
 
 import (
-	"tls-rest/go/constants"
+	"tls-rest/go/app/constants"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"

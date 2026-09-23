@@ -69,6 +69,7 @@ const BITMASK_BITS: Record<string, number> = {
   create: 4,
   edit: 8,
   delete: 16,
+  filters: 32,
 };
 
 function truthy(v: any): boolean {
@@ -112,20 +113,6 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
   }
 
   componentDidUpdate(prev: TableEditProps) {
-    // Sync a checkbox column from a sibling bitmask field: e.g. checking "list"
-    // in "Allowed Modes" checks the "list" cell for every field row (and
-    // unchecking clears them). Only reacts to an actual change of that sibling —
-    // never on first populate — so stored per-field values aren't wiped on load.
-    const sync = this.syncFrom();
-    if (sync && sync in (prev.formValues || {})) {
-      const before = Number((prev.formValues || {})[sync]) || 0;
-      const after = Number((this.props.formValues || {})[sync]) || 0;
-      if (before !== after) {
-        this.applyBitmaskSync(after);
-        return;
-      }
-    }
-
     if (this.contextSig(prev) !== this.contextSig()) {
       this.touched = false;
       this.loadServerRows();
@@ -134,8 +121,8 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
     }
   }
 
-  // syncFrom returns the sibling bitmask field name whose bits drive this table's
-  // matching checkbox columns, or "".
+  // syncFrom returns the sibling bitmask field name gating this table's
+  // matching checkbox columns (syncColumnsFromBitmask), or "".
   private syncFrom(): string {
     return (
       this.props.field?.options?.syncColumnsFromBitmask ||
@@ -144,20 +131,17 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
     );
   }
 
-  private applyBitmaskSync(mask: number) {
-    const cols = this.columns()
-      .map((c) => c.name)
-      .filter((n) => n in BITMASK_BITS);
-    if (!cols.length) return;
-    const rows = this.state.rows.map((r) => {
-      const nr = { ...r };
-      cols.forEach((n) => {
-        nr[n] = (mask & BITMASK_BITS[n]) !== 0;
-      });
-      return nr;
-    });
-    this.setState({ rows });
-    this.emit(rows);
+  // visibleColumns hides (never mutates) a checkbox column whose matching bit
+  // is off in the sibling bitmask field — e.g. unchecking "Filters" in
+  // "Allowed Modes" hides the Filter Access table's checkbox column, but its
+  // stored per-row values are untouched, so re-checking it shows the same
+  // state as before.
+  private visibleColumns(): ColumnDef[] {
+    const sync = this.syncFrom();
+    const cols = this.columns();
+    if (!sync) return cols;
+    const mask = Number((this.props.formValues || {})[sync]) || 0;
+    return cols.filter((c) => !(c.name in BITMASK_BITS) || (mask & BITMASK_BITS[c.name]) !== 0);
   }
 
   // --- config ---------------------------------------------------------------
@@ -184,18 +168,14 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
     return (ro || cols[0])?.name || "field";
   }
 
-  // A stable signature of sibling form values (minus this field's own value),
-  // so toggling a cell doesn't re-fetch the server rows but changing a sibling
-  // select (e.g. the "module" the rights apply to) does.
+  // A signature of just the sibling values that actually change which rows
+  // TableData returns — every TableData hook in the app reads only "id" and,
+  // for the rights modules, "module". Anything else (e.g. toggling a mode bit,
+  // or editing a sibling table) must NOT re-fetch, or it silently discards
+  // whatever the user was still editing in this table.
   private contextSig(props: TableEditProps = this.props): string {
     const fv = props.formValues || {};
-    const self = this.fieldName();
-    const sync = this.syncFrom(); // handled by applyBitmaskSync, not a reload
-    const ctx: Record<string, any> = {};
-    Object.keys(fv).forEach((k) => {
-      if (k !== self && k !== sync) ctx[k] = fv[k];
-    });
-    return JSON.stringify(ctx);
+    return JSON.stringify({ id: fv.id, module: fv.module });
   }
 
   // --- data ---------------------------------------------------------------
@@ -330,14 +310,28 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
 
   render() {
     const { label } = this.props;
-    const cols = this.columns();
+    const allCols = this.columns();
+    const cols = this.visibleColumns();
     const { rows, loading } = this.state;
 
-    if (!cols.length) {
+    if (!allCols.length) {
       return <div className="text-muted">{translate("This table has no columns configured.")}</div>;
     }
     if (loading) {
       return <div className="text-muted">{translate("Loading…")}</div>;
+    }
+
+    // Every checkbox column this table has is currently gated off (e.g. the
+    // Filter Access table when "Filters" isn't in Allowed Modes) — nothing
+    // left to show; the hidden data is untouched and reappears once re-enabled.
+    const gated = allCols.filter((c) => c.name in BITMASK_BITS);
+    if (gated.length > 0 && cols.filter((c) => c.name in BITMASK_BITS).length === 0) {
+      const names = gated.map((c) => (c.label ? translate(c.label) : c.name)).join(", ");
+      return (
+        <div className="text-muted small">
+          {translate("Enable")} {names} {translate("in Allowed Modes to configure this.")}
+        </div>
+      );
     }
 
     // A field can set its own table width (WithOption("width", ...) on the

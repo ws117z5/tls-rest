@@ -45,7 +45,7 @@ func GeoIPBackfill(w http.ResponseWriter, r *http.Request) {
 	where, args := parseFilters(r).accessLogWhere()
 	where = strings.TrimPrefix(where, "WHERE ")
 
-	resolved, checked, err := accesslog.BackfillCountriesBatch(geoipBackfillLimit, where, args)
+	resolved, checked, err := accesslog.BackfillCountriesBatch(r.Context(), geoipBackfillLimit, where, args)
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, err.Error())
 		return

@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"tls-rest/go/app"
 	. "tls-rest/go/engine/controllers/field"
 	. "tls-rest/go/engine/controllers/module"
 )
@@ -59,9 +60,8 @@ var Module = &ModuleAbstract[interface{}]{
 	Rights:               make(map[int]int),
 }
 
-func Init() {
-	// Initialize the module - this creates the controller and registers with fieldset handler
-	Module.Initialize("user_groups")
+func init() {
+	app.RegisterModule(Module, "user_groups")
 }
 
 // CRUD operations are now handled automatically by the module system

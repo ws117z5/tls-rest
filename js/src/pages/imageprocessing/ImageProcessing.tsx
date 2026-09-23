@@ -10,6 +10,7 @@ class ImageProcessingPage extends PageComponent {
     protected icon = "image-processing";
     protected submenu = "tools";
     protected isPage = true;
+    protected requiresAuth = true;
 
     render() {
         return (

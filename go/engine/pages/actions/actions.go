@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"tls-rest/go/app"
 	actionsctl "tls-rest/go/engine/controllers/actions"
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
@@ -74,7 +75,7 @@ var Page = &module.PageAbstract{
 	},
 }
 
-func Init() {
-	Page.Initialize()
+func init() {
+	app.RegisterPage(Page)
 	initTurnCheckAction()
 }

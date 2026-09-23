@@ -1,6 +1,7 @@
 package users
 
 import (
+	"context"
 	"strings"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
@@ -27,8 +28,8 @@ type OAuthAccount struct {
 //  1. match on (auth_provider, auth_provider_id) — the provider's own id;
 //  2. else match on email and link this provider onto that existing account;
 //  3. else create a new user.
-func FindOrCreateOAuthUser(a *OAuthAccount) (int64, string, error) {
-	db, err := pgdb.GetInstance()
+func FindOrCreateOAuthUser(ctx context.Context, a *OAuthAccount) (int64, string, error) {
+	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return 0, "", err
 	}
@@ -66,7 +67,7 @@ func FindOrCreateOAuthUser(a *OAuthAccount) (int64, string, error) {
 		firstName = username // first_name is NOT NULL in the schema
 	}
 
-	id, err := db.InsertRow("users", map[string]interface{}{
+	row := map[string]interface{}{
 		"user_name":        username,
 		"first_name":       firstName,
 		"last_name":        a.LastName,
@@ -74,11 +75,30 @@ func FindOrCreateOAuthUser(a *OAuthAccount) (int64, string, error) {
 		"image":            a.Image,
 		"auth_provider":    emptyToNil(a.Provider),
 		"auth_provider_id": emptyToNil(a.ProviderID),
-	})
+	}
+	if groupID, ok := externalAppGroup(db, a.Provider); ok {
+		row["groups"] = []interface{}{groupID}
+	}
+
+	id, err := db.InsertRow("users", row)
 	if err != nil {
 		return 0, "", err
 	}
 	return id, username, nil
+}
+
+// externalAppGroup looks up which user group new sign-ins via provider
+// should join, from an admin-configured external_config row — false if none
+// is configured for this provider.
+func externalAppGroup(db *pgdb.Db, provider string) (int, bool) {
+	if provider == "" {
+		return 0, false
+	}
+	row, err := db.GetOne(`SELECT group_id FROM external_config WHERE provider = $1 LIMIT 1`, provider)
+	if err != nil || row == nil {
+		return 0, false
+	}
+	return functions.Int(row["group_id"]), true
 }
 
 // oauthUsername derives a non-empty display name: "First L." when a name is

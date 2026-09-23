@@ -11,11 +11,10 @@ import (
 	"regexp"
 	"strings"
 
+	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/module"
-
-	"github.com/gorilla/mux"
 )
 
 // Contact module, backs the site's public contact form.
@@ -34,15 +33,13 @@ var Module = &module.ModuleAbstract[interface{}]{
 	DefaultPermission:    module.PERMISSION_DENY,
 	DefaultPermissionSet: true,
 	Rights:               make(map[int]int),
+	CustomRoutes: []module.CustomRoute{
+		{Path: "/api/contact", Methods: []string{"POST"}, Handler: handleSubmit, Absolute: true},
+	},
 }
 
-func Init() {
-	Module.Initialize("contact_messages")
-
-	module.RegisterEndpointPrefix("/api/contact")
-	module.AddRouteRegistrar(func(r *mux.Router) {
-		r.HandleFunc("/api/contact", handleSubmit).Methods("POST")
-	})
+func init() {
+	app.RegisterModule(Module, "contact_messages")
 }
 
 var emailRe = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
@@ -85,7 +82,7 @@ func handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	db, err := pgdb.GetInstance()
+	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		http.Error(w, "unavailable", http.StatusInternalServerError)
 		return
