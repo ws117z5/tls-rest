@@ -167,7 +167,7 @@ export async function processImage(
     file: File,
     module: string,
     field: string,
-    opts?: { recordId?: number | string; access?: number }
+    opts?: { recordId?: number | string; access?: number; folder?: string }
 ): Promise<ImageRef> {
     // Capture metadata from the original file first, then convert if needed.
     const metadata = await extractMetadata(file);
@@ -183,6 +183,9 @@ export async function processImage(
     }
     if (opts?.access !== undefined && opts.access !== null) {
         form.append("access", String(opts.access));
+    }
+    if (opts?.folder) {
+        form.append("folder", opts.folder);
     }
 
     const res = await axios.post(`${Config.serverURL}api/images/process`, form, {

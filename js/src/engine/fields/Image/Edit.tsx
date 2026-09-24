@@ -4,17 +4,42 @@ import useT from "@engine/useT";
 
 // Editable image field: click upload, the backend processes and stores each
 // image, and the returned reference(s) are held in the field value and shown as
-// thumbnails. Single by default; set the field option `multiple` for many.
+// thumbnails. Single by default; set the field option `multiple` for many — in
+// single mode a new upload replaces the old one, so there's no remove button
+// (nothing to remove independently of replacing it).
 interface ImageEditProps {
     id?: string;        // field name (used as the "field" on upload)
     module?: string;    // owning module (from the fieldset context)
     value?: any;
     onChange?: (value: ImageRef[]) => void;
     disabled?: boolean;
-    multiple?: boolean; // from field.options
+    multiple?: boolean;  // from field.options
+    editSize?: number;   // from field.options; overrides the default 80px thumbnail
+    // folderTemplate (field.options) auto-files uploads into a folder, e.g.
+    // "profile" or "posts/{title}" — {name} tokens are substituted from the
+    // sibling form values (formValues, e.g. {title}: "My Post" -> "posts/My Post").
+    folderTemplate?: string;
+    formValues?: Record<string, any>;
 }
 
-const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disabled, multiple }) => {
+// resolveFolder substitutes {name} tokens in a folderTemplate from sibling
+// form values; a template with no tokens (e.g. "profile") passes through as-is.
+function resolveFolder(template: string | undefined, formValues: Record<string, any> | undefined): string {
+    if (!template) return "";
+    return template.replace(/\{(\w+)\}/g, (_, name) => String(formValues?.[name] ?? "").trim());
+}
+
+const ImageEdit: React.FC<ImageEditProps> = ({
+    id,
+    module,
+    value,
+    onChange,
+    disabled,
+    multiple,
+    editSize,
+    folderTemplate,
+    formValues,
+}) => {
     const t = useT();
     const [refs, setRefs] = useState<ImageRef[]>(normalizeRefs(value));
     const [uploading, setUploading] = useState(false);
@@ -40,9 +65,10 @@ const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disa
         setUploadError(null);
         setUploading(true);
         try {
+            const folder = resolveFolder(folderTemplate, formValues);
             const uploaded: ImageRef[] = [];
             for (let i = 0; i < files.length; i++) {
-                uploaded.push(await processImage(files[i], module || "", id || ""));
+                uploaded.push(await processImage(files[i], module || "", id || "", { folder }));
             }
             const next = multiple ? [...refs, ...uploaded] : uploaded.slice(-1);
             emit(next);
@@ -78,31 +104,34 @@ const ImageEdit: React.FC<ImageEditProps> = ({ id, module, value, onChange, disa
 
             {refs.length > 0 && (
                 <div className="d-flex flex-wrap" style={{ gap: 8 }}>
-                    {refs.map((img, idx) => (
-                        <div key={img.id ?? idx} className="text-center" style={{ width: 90 }}>
-                            <img
-                                src={imageUrl(img)}
-                                alt={img.filename || String(img.id)}
-                                style={{
-                                    width: 80,
-                                    height: 80,
-                                    objectFit: "cover",
-                                    border: "1px solid #ddd",
-                                }}
-                            />
-                            {!disabled && (
-                                <div>
-                                    <button
-                                        type="button"
-                                        className="btn btn-sm btn-link text-danger p-0"
-                                        onClick={() => remove(idx)}
-                                    >
-                                        {t("remove")}
-                                    </button>
-                                </div>
-                            )}
-                        </div>
-                    ))}
+                    {refs.map((img, idx) => {
+                        const size = editSize || 80;
+                        return (
+                            <div key={img.id ?? idx} className="text-center" style={{ width: size + 10 }}>
+                                <img
+                                    src={imageUrl(img)}
+                                    alt={img.filename || String(img.id)}
+                                    style={{
+                                        width: size,
+                                        height: size,
+                                        objectFit: "cover",
+                                        border: "1px solid #ddd",
+                                    }}
+                                />
+                                {!disabled && multiple && (
+                                    <div>
+                                        <button
+                                            type="button"
+                                            className="btn btn-sm btn-link text-danger p-0"
+                                            onClick={() => remove(idx)}
+                                        >
+                                            {t("remove")}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             )}
         </div>

@@ -173,6 +173,7 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		"record_id":  recordID,
 		"filename":   header.Filename,
 		"mime_type":  mimeType,
+		"folder":     r.FormValue("folder"),
 		"access":     access,
 		"data":       raw,
 		"created_by": uploaderID,
@@ -279,6 +280,80 @@ func canViewImage(r *http.Request, ci *cachedImage) bool {
 	}
 	ok, err := module.CanViewRecord(r, "images", ci.Id)
 	return err == nil && ok
+}
+
+// folderImagePreview is one image inside a folder's deck-of-cards preview.
+type folderImagePreview struct {
+	ID       int64  `json:"id"`
+	UUID     string `json:"uuid"`
+	Filename string `json:"filename"`
+	MimeType string `json:"mime_type"`
+}
+
+// folderSummary is one row of GET /images/folders: a folder's first few
+// images (for the deck-of-cards preview) plus its total image count.
+type folderSummary struct {
+	Folder   string               `json:"folder"`
+	Count    int                  `json:"count"`
+	Previews []folderImagePreview `json:"previews"`
+}
+
+// ListFolders handles GET /images/folders: groups images by folder, applying
+// the same OwnerScoped + access-level visibility as the standard list.
+func ListFolders(w http.ResponseWriter, r *http.Request) {
+	db, err := pgdb.GetInstanceCtx(r.Context())
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
+		return
+	}
+
+	where := "folder <> ''"
+	var args []interface{}
+	s := cache.SessionFromContext(r.Context())
+	if s == nil || !s.IsAdmin {
+		userID, level := 0, 0
+		if s != nil {
+			userID, level = s.UserID, s.AccessLevel
+		}
+		where += " AND created_by = $1 AND access <= $2"
+		args = append(args, userID, level)
+	}
+
+	rows, err := db.GetAll(
+		"SELECT id, uuid, filename, mime_type, folder FROM images WHERE "+where+" ORDER BY folder, created DESC",
+		args...,
+	)
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	var order []string
+	groups := map[string]*folderSummary{}
+	for _, row := range rows {
+		folder := functions.Coerce[string](row["folder"])
+		g, ok := groups[folder]
+		if !ok {
+			g = &folderSummary{Folder: folder}
+			groups[folder] = g
+			order = append(order, folder)
+		}
+		g.Count++
+		if len(g.Previews) < 3 {
+			g.Previews = append(g.Previews, folderImagePreview{
+				ID:       functions.Coerce[int64](row["id"]),
+				UUID:     functions.Coerce[string](row["uuid"]),
+				Filename: functions.Coerce[string](row["filename"]),
+				MimeType: functions.Coerce[string](row["mime_type"]),
+			})
+		}
+	}
+
+	out := make([]*folderSummary, 0, len(order))
+	for _, name := range order {
+		out = append(out, groups[name])
+	}
+	functions.WriteJSON(w, http.StatusOK, out)
 }
 
 // applyFieldResize looks up moduleName's fieldName field and, if it declares
@@ -404,12 +479,14 @@ func (m *Images) fieldset() []Field {
 	return []Field{
 		// Thumbnail: the image is served at /image/<uuid>, so a read-only IMAGE
 		// field aliased to the uuid column renders the picture in list/view.
-		NewField("preview", TYPE_IMAGE, false).WithLabel("Preview").WithSQL("uuid").AsReadOnly().NonSortable(),
+		NewField("preview", TYPE_IMAGE, false).WithLabel("Preview").WithSQL("uuid").NonSortable().
+			WithOption("listSize", 100).WithOption("editSize", 160),
 		NewField("module", TYPE_STRING, false).WithLabel("Module"),
 		NewField("field", TYPE_STRING, false).WithLabel("Field"),
 		NewField("record_id", TYPE_INT, false).WithLabel("Record"),
 		NewField("filename", TYPE_STRING, false).WithLabel("Filename"),
 		NewField("mime_type", TYPE_STRING, false).WithLabel("Type"),
+		NewField("folder", TYPE_STRING, false).WithLabel("Folder"),
 	}
 }
 
@@ -421,6 +498,7 @@ func (m *Images) filters() *Filedset {
 		NewFilter("module", TYPE_STRING).WithLabel("Module").Contains(),
 		NewFilter("field", TYPE_STRING).WithLabel("Field").Contains(),
 		NewFilter("mime_type", TYPE_STRING).WithLabel("Type").Contains(),
+		NewFilter("folder", TYPE_STRING).WithLabel("Folder").Equals(),
 	)
 }
 
@@ -441,6 +519,9 @@ func NewImages() *Images {
 			// serving (/image/<uuid>) is unaffected — it stays gated by the
 			// image's own access level via CanViewRecord.
 			OwnerScoped: true,
+			CustomViews: map[string]map[string]string{
+				"list": {"gallery": "Gallery"},
+			},
 		},
 	}
 	m.ModuleAbstract.Fields = m.fieldset()
@@ -456,6 +537,7 @@ func NewImages() *Images {
 	m.ModuleAbstract.CustomRoutes = []CustomRoute{
 		{Path: "/api/images/process", Methods: []string{"POST"}, Handler: Process, Absolute: true},
 		{Path: "/image/{ref}", Methods: []string{"GET"}, Handler: ServeByRef, Absolute: true},
+		{Path: "/folders", Methods: []string{"GET"}, Handler: ListFolders},
 	}
 	return m
 }

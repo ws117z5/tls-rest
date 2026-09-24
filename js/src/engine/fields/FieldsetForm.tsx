@@ -4,6 +4,10 @@ import { useFieldset, MODES, isImmutableField } from './FieldsetProvider';
 import useT from '@engine/useT';
 import '@css/fieldset.css';
 
+// Field types that are large content editors, not single-value inputs — these
+// keep flex-filling the row instead of getting STD_VALUE_WIDTH's fixed width.
+const FULL_WIDTH_TYPES = new Set(['Markdown', 'Text', 'Json', 'Html', 'Table', 'Image', 'BBCode']);
+
 // Form data interface
 interface FormData {
   [key: string]: any;
@@ -230,8 +234,11 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
     }
   };
 
-  // Standard column widths (px) used when the fieldset doesn't predefine one.
+  // Standard column widths used when the fieldset doesn't predefine one.
   static STD_DESC_WIDTH = 220;
+  // Relative-unit default for a compact field's value column (see
+  // FULL_WIDTH_TYPES below) so it doesn't flex-fill the whole row width.
+  static STD_VALUE_WIDTH = '30rem';
 
   // Compute the shared column widths for the whole form. If any field predefines
   // a description/value width, the column takes the widest of those; otherwise a
@@ -278,16 +285,34 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
       label: '',
     };
 
-    const valueStyle: React.CSSProperties = layout.valueWidth
-      ? { flex: `0 0 ${layout.valueWidth}px`, maxWidth: layout.valueWidth, minWidth: 0 }
-      : { flex: '1 1 auto', minWidth: 0 };
+    const explicitWidth = Number(field.options && field.options.valueWidth);
+    const isFullWidthType = FULL_WIDTH_TYPES.has(field.type);
 
+    let valueStyle: React.CSSProperties;
+    if (!isNaN(explicitWidth) && explicitWidth > 0) {
+      valueStyle = { flex: `0 0 ${explicitWidth}px`, maxWidth: explicitWidth, minWidth: 0 };
+    } else if (isFullWidthType) {
+      valueStyle = { flex: '1 1 auto', minWidth: 0 };
+    } else if (layout.valueWidth) {
+      // A sibling field in this row-group set an explicit width; compact
+      // fields without their own align to it (shared column look).
+      valueStyle = { flex: `0 0 ${layout.valueWidth}px`, maxWidth: layout.valueWidth, minWidth: 0 };
+    } else {
+      valueStyle = {
+        flex: `0 0 ${FieldsetFormClass.STD_VALUE_WIDTH}`,
+        maxWidth: FieldsetFormClass.STD_VALUE_WIDTH,
+        minWidth: 0,
+      };
+    }
+
+    const hasError = !!(touched[field.name] && errors[field.name]);
     const valueCell = (
-      <div className="fieldset-cell fieldset-cell-value" style={valueStyle}>
+      <div
+        className={`fieldset-cell fieldset-cell-value${hasError ? " fieldset-cell-invalid" : ""}`}
+        style={valueStyle}
+      >
         <Field {...fieldProps} />
-        {touched[field.name] && errors[field.name] && (
-          <div className="invalid-feedback d-block">{errors[field.name]}</div>
-        )}
+        {hasError && <div className="invalid-feedback d-block">{errors[field.name]}</div>}
       </div>
     );
 

@@ -1,25 +1,6 @@
 import React from "react";
 
-// Per-module custom presentation, discovered automatically.
-//
-// A module needs NO manual registration to work — the generic ModulePage renders
-// any module in any mode from its fieldset. To override how a module looks in a
-// given mode, drop a file in that module's directory:
-//
-//   modules/<module>/list.tsx      -> replaces the standard list
-//   modules/<module>/view.tsx      -> replaces the standard view
-//   modules/<module>/edit.tsx      -> replaces the standard edit form
-//   modules/<module>/create.tsx    -> replaces the standard create form
-//   modules/<module>/filters.tsx   -> replaces the standard list filter bar
-//
-// The file's default export is picked up at build time (via
-// import.meta.webpackContext) and used automatically; there is nothing to wire
-// up here. Filenames are matched
-// case-insensitively, so List.tsx and list.tsx both work. Any mode without an
-// override falls back to the generic presentation.
-//
-// list/view/edit/create receive ModuleViewProps (a full-page presentation).
-// filters receives ModuleFiltersProps (just the filter bar above the list).
+// Per-module custom presentation, auto-discovered from modules/<module>/<mode>[.<Name>].tsx — no manual registration.
 
 export interface ModuleViewProps {
     module: string;                 // module name, e.g. "users"
@@ -52,41 +33,37 @@ export interface ModuleFiltersProps {
     onReset: () => void;                        // clear all filters -> reload list
 }
 
+// A mode's discovered views, keyed by name — "default" for the bare
+// <mode>.tsx, or the <Name> segment of <mode>.<Name>.tsx.
+export type NamedViews = Record<string, React.ComponentType<ModuleViewProps>>;
+
 export type ModuleViews = Partial<{
-    list: React.ComponentType<ModuleViewProps>;
-    view: React.ComponentType<ModuleViewProps>;
-    edit: React.ComponentType<ModuleViewProps>;
-    create: React.ComponentType<ModuleViewProps>;
+    list: NamedViews;
+    view: NamedViews;
+    edit: NamedViews;
+    create: NamedViews;
     filters: React.ComponentType<ModuleFiltersProps>;
 }>;
 
-const meta = import.meta as unknown as {
-    webpackContext: (
-        request: string,
-        options: { recursive: boolean; regExp: RegExp }
-    ) => __WebpackModuleApi.RequireContext;
-};
+type ViewMode = "list" | "view" | "edit" | "create";
 
-// The override filenames we look for in each module directory. This must stay in
-// sync with the literal passed to import.meta.webpackContext below (webpack can
-// only statically analyse a literal RegExp there, not a variable).
-const OVERRIDE_KEY = /^\.\/([^/]+)\/(list|view|edit|create|filters)\.tsx$/i;
+// Must match the literal regex passed to webpackContext below (needs a static literal, not a variable).
+const OVERRIDE_KEY = /^\.\/([^/]+)\/(list|view|edit|create|filters)(?:\.([A-Za-z0-9_-]+))?\.tsx$/i;
 
 // module name -> discovered overrides. Built at build time from the filesystem.
 const registry: Record<string, ModuleViews> = {};
-
 
 // import.meta.webpackContext scans this directory (engine/modules) one level
 // deep for the override files above. It is resolved by webpack at build time —
 // matched files are bundled, unmatched module directories cost nothing.
 const engineContext = import.meta.webpackContext("../modules", {
     recursive: true,
-    regExp: /^\.\/[^/]+\/(list|view|edit|create|filters)\.tsx$/i,
+    regExp: /^\.\/[^/]+\/(list|view|edit|create|filters)(?:\.([A-Za-z0-9_-]+))?\.tsx$/i,
 });
 
 const userContext = import.meta.webpackContext("../../modules", {
     recursive: true,
-    regExp: /^\.\/[^/]+\/(list|view|edit|create|filters)\.tsx$/i,
+    regExp: /^\.\/[^/]+\/(list|view|edit|create|filters)(?:\.([A-Za-z0-9_-]+))?\.tsx$/i,
 });
 
 function loadRegistry(ctx: __WebpackModuleApi.RequireContext) {
@@ -95,25 +72,35 @@ function loadRegistry(ctx: __WebpackModuleApi.RequireContext) {
         if (!match) return;
 
         const moduleName = match[1];
-        const mode = match[2].toLowerCase() as keyof ModuleViews;
+        const mode = match[2].toLowerCase() as ViewMode | "filters";
+        const viewName = (match[3] || "default").toLowerCase();
 
         const mod = ctx(key);
-        const component = (mod && (mod.default || mod)) as ModuleViews[keyof ModuleViews];
+        const component = mod && (mod.default || mod);
         if (!component) return;
 
         if (!registry[moduleName]) registry[moduleName] = {};
-        (registry[moduleName] as Record<keyof ModuleViews, unknown>)[mode] = component;
+        const views = registry[moduleName];
 
-        // Fallback: Set 'create' to 'edit' if 'edit' exists and 'create' is undefined
-        if (mode === 'edit' && !registry[moduleName].create) {
-            registry[moduleName].create = component as React.ComponentType<ModuleViewProps>;
+        if (mode === "filters") {
+            views.filters = component as React.ComponentType<ModuleFiltersProps>;
+            return;
+        }
+
+        if (!views[mode]) views[mode] = {};
+        (views[mode] as NamedViews)[viewName] = component as React.ComponentType<ModuleViewProps>;
+
+        // Fallback: an edit view (of any name) also serves as that same-named
+        // create view when no create.<Name>.tsx exists for it.
+        if (mode === "edit" && !views.create?.[viewName]) {
+            if (!views.create) views.create = {};
+            views.create[viewName] = component as React.ComponentType<ModuleViewProps>;
         }
     });
 }
 
 loadRegistry(engineContext);
 loadRegistry(userContext);
-
 
 // getModuleViews returns the overrides for a module, tolerating case differences
 // between the backend module name and its directory name.

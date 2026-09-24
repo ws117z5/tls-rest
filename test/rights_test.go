@@ -768,8 +768,8 @@ func findAccessLogRow(t *testing.T, since time.Time, method, path string) *acces
 	deadline := time.Now().Add(2 * time.Second)
 	for {
 		row, err := db.GetOne(
-			`SELECT status FROM access_log WHERE method = $1 AND path = $2 AND ts >= $3
-			 ORDER BY ts DESC LIMIT 1`, method, path, since,
+			`SELECT status FROM access_log WHERE method = $1 AND path = $2 AND created >= $3
+			 ORDER BY created DESC LIMIT 1`, method, path, since,
 		)
 		if err != nil {
 			t.Fatalf("querying access_log: %v", err)
@@ -992,10 +992,15 @@ func TestFieldRights_RandomPerUser(t *testing.T) {
 
 			visible := fieldsetVisibleNames(t, tok, modID)
 			for _, name := range names {
+				// Additive rights: a field the group already opened stays visible
+				// regardless of whether this personal grant repeats it (see
+				// fieldsAlreadyOpen above, applied per-field here rather than
+				// requiring every candidate field to already be open).
 				_, granted := grants[name]
+				granted = granted || existing[name] != 0
 				if visible[name] != granted {
-					t.Errorf("module %s field %q: granted=%v, visible=%v (grants=%v)",
-						modID, name, granted, visible[name], grants)
+					t.Errorf("module %s field %q: granted=%v, visible=%v (grants=%v, existing=%v)",
+						modID, name, granted, visible[name], grants, existing)
 				}
 			}
 		})

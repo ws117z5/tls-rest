@@ -12,7 +12,7 @@ interface Props {
 class PasswordEdit extends Component<Props> {
   render() {
     const { id, value, placeholder, disabled, required, className, onChange } = this.props;
-    const width = this.props.width ?? "auto";
+    const width = this.props.width ?? "100%";
     return (
       <input
         id={id}

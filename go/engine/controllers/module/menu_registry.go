@@ -36,7 +36,8 @@ type PageMenuMeta struct {
 	Order int
 	Icon  string
 	// Submenu groups this page under a named submenu; empty = top level ("head").
-	Submenu string
+	Submenu     string
+	CustomViews map[string]map[string]string // see ModuleAbstract.CustomViews
 }
 
 var (

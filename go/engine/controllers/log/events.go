@@ -213,7 +213,7 @@ func (el *EventLogger) writeToDatabase(event EventLog) {
 	}
 	row := map[string]interface{}{
 		"event_id":   event.ID,
-		"ts":         event.Timestamp,
+		"created":    event.Timestamp,
 		"type":       string(event.Type),
 		"level":      string(dbLevel(event.Level)),
 		"message":    event.Message,

@@ -3,6 +3,7 @@ import { FIELD_TYPES } from "./FieldsetProvider";
 import type { ModuleFilterMeta, ModuleFiltersProps } from "@engine/controllers/registry";
 import useT from "@engine/useT";
 import CustomSelect from "./CustomSelect";
+import Icon from "@engine/Icon";
 
 // FieldsetFilters is the standard list filter bar. It renders one input per
 // filter declared by the backend (the "Filters" array returned by GET /<module>,
@@ -120,7 +121,7 @@ const FieldsetFilters: React.FC<ModuleFiltersProps> = ({
                 ))}
                 <div className="col-auto">
                     <button type="button" className="btn btn-primary btn-sm" onClick={onApply}>
-                        <span className="menu-icon-sprite icon-search ic-12" aria-hidden="true" />
+                        <Icon name="search" scale={1.5} />
                         {t("Apply")}
                     </button>
                     {hasValues && (

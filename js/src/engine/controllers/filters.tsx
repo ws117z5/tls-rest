@@ -1,5 +1,6 @@
 import React from "react";
 import type { ModuleFiltersProps } from "@engine/controllers/registry";
+import Icon from "@engine/Icon";
 
 // Example module override: a bespoke filter bar for the Posts list.
 //
@@ -72,7 +73,7 @@ const PostsFilters: React.FC<ModuleFiltersProps> = ({
 
                 <div className="col-auto">
                     <button type="button" className="btn btn-primary btn-sm" onClick={onApply}>
-                        <span className="menu-icon-sprite icon-search" aria-hidden="true" />
+                        <Icon name="search" />
                         Apply
                     </button>
                     <button type="button" className="btn btn-link btn-sm" onClick={onReset}>

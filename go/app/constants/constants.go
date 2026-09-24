@@ -279,7 +279,7 @@ func GetFiles() []string {
 }
 
 // cssFiles are the stylesheets served on every page; Css() below versions them.
-var cssFiles = []string{"/css/base.css", "/css/index.css", "/css/index-cv.css", "/css/menu.css", "/css/theme-dark.css"}
+var cssFiles = []string{"/css/base.css", "/css/index.css", "/css/index-cv.css", "/css/icon.css", "/css/menu.css", "/css/theme-dark.css"}
 
 // Css returns cssFiles with the build version appended as a cache-busting
 // query param.

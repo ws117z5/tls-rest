@@ -341,7 +341,13 @@ class FieldsetListClass extends Component<FieldsetListClassProps, FieldsetListSt
         )}
         {fields.map(field => (
           <td key={field.name}>
-            <Field field={field} value={row[field.name]} mode={MODES.LIST} />
+            <Field
+              field={field}
+              value={row[field.name]}
+              mode={MODES.LIST}
+              module={this.props.fieldsetContext?.module}
+              formValues={row}
+            />
           </td>
         ))}
         {showActions && (

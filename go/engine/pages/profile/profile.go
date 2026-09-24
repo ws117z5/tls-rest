@@ -9,9 +9,11 @@ import (
 	"errors"
 
 	"tls-rest/go/app"
+	appconfig "tls-rest/go/engine/controllers/config"
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
 )
 
@@ -33,7 +35,18 @@ var Page = &module.PageAbstract{
 		field.NewField("email", field.TYPE_STRING, true).
 			WithLabel("Email").WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
 		field.NewField("image", field.TYPE_IMAGE, false).
-			WithLabel("Avatar URL").WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
+			WithLabel("Avatar URL").
+			WithMode(field.MODE_LIST|field.MODE_VIEW|field.MODE_EDIT).
+			WithOption("folderTemplate", "profile"),
+		field.NewField("theme", field.TYPE_SELECT, false).
+			WithLabel("Theme").
+			WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT).
+			WithOptions(func() []map[string]interface{} {
+				return []map[string]interface{}{
+					{"value": "light", "name": "Light"},
+					{"value": "dark", "name": "Dark"},
+				}
+			}),
 	},
 
 	Load: func(ctx context.Context, s *cache.Session) (map[string]interface{}, error) {
@@ -52,6 +65,9 @@ var Page = &module.PageAbstract{
 		if len(row) == 0 {
 			return nil, errors.New("No enrty found")
 		}
+		if cfg, err := db.GetOne("SELECT theme FROM config WHERE scope = 'user' AND scope_id = $1 LIMIT 1", s.UserID); err == nil && cfg != nil {
+			row["theme"] = cfg["theme"]
+		}
 		return row, nil
 	},
 
@@ -63,9 +79,35 @@ var Page = &module.PageAbstract{
 		if err != nil {
 			return err
 		}
+		if theme, ok := data["theme"]; ok {
+			delete(data, "theme")
+			if err := saveUserTheme(db, s.UserID, theme); err != nil {
+				return err
+			}
+		}
+		if len(data) == 0 {
+			return nil
+		}
 		_, err = db.UpdateRow("users", data, "id", s.UserID)
 		return err
 	},
+}
+
+// saveUserTheme creates or updates the caller's personal theme override (config: scope=user, scope_id=userID).
+func saveUserTheme(db *pgdb.Db, userID int, theme interface{}) error {
+	row, err := db.GetOne("SELECT id FROM config WHERE scope = 'user' AND scope_id = $1 LIMIT 1", userID)
+	if err != nil {
+		return err
+	}
+	if row != nil {
+		_, err = db.UpdateRow("config", map[string]interface{}{"theme": theme}, "id", functions.Coerce[int](row["id"]))
+	} else {
+		_, err = db.InsertRow("config", map[string]interface{}{"scope": "user", "scope_id": userID, "theme": theme})
+	}
+	if err == nil {
+		appconfig.BumpConfigEpoch()
+	}
+	return err
 }
 
 func init() {

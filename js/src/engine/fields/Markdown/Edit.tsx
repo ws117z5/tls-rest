@@ -123,7 +123,7 @@ class MarkdownEdit extends Component<MarkdownEditProps, MarkdownEditState> {
     };
 
     render() {
-        const { width = "600px", height = "300px", disabled } = this.props;
+        const { width = "100%", height = "300px", disabled } = this.props;
         const { value, showPreview, uploading } = this.state;
 
         return (

@@ -24,6 +24,8 @@ export interface BackendModule {
     // Column records are addressed by; absent/"" means "id". A module keyed on
     // uuid (e.g. papers) must be linked to by uuid, not a row's numeric id.
     key_field?: string;
+    customViews?: Record<string, Record<string, string>>; // mode -> {viewName: label}
+    configAffecting?: boolean; // a write here should reload AppConfig (see engine/controllers/config)
 }
 
 // A page entry from the menu.
@@ -32,6 +34,7 @@ export interface BackendPage {
     name: string;
     endpoint: string;    // e.g. "/netmapper"
     icon?: string;       // menu icon URL
+    customViews?: Record<string, Record<string, string>>; // mode -> {viewName: label}
 }
 
 // Identity for the menu (login/logout swap + avatar).

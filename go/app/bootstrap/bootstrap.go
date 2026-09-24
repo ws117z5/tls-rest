@@ -11,6 +11,7 @@ import (
 	_ "tls-rest/go/engine/modules/deletion"
 	_ "tls-rest/go/engine/modules/externalconfig"
 	_ "tls-rest/go/engine/modules/friends"
+	_ "tls-rest/go/engine/modules/html"
 	_ "tls-rest/go/engine/modules/images"
 	_ "tls-rest/go/engine/modules/likes"
 	_ "tls-rest/go/engine/modules/logs"
@@ -34,6 +35,11 @@ import (
 	_ "tls-rest/go/engine/pages/statistics"
 
 	// App pages
+	_ "tls-rest/go/pages/arrayiterator"
+	_ "tls-rest/go/pages/graph"
+	_ "tls-rest/go/pages/hashtool"
+	_ "tls-rest/go/pages/imageprocessing"
+	_ "tls-rest/go/pages/markdowntool"
 	_ "tls-rest/go/pages/myip"
 	_ "tls-rest/go/pages/netmapper"
 

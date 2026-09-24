@@ -71,6 +71,7 @@ func (u *Users) fieldset() []Field {
 		NewField("image", TYPE_IMAGE, false).
 			WithLabel("Profile Image").
 			WithDescription("User's profile image").
+			WithOption("folderTemplate", "profile").
 			NonSearchable().
 			WithMode(MODE_VIEW | MODE_EDIT).
 			WithResize(ResizeOptions{Height: 300}),

@@ -22,12 +22,8 @@ type ContextKey string
 // module engine) can read the same session via cache.SessionFromContext.
 var SESSION_KEY = cache.SessionKey
 
-// rightsEpoch is bumped whenever anything that affects resolved rights changes
-// (users, groups, user_rights, user_group_rights). Sessions record the epoch they
-// resolved at; the per-request path re-resolves only on a mismatch, so rights are
-// cached in the session and recomputed on change — not on every request. Cache
-// eviction recreates the session, which resolves fresh anyway.
-var rightsEpoch int64
+// rightsEpoch: bumped on any rights change; seeded from start time (not 0) so a Redis-persisted session can't coincidentally match it after a restart.
+var rightsEpoch = time.Now().Unix()
 
 // CurrentRightsEpoch returns the current global rights epoch.
 func CurrentRightsEpoch() int64 { return atomic.LoadInt64(&rightsEpoch) }

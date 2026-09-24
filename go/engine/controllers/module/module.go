@@ -78,17 +78,18 @@ type ModuleAbstract[T any] struct {
 	Controller            *BaseController
 	Overrides             HandlerOverrides
 	CustomRoutes          []CustomRoute
-	OwnerScoped           bool         // non-admins only see rows they created
-	BeforeFieldset        Preprocessor // runs on the raw request body, before fieldset filtering
-	AfterFieldset         Preprocessor // runs on the filtered data, just before the DB write
-	RightsAffecting       bool         // fires OnRightsChange after a successful write
-	ConfigAffecting       bool         // fires OnConfigChange after a successful write
-	ListAscending         bool         // default list order is oldest-first, not newest-first
-	KeyField              string       // column used to address a record by; defaults to "id"
-	SoftDelete            bool         // DELETE flags the row (needs a `deleted` column) instead of removing it
-	VisibilityField       string       // boolean column that also grants visibility past the access-level gate
-	VisibilityUsersField  string       // jsonb user-id sharing list; with VisibilityGroupsField, replaces the access-level gate
-	VisibilityGroupsField string       // jsonb group-id sharing list; see VisibilityUsersField
+	OwnerScoped           bool                         // non-admins only see rows they created
+	BeforeFieldset        Preprocessor                 // runs on the raw request body, before fieldset filtering
+	AfterFieldset         Preprocessor                 // runs on the filtered data, just before the DB write
+	RightsAffecting       bool                         // fires OnRightsChange after a successful write
+	ConfigAffecting       bool                         // fires OnConfigChange after a successful write
+	ListAscending         bool                         // default list order is oldest-first, not newest-first
+	KeyField              string                       // column used to address a record by; defaults to "id"
+	SoftDelete            bool                         // DELETE flags the row (needs a `deleted` column) instead of removing it
+	VisibilityField       string                       // boolean column that also grants visibility past the access-level gate
+	VisibilityUsersField  string                       // jsonb user-id sharing list; with VisibilityGroupsField, replaces the access-level gate
+	VisibilityGroupsField string                       // jsonb group-id sharing list; see VisibilityUsersField
+	CustomViews           map[string]map[string]string // mode -> {viewName: label}; documents frontend <mode>.<viewName>.tsx views (registry.ts discovers the files itself)
 }
 
 // OnRightsChange is invoked after a successful write to a RightsAffecting
@@ -133,6 +134,17 @@ func (m *ModuleAbstract[T]) GetCustomRoutes() []CustomRoute {
 	return m.CustomRoutes
 }
 
+// GetCustomViews exposes CustomViews (mode -> {viewName: label}) for the menu API.
+func (m *ModuleAbstract[T]) GetCustomViews() map[string]map[string]string {
+	return m.CustomViews
+}
+
+// GetConfigAffecting exposes ConfigAffecting for the menu API, so the client
+// knows to reload AppConfig after a successful write to this module.
+func (m *ModuleAbstract[T]) GetConfigAffecting() bool {
+	return m.ConfigAffecting
+}
+
 func (m *ModuleAbstract[T]) GetName() string {
 	return m.Name
 }
@@ -165,6 +177,8 @@ type ModuleInterface interface {
 	IsReadOnly() bool
 	GetHiddenModes() []string
 	GetKeyField() string
+	GetCustomViews() map[string]map[string]string
+	GetConfigAffecting() bool
 	List(w http.ResponseWriter, r *http.Request)
 	View(w http.ResponseWriter, r *http.Request)
 	Create(w http.ResponseWriter, r *http.Request)

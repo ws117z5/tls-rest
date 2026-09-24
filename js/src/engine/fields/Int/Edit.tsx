@@ -19,7 +19,7 @@ interface IntEditState { value: string; }
 // Editable integer input for TYPE_INT. Renders only the control (the field layout
 // draws the label). Reports an integer via onChange; empty stays empty.
 class IntEdit extends Component<IntEditProps, IntEditState> {
-  static defaultProps = { step: 1, width: "auto" };
+  static defaultProps = { step: 1, width: "100%" };
 
   constructor(props: IntEditProps) {
     super(props);

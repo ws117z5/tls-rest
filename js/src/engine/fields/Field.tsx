@@ -90,8 +90,6 @@ if (COMPONENTS.Checkbox && COMPONENTS.Checkbox[MODES.LIST]) {
 // Select, Checkbox, Markdown, Image, Table, Password, TimeDuration, ...).
 const TYPE_DIR: Record<string, string> = {
   [FIELD_TYPES.STRING]: 'Text',
-  [FIELD_TYPES.AUTOCOMPLETE]: 'Text',
-  [FIELD_TYPES.AUTOCOMPLETE_TEXT]: 'Text',
   [FIELD_TYPES.INT]: 'Float',
   [FIELD_TYPES.MONEY]: 'Float',
   [FIELD_TYPES.DATE_TIME]: 'Date',
@@ -108,6 +106,9 @@ function componentsForType(type: string): ModeMap | undefined {
 }
 
 const AutocompleteEdit = COMPONENTS['Autocomplete']?.[MODES.EDIT] as
+  | React.ComponentType<any>
+  | undefined;
+const AutocompleteView = COMPONENTS['Autocomplete']?.[MODES.VIEW] as
   | React.ComponentType<any>
   | undefined;
 
@@ -134,10 +135,7 @@ const DefaultField: React.FC<BaseFieldProps> = ({ field, value, mode }) => (
 export const Field: React.FC<BaseFieldProps> = (props) => {
   const { field, mode } = props;
 
-  // Autocomplete is an OPTION on a String field, not a field type of its own:
-  // `NewField("city", TYPE_STRING, ...).WithAutocomplete(...)` serializes an
-  // `autocomplete` kind that renders the server-backed type-ahead input in
-  // edit/create. Read it from the top-level flag or from options for robustness.
+  // Autocomplete is an option (WithAutocomplete) on String/Int, not its own type.
   const autocompleteKind = field.autocomplete ?? (field.options && (field.options as any).autocomplete);
   if (autocompleteKind && AutocompleteEdit && (mode === MODES.EDIT || mode === MODES.CREATE)) {
     return (
@@ -151,7 +149,19 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
         required={field.required}
         className={props.className}
         onChange={props.onChange}
-        values={props.formValues}
+        formValues={props.formValues}
+      />
+    );
+  }
+  // View/List: only Int needs id->label resolution; String's value is already the label.
+  if (autocompleteKind && AutocompleteView && field.type === FIELD_TYPES.INT && (mode === MODES.VIEW || mode === MODES.LIST)) {
+    return (
+      <AutocompleteView
+        id={field.name}
+        fieldName={field.name}
+        module={props.module}
+        value={props.value}
+        formValues={props.formValues}
       />
     );
   }

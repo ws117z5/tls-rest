@@ -1,25 +1,18 @@
 import React, { Component } from "react";
 import axios from "axios";
-
-interface AutoOption {
-  value: string;
-  label: string;
-}
+import { AutoOption, resolveAutocompleteLabel } from "./shared";
 
 interface AutocompleteEditProps {
   id?: string;
   fieldName?: string;
   module?: string;
-  value?: string;
+  value?: string | number; // a stored id may arrive as a JS number
   placeholder?: string;
   disabled?: boolean;
   required?: boolean;
   className?: string;
   onChange?: (value: string) => void;
-  // Sibling field values of the record being edited; sent with each request so a
-  // function-kind autocomplete can branch on them (e.g. config.scope_id searching
-  // users vs groups based on the chosen scope).
-  values?: Record<string, any>;
+  formValues?: Record<string, any>; // sibling field values, e.g. config.scope_id's "scope"
 }
 
 interface AutocompleteEditState {
@@ -37,13 +30,27 @@ class AutocompleteEdit extends Component<AutocompleteEditProps, AutocompleteEdit
 
   constructor(props: AutocompleteEditProps) {
     super(props);
-    this.state = { suggestions: [], open: false, loading: false, text: props.value ?? "" };
+    this.state = { suggestions: [], open: false, loading: false, text: String(props.value ?? "") };
+  }
+
+  componentDidMount() {
+    this.resolveInitialLabel();
   }
 
   componentDidUpdate(prev: AutocompleteEditProps) {
-    if (prev.value !== this.props.value && this.props.value !== this.state.text) {
-      this.setState({ text: this.props.value ?? "" });
+    if (prev.value !== this.props.value && String(this.props.value ?? "") !== this.state.text) {
+      this.setState({ text: String(this.props.value ?? "") });
+      this.resolveInitialLabel();
     }
+  }
+
+  // Resolves the stored id to its label on load.
+  private resolveInitialLabel() {
+    const { value, module: owner, formValues } = this.props;
+    const field = this.field();
+    resolveAutocompleteLabel(owner, field, value, formValues).then((label) => {
+      if (label) this.setState({ text: label });
+    });
   }
 
   private field(): string {
@@ -58,7 +65,7 @@ class AutocompleteEdit extends Component<AutocompleteEditProps, AutocompleteEdit
     axios
       .post(`/api/modules/${owner}/autocomplete/${field}`, {
         input,
-        values: this.props.values || {},
+        values: this.props.formValues || {},
       })
       .then((res: any) => {
         const opts: AutoOption[] = (res.data && res.data.options) || [];
@@ -69,9 +76,7 @@ class AutocompleteEdit extends Component<AutocompleteEditProps, AutocompleteEdit
 
   private onInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
-    this.setState({ text: v });
-    // Free-typed text is reported as-is; picking a suggestion overrides with its value.
-    if (this.props.onChange) this.props.onChange(v);
+    this.setState({ text: v }); // display only — typing never reports a value, only pick() does
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => this.fetchSuggestions(v), 200);
   };
@@ -80,6 +85,22 @@ class AutocompleteEdit extends Component<AutocompleteEditProps, AutocompleteEdit
     this.setState({ text: opt.label, open: false, suggestions: [] });
     if (this.props.onChange) this.props.onChange(opt.value);
   }
+
+  // Left without picking: empty box clears the value, else display reverts to the stored value's label.
+  private onBlur = () => {
+    setTimeout(() => {
+      this.setState({ open: false });
+      if (!this.state.text) {
+        if (this.props.value && this.props.onChange) this.props.onChange("");
+        return;
+      }
+      resolveAutocompleteLabel(this.props.module, this.field(), this.props.value, this.props.formValues).then(
+        (label) => {
+          this.setState({ text: label ?? String(this.props.value ?? "") });
+        }
+      );
+    }, 150);
+  };
 
   render() {
     const { placeholder, disabled, required, className } = this.props;
@@ -94,7 +115,7 @@ class AutocompleteEdit extends Component<AutocompleteEditProps, AutocompleteEdit
           required={required}
           onChange={this.onInput}
           onFocus={() => this.state.text && this.fetchSuggestions(this.state.text)}
-          onBlur={() => setTimeout(() => this.setState({ open: false }), 150)}
+          onBlur={this.onBlur}
           autoComplete="off"
         />
         {this.state.open && (

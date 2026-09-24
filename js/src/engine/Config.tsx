@@ -16,6 +16,8 @@ export interface MenuItem {
     // Column a module's records are addressed by ("id" unless the module sets a
     // different KeyField, e.g. papers uses "uuid"). Modules only.
     keyField?: string;
+    customViews?: Record<string, Record<string, string>>; // mode -> {viewName: label}
+    configAffecting?: boolean; // modules only; a write here should reload AppConfig
     component?: any;     // pages only
     props?: Record<string, any>;
     extraRoutes?: Array<{ href: string; component: any }>;
@@ -86,6 +88,8 @@ export default class Config {
                     icon: entry.icon,
                     isPage: false,
                     keyField: entry.key_field || "id",
+                    customViews: entry.customViews,
+                    configAffecting: entry.configAffecting,
                 };
             }
             const p = entry as BackendPage;
@@ -103,6 +107,7 @@ export default class Config {
                 modes: [],
                 icon: p.icon,
                 isPage,
+                customViews: p.customViews,
                 component: b?.component,
                 props: b?.component?.props || {},
                 extraRoutes: b?.component?.extraRoutes || [],

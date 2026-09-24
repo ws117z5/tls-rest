@@ -113,10 +113,10 @@ a {
    to bold button text) — .btn-sm buttons keep the smaller default. */
 .btn .menu-icon-sprite {
   margin-right: 0;
-  zoom: 0.1;
+  zoom: calc(0.1 * var(--icon-scale, 1));
 }
 .btn-sm .menu-icon-sprite {
-  zoom: 0.08;
+  zoom: calc(0.08 * var(--icon-scale, 1));
 }
 .btn-group { display: inline-flex; vertical-align: middle; }
 .btn-group > .btn:not(:first-child) {

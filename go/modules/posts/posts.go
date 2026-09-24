@@ -2,13 +2,17 @@ package posts
 
 import (
 	"context"
+	"net/http"
 
 	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/modules/html"
 
 	. "tls-rest/go/engine/controllers/field"
 	. "tls-rest/go/engine/controllers/module"
+
+	"github.com/gorilla/mux"
 )
 
 // shareableUsers lists every user as a {value, name} option for the
@@ -72,6 +76,7 @@ func (p *Posts) fieldset() []Field {
 			WithLabel("Images").
 			WithDescription("Post images").
 			WithOption("multiple", true).
+			WithOption("folderTemplate", "posts/{title}").
 			NonSortable().
 			NonSearchable().
 			WithResize(ResizeOptions{Width: 1000}),
@@ -101,6 +106,23 @@ func (p *Posts) fieldset() []Field {
 			WithOption("width", "600px").
 			WithOption("height", "300px").
 			NonSortable(),
+
+		// html_id/compiled_html: content's markdown is compiled server-side on
+		// save (AfterFieldset below) and stored in the shared html module, not
+		// re-parsed client-side — compiled_html is what view mode renders.
+		NewField("html_id", TYPE_INT, false).
+			WithLabel("Html Id").
+			AsReadOnly().
+			InModes(MODE_VIEW),
+
+		NewField("compiled_html", TYPE_HTML, false).
+			WithLabel("Content (HTML)").
+			WithSQL("(SELECT compiled_html FROM html WHERE html.id = posts.html_id)").
+			AsVirtual().
+			AsReadOnly().
+			NonSortable().
+			NonSearchable().
+			InModes(MODE_VIEW),
 
 		// Sharing lists: who besides you and admins may see this post. Empty
 		// (the default) means private to you and admins — see VisibilityUsersField
@@ -218,22 +240,46 @@ func NewPosts() *Posts {
 	// The post view renders a comments thread (engine/modules/comments) via its
 	// custom layout, talking to the /api/comments REST API directly.
 
-	/** just an example of BeforeFieldset and AfterFieldset methods
-	slugify := func(value string) string {
-		return value[0:len(value)-2]
-	}
-
-	m.BeforeFieldset = func(r *http.Request, data map[string]interface{}) (map[string]interface{}, error) {
-		if s, ok := data["slug"].(string); !ok || s == "" {
-				data["slug"] = slugify(data["title"].(string))   // inject before validation
-		}
-		return data, nil
-	}
+	// content is a normal stored field, so filterValidFields keeps it in data —
+	// compile it server-side and upsert the result into the shared html module,
+	// setting html_id so view mode renders compiled_html, not client-side markdown.
 	m.AfterFieldset = func(r *http.Request, data map[string]interface{}) (map[string]interface{}, error) {
-		data["search"] = strings.ToLower(fmt.Sprint(data["title"], " ", data["body"])) // derive right before save
+		markdown, ok := data["content"].(string)
+		if !ok {
+			return data, nil
+		}
+
+		db, err := pgdb.GetInstanceCtx(r.Context())
+		if err != nil {
+			return nil, err
+		}
+
+		var existingID int64
+		if id := mux.Vars(r)["id"]; id != "" {
+			if row, e := db.GetOne("SELECT html_id FROM posts WHERE id = $1", id); e == nil && row != nil {
+				existingID = functions.Coerce[int64](row["html_id"])
+			}
+		}
+
+		compiled := html.RenderMarkdown(markdown)
+		if existingID > 0 {
+			n, err := db.UpdateRow("html", map[string]interface{}{"compiled_html": compiled}, "id", existingID)
+			if err != nil {
+				return nil, err
+			}
+			if n > 0 {
+				data["html_id"] = existingID
+				return data, nil
+			}
+		}
+
+		id, err := db.InsertRow("html", map[string]interface{}{"compiled_html": compiled})
+		if err != nil {
+			return nil, err
+		}
+		data["html_id"] = id
 		return data, nil
 	}
-	**/
 
 	return m
 }

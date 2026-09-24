@@ -233,7 +233,9 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 		// KeyField is the column records are addressed by ("" -> "id"). A module
 		// keyed on uuid (e.g. papers) must be linked to by uuid, not the row's
 		// numeric id, so the frontend needs to know which one to use.
-		KeyField string `json:"key_field,omitempty"`
+		KeyField        string                       `json:"key_field,omitempty"`
+		CustomViews     map[string]map[string]string `json:"customViews,omitempty"`     // mode -> {viewName: label}
+		ConfigAffecting bool                         `json:"configAffecting,omitempty"` // client reloads AppConfig after a write here
 	}
 	menuByID := map[string]module.ModuleMenuMeta{}
 	for _, m := range module.RegisteredModuleMenu() {
@@ -257,9 +259,13 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 		icon := ""
 		readOnly := false
 		keyField := ""
+		var customViews map[string]map[string]string
+		configAffecting := false
 		if m, ok := module.RegisteredModules[id]; ok {
 			readOnly = m.IsReadOnly() // reliable, independent of the menu writer
 			keyField = m.GetKeyField()
+			customViews = m.GetCustomViews()
+			configAffecting = m.GetConfigAffecting()
 		}
 		if meta, ok := menuByID[id]; ok {
 			if meta.Description != "" {
@@ -284,33 +290,37 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 			grantedRights = append(grantedRights, rightID)
 		}
 		add(submenu, moduleEntry{
-			Name:          id,
-			Description:   desc,
-			Endpoint:      "/" + id,
-			Modes:         modeNames,
-			SpecialRights: grantedRights,
-			Icon:          icon,
-			KeyField:      keyField,
+			Name:            id,
+			Description:     desc,
+			Endpoint:        "/" + id,
+			Modes:           modeNames,
+			SpecialRights:   grantedRights,
+			Icon:            icon,
+			KeyField:        keyField,
+			CustomViews:     customViews,
+			ConfigAffecting: configAffecting,
 		})
 	}
 
 	// --- Pages: from the page registry, session-filtered. No requiresAuth/Admin
 	// in the output (already filtered); an endpoint is included. ---
 	type pageEntry struct {
-		ID       string `json:"id"`
-		Name     string `json:"name"`
-		Endpoint string `json:"endpoint"`
-		Icon     string `json:"icon,omitempty"`
+		ID          string                       `json:"id"`
+		Name        string                       `json:"name"`
+		Endpoint    string                       `json:"endpoint"`
+		Icon        string                       `json:"icon,omitempty"`
+		CustomViews map[string]map[string]string `json:"customViews,omitempty"`
 	}
 	for _, p := range module.RegisteredPageMenu() {
 		if !auth.HasPageMode(rights, p.ID, auth.MODE_VIEW, isAdmin) {
 			continue
 		}
 		add(p.Submenu, pageEntry{
-			ID:       p.ID,
-			Name:     p.Name,
-			Endpoint: "/" + p.ID,
-			Icon:     p.Icon,
+			ID:          p.ID,
+			Name:        p.Name,
+			Endpoint:    "/" + p.ID,
+			Icon:        p.Icon,
+			CustomViews: p.CustomViews,
 		})
 	}
 

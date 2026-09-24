@@ -11,6 +11,7 @@ import { FormLayoutBridge, WithLayout } from "@engine/fields/FormLayout";
 import { Fieldset } from "@engine/pages";
 import Auth from "@engine/controllers/auth";
 import Config from "@engine/Config";
+import AppConfig from "@engine/controllers/Appconfig";
 import Icon from "@engine/Icon";
 import Likes from "@engine/modules/likes/Likes";
 import useT from "@engine/useT";
@@ -162,28 +163,35 @@ const ModulePage: React.FC<ModulePageProps> = ({
         load();
     }, [load]);
 
+    // Reloads AppConfig after a write to a ConfigAffecting module.
+    const reloadConfigIfAffecting = useCallback(() => {
+        if (Config.getModule(module)?.configAffecting) AppConfig.load();
+    }, [module]);
+
     const remove = useCallback(
         async (row: any) => {
             try {
                 await axios.delete(`${base}/${row[keyField]}`);
+                reloadConfigIfAffecting();
                 load();
             } catch (e) {
                 console.error("Delete failed:", e);
             }
         },
-        [base, keyField, load]
+        [base, keyField, load, reloadConfigIfAffecting]
     );
 
     const bulkRemove = useCallback(
         async (rows: any[]) => {
             try {
                 await Promise.all(rows.map((row) => axios.delete(`${base}/${row[keyField]}`)));
+                reloadConfigIfAffecting();
             } catch (e) {
                 console.error("Bulk delete failed:", e);
             }
             load(); // single reload after all deletes
         },
-        [base, keyField, load]
+        [base, keyField, load, reloadConfigIfAffecting]
     );
 
     const submit = useCallback(
@@ -191,6 +199,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
             try {
                 if (mode === "create") {
                     const res = await axios.post(base, form);
+                    reloadConfigIfAffecting();
                     // Open the newly-created record's view, addressed by this
                     // module's key field (uuid for papers, id otherwise).
                     const key = res?.data?.[keyField];
@@ -200,13 +209,14 @@ const ModulePage: React.FC<ModulePageProps> = ({
                     }
                 } else if (mode === "edit" && id) {
                     await axios.put(`${base}/${id}`, form);
+                    reloadConfigIfAffecting();
                 }
                 go(base);
             } catch (e) {
                 console.error("Save failed:", e);
             }
         },
-        [base, mode, id, keyField, go]
+        [base, mode, id, keyField, go, reloadConfigIfAffecting]
     );
 
     // Filter handlers, handed to the filter bar (custom or default).
@@ -229,19 +239,28 @@ const ModulePage: React.FC<ModulePageProps> = ({
     const fmMode = MODE_MAP[mode];
     const isView = mode === "view";
 
-    // A full-page override for the current mode takes over entirely.
-    const Custom = views[mode as keyof ModuleViews] as
-        | React.ComponentType<any>
-        | undefined;
+    // Named views for the current mode ("default" for the bare file, plus any
+    // <mode>.<Name>.tsx variants), "default" sorted first when present so the
+    // cycle below starts predictably. "system" (the generic rendering) is
+    // always the last stop.
+    const namedViews = views[mode as "list" | "view" | "edit" | "create"] || {};
+    const viewNames = Object.keys(namedViews).sort((a, b) =>
+        a === "default" ? -1 : b === "default" ? 1 : 0
+    );
+    const options = [...viewNames, "system"];
 
     const isAdmin = Auth.isAdmin();
-    // Only admins may force the system layout; a non-admin who hand-edits
-    // localStorage still gets the custom layout.
-    const showSystem = isAdmin && layoutPref === "system";
-    const useCustom = !!Custom && !showSystem;
+    // Only admins may pick a view via the stored preference; a non-admin
+    // always gets the first (default) custom view when one exists, regardless
+    // of any stale/hand-edited localStorage value.
+    const effectivePref =
+        isAdmin && options.includes(layoutPref) ? layoutPref : viewNames[0] || "system";
+    const Custom = namedViews[effectivePref] as React.ComponentType<any> | undefined;
+    const useCustom = !!Custom;
 
     const toggleLayout = () => {
-        const next = layoutPref === "system" ? "default" : "system";
+        const i = options.indexOf(layoutPref);
+        const next = options[(i + 1) % options.length];
         setLayoutPref(next);
         try {
             localStorage.setItem(layoutKey, next);
@@ -250,16 +269,22 @@ const ModulePage: React.FC<ModulePageProps> = ({
         }
     };
 
-    // Button shown only to admins when a custom layout exists for this mode. Its
-    // label is the current value ("default" | "system").
+    // Backend-declared label for the current view (e.g. "Gallery" for
+    // "gallery"), falling back to the raw discovered name.
+    const viewLabel =
+        Config.getModule(module)?.customViews?.[mode]?.[effectivePref] || effectivePref;
+
+    // Button shown only to admins when at least one custom view exists for
+    // this mode. Its label is the current view's name; clicking cycles
+    // default -> ...other named views... -> system -> default.
     const LayoutToggle: React.FC = () =>
-        Custom && isAdmin ? (
+        viewNames.length > 0 && isAdmin ? (
             <button
                 className="btn btn-outline-secondary"
-                title={t("Switch between this module's custom layout and the system default")}
+                title={t("Switch between this module's views for this mode")}
                 onClick={toggleLayout}
             >
-                {layoutPref === "system" ? t("system") : t("default")}
+                {t(viewLabel)}
             </button>
         ) : null;
 

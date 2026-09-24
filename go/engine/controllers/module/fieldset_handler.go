@@ -55,9 +55,8 @@ func (fh *FieldsetHandler) RegisterModule(module *ModuleAbstract[interface{}]) {
 // GetFieldset handles POST /api/modules/{moduleId}/fieldset. It returns the full
 // authority-visible fieldset (all modes); the client filters by mode. mode is no
 // longer a parameter, so the fieldset is cached once per module.
-// GetAutocomplete handles POST /api/modules/{moduleId}/autocomplete/{field}.
-// Body: {"input": "..."}. Resolves the field's autocomplete config (function,
-// sql, or source) and returns {"options": ["..."]}.
+// GetAutocomplete handles POST /api/modules/{moduleId}/autocomplete/{field}:
+// {"input"} searches, {"id"} resolves one value to its label.
 func (fh *FieldsetHandler) GetAutocomplete(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	moduleId := vars["moduleId"]
@@ -74,18 +73,22 @@ func (fh *FieldsetHandler) GetAutocomplete(w http.ResponseWriter, r *http.Reques
 
 	var body struct {
 		Input  string                 `json:"input"`
+		Id     string                 `json:"id"`
 		Values map[string]interface{} `json:"values"`
 	}
 	if r.Body != nil {
 		_ = json.NewDecoder(r.Body).Decode(&body)
 	}
-	input := strings.TrimSpace(body.Input)
 
 	target := findField(module.Fields, fieldName)
 
 	options := []AutoOption{}
 	if target != nil {
-		options = resolveAutocomplete(r.Context(), target, input, body.Values)
+		if id := strings.TrimSpace(body.Id); id != "" {
+			options = resolveAutocompleteView(r.Context(), target, id, body.Values)
+		} else {
+			options = resolveAutocomplete(r.Context(), target, strings.TrimSpace(body.Input), body.Values)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -121,6 +124,22 @@ func resolveAutocomplete(ctx context.Context, f *Field, input string, values map
 			}
 			q := "SELECT DISTINCT " + col + " FROM " + table + " WHERE " + col + " LIKE $1 ORDER BY " + col + " LIMIT 20"
 			return stringsToOptions(autocompleteQuery(ctx, q, pattern))
+		}
+	}
+	return []AutoOption{}
+}
+
+// resolveAutocompleteView resolves one stored id to its label (Field.AutocompleteViewFunc, else falls back to resolveAutocomplete).
+func resolveAutocompleteView(ctx context.Context, f *Field, id string, values map[string]interface{}) []AutoOption {
+	if f.AutocompleteViewFunc != nil {
+		if label, ok := f.AutocompleteViewFunc(ctx, id, values); ok {
+			return []AutoOption{{Value: id, Label: label}}
+		}
+		return []AutoOption{}
+	}
+	for _, opt := range resolveAutocomplete(ctx, f, id, values) {
+		if opt.Value == id {
+			return []AutoOption{opt}
 		}
 	}
 	return []AutoOption{}

@@ -25,13 +25,11 @@ const TYPE_CHECKBOX_AJAX = "CheckboxAjax"
 
 const TYPE_STRING = "String"
 const TYPE_UUID = "Uuid"
-const TYPE_AUTOCOMPLETE = "Autocomplete"
 
 const TYPE_TEXT = "Text"
 const TYPE_MARKDOWN = "Markdown"
 const TYPE_JSON = "Json"
 const TYPE_IMAGE = "Image"
-const TYPE_AUTOCOMPLETE_TEXT = "AutocompleteText"
 
 const TYPE_DATE = "Date"
 const TYPE_DATE_TIME = "DateTime"
@@ -95,10 +93,10 @@ type Field struct {
 	// TableData/TableOnSubmit/TableRowsAddable builders). The fieldset (columns)
 	// is serialized to the client, which renders each column with its own field
 	// component; the data/submit hooks are server-side only.
-	TableColumns    []Field                                                   `json:"tableFieldset,omitempty"` // column definitions (each a Field)
-	TableSourceName string                                                    `json:"tableSource,omitempty"`   // DB table with module_id,row_id to load rows from
-	TableDataFunc   func(ctx context.Context, data map[string]interface{}) []map[string]interface{} `json:"-"` // manual row provider (wins over TableSource)
-	TableSubmitFunc func(data []map[string]interface{}) interface{}           `json:"-"`                       // process submitted rows before storing
+	TableColumns    []Field                                                                         `json:"tableFieldset,omitempty"` // column definitions (each a Field)
+	TableSourceName string                                                                          `json:"tableSource,omitempty"`   // DB table with module_id,row_id to load rows from
+	TableDataFunc   func(ctx context.Context, data map[string]interface{}) []map[string]interface{} `json:"-"`                       // manual row provider (wins over TableSource)
+	TableSubmitFunc func(data []map[string]interface{}) interface{}                                 `json:"-"`                       // process submitted rows before storing
 	// RowsAddable lets the client add and remove rows (default: rows are fixed,
 	// supplied only by TableDataFunc). RowKey names the column that identifies a
 	// row; empty means the first column. Duplicate keys are allowed.
@@ -116,13 +114,13 @@ type Field struct {
 	// module's closure, not the engine. Set via WithOptionsCtx.
 	OptionsCtxFunc func(ctx context.Context, viewer map[string]interface{}) []map[string]interface{} `json:"-"`
 
-	// Autocomplete configuration (set via WithAutocomplete). The kind is
-	// serialized so the client renders the autocomplete widget and calls the
-	// /autocomplete endpoint; the resolution (func/sql/source) is server-side.
-	AutocompleteKind   string                                                         `json:"autocomplete,omitempty"` // "function" | "sql" | "source"
+	// Autocomplete config, set via WithAutocomplete.
+	AutocompleteKind   string                                                                              `json:"autocomplete,omitempty"` // "function" | "sql" | "source"
 	AutocompleteFunc   func(ctx context.Context, input string, values map[string]interface{}) []AutoOption `json:"-"`
-	AutocompleteSQL    string                                                         `json:"-"`
-	AutocompleteSource []string                                                       `json:"-"` // {table, field, match}
+	AutocompleteSQL    string                                                                              `json:"-"`
+	AutocompleteSource []string                                                                            `json:"-"` // {table, field, match}
+	// AutocompleteViewFunc: TYPE_INT's List/View id->label resolver; unset reuses AutocompleteKind's own search.
+	AutocompleteViewFunc func(ctx context.Context, id string, values map[string]interface{}) (string, bool) `json:"-"`
 
 	// Resize configures server-side resizing for TYPE_IMAGE fields, applied on
 	// upload. Set via WithResize.
@@ -147,7 +145,7 @@ func NewField(name, fieldType string, required bool) Field {
 		Label:      name,                    // Default label is the field name
 		Filterable: fieldType != TYPE_TABLE, // Tables are not filterable by default
 		Sortable:   fieldType != TYPE_TABLE, // Tables are not sortable by default
-		Searchable: fieldType == TYPE_STRING || fieldType == TYPE_TEXT || fieldType == TYPE_AUTOCOMPLETE,
+		Searchable: fieldType == TYPE_STRING || fieldType == TYPE_TEXT,
 		Mode:       MODE_ALL, // Default to all modes
 		Validation: make(map[string]interface{}),
 		Options:    make(map[string]interface{}),
@@ -263,36 +261,29 @@ func (f Field) NotLogged() Field {
 	return f
 }
 
-// WithAutocomplete enables type-ahead suggestions on a (string) field, resolved
-// server-side by the /api/modules/{module}/autocomplete/{field} endpoint. Three
-// kinds:
-//
-//	WithAutocomplete("function", func(input string) []string { ... })
-//	WithAutocomplete("sql", "SELECT name FROM city WHERE name LIKE $1")
-//	WithAutocomplete("source", []string{"city", "name", "left"}) // table, field, match: left|right|full
-//
-// AutoOption is one autocomplete suggestion: Value is stored, Label is shown.
-// For a plain string source, Value == Label.
+// WithAutocomplete enables type-ahead search via /autocomplete/{field}.
+// params: one of "function"/"sql"/"source" (search), plus optional "view"
+// (TYPE_INT id->label resolver for List/View).
+
+// AutoOption: Value is stored, Label is shown.
 type AutoOption struct {
 	Value string `json:"value"`
 	Label string `json:"label"`
 }
 
-func (f Field) WithAutocomplete(kind string, arg interface{}) Field {
-	f.AutocompleteKind = kind
-	switch kind {
-	case "function":
-		if fn, ok := arg.(func(ctx context.Context, input string, values map[string]interface{}) []AutoOption); ok {
-			f.AutocompleteFunc = fn
-		}
-	case "sql":
-		if q, ok := arg.(string); ok {
-			f.AutocompleteSQL = q
-		}
-	case "source":
-		if s, ok := arg.([]string); ok {
-			f.AutocompleteSource = s
-		}
+func (f Field) WithAutocomplete(params map[string]interface{}) Field {
+	if fn, ok := params["function"].(func(ctx context.Context, input string, values map[string]interface{}) []AutoOption); ok {
+		f.AutocompleteKind = "function"
+		f.AutocompleteFunc = fn
+	} else if q, ok := params["sql"].(string); ok {
+		f.AutocompleteKind = "sql"
+		f.AutocompleteSQL = q
+	} else if s, ok := params["source"].([]string); ok {
+		f.AutocompleteKind = "source"
+		f.AutocompleteSource = s
+	}
+	if vf, ok := params["view"].(func(ctx context.Context, id string, values map[string]interface{}) (string, bool)); ok {
+		f.AutocompleteViewFunc = vf
 	}
 	return f
 }
@@ -462,6 +453,13 @@ func (f Field) AsVirtual() Field {
 
 func (f Field) AsReadOnly() Field {
 	f.ReadOnly = true
+	return f
+}
+
+// AsRequired marks the field mandatory — a fluent alternative to NewField's
+// positional required bool, for when true doesn't read well inline.
+func (f Field) AsRequired() Field {
+	f.Required = true
 	return f
 }
 

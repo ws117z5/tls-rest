@@ -447,7 +447,7 @@ func searchable(f Field) bool {
 	if !f.Searchable {
 		return false
 	}
-	return f.Type == TYPE_STRING || f.Type == TYPE_TEXT || f.Type == TYPE_AUTOCOMPLETE
+	return f.Type == TYPE_STRING || f.Type == TYPE_TEXT
 }
 
 func (fe *FieldsetEngine) hasSearchableFields() bool {

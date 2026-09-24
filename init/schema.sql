@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict We9AepQpavyXKac3gKsTLWzTg8bKLjk0TTIUOGFwjfEMVGL7p9FzqqcAEcIebZV
+\restrict 212bttytVT6JBYv6LDFgAJke1iCha7wvReN1ydNV2NtHGuzlybdk2UltoTMDgvd
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -90,11 +90,11 @@ SET default_table_access_method = heap;
 
 CREATE TABLE public.access_log (
     id bigint NOT NULL,
-    ts timestamp with time zone DEFAULT now() NOT NULL,
+    created timestamp with time zone DEFAULT now() NOT NULL,
     method character varying(8),
     path text,
     status integer,
-    duration_ms double precision,
+    duration double precision,
     user_id integer,
     session_id character varying(128),
     ip character varying(64),
@@ -404,6 +404,33 @@ ALTER SEQUENCE public.friends_id_seq OWNED BY public.friends.id;
 
 
 --
+-- Name: html_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.html_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: html; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.html (
+    id integer DEFAULT nextval('public.html_id_seq'::regclass) NOT NULL,
+    uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    created timestamp with time zone DEFAULT now(),
+    updated timestamp with time zone DEFAULT now(),
+    created_by integer,
+    access integer DEFAULT 0,
+    compiled_html text
+);
+
+
+--
 -- Name: images; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -419,7 +446,8 @@ CREATE TABLE public.images (
     data bytea NOT NULL,
     created timestamp with time zone DEFAULT now() NOT NULL,
     created_by integer,
-    metadata jsonb
+    metadata jsonb,
+    folder text DEFAULT ''::text NOT NULL
 );
 
 
@@ -510,21 +538,17 @@ ALTER SEQUENCE public.likes_id_seq OWNED BY public.likes.id;
 
 CREATE TABLE public.logs (
     id bigint NOT NULL,
-    ts timestamp with time zone DEFAULT now() NOT NULL,
+    created timestamp with time zone DEFAULT now() NOT NULL,
     level public.log_level DEFAULT 'info'::public.log_level NOT NULL,
     type text,
     message text NOT NULL,
     module text,
     action text,
-    method text,
-    request_url text,
     ip_address character varying(60),
     event_id text,
     session_id text,
     error text,
     user_id bigint,
-    status_code integer,
-    duration_ms integer,
     source text
 );
 
@@ -702,7 +726,8 @@ CREATE TABLE public.posts (
     created_by integer,
     access integer,
     visible_users jsonb,
-    visible_groups jsonb
+    visible_groups jsonb,
+    html_id integer
 );
 
 
@@ -1186,6 +1211,14 @@ ALTER TABLE ONLY public.friends
 
 
 --
+-- Name: html html_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.html
+    ADD CONSTRAINT html_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: modules id; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1361,6 +1394,13 @@ CREATE INDEX access_log_blocked_idx ON public.access_log USING btree (blocked) W
 
 
 --
+-- Name: access_log_created_brin_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX access_log_created_brin_idx ON public.access_log USING brin (created);
+
+
+--
 -- Name: access_log_ip_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1372,13 +1412,6 @@ CREATE INDEX access_log_ip_idx ON public.access_log USING btree (ip);
 --
 
 CREATE INDEX access_log_status_idx ON public.access_log USING btree (status);
-
-
---
--- Name: access_log_ts_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX access_log_ts_idx ON public.access_log USING btree (ts DESC);
 
 
 --
@@ -1480,6 +1513,13 @@ CREATE INDEX images_metadata_gin ON public.images USING gin (metadata);
 
 
 --
+-- Name: logs_created_brin_idx; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX logs_created_brin_idx ON public.logs USING brin (created);
+
+
+--
 -- Name: papers_hash_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -1542,7 +1582,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict We9AepQpavyXKac3gKsTLWzTg8bKLjk0TTIUOGFwjfEMVGL7p9FzqqcAEcIebZV
+\unrestrict 212bttytVT6JBYv6LDFgAJke1iCha7wvReN1ydNV2NtHGuzlybdk2UltoTMDgvd
 
 
 -- Durable role/rights seed.
@@ -1550,7 +1590,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict ThYKIYihtWEtKoBZHw1VZCp06Yo63leCgp6TclPU2jEAaOTj7gt5db1cDwCnNxS
+\restrict fpkLWiUjEsCd367FZPK0PkEiW7AhWN2oqtsZyNz2nn6mzdKH9yn9lUgLuZL00g0
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -1581,7 +1621,6 @@ INSERT INTO public.user_groups (id, name, is_admin, uuid, created, updated, crea
 -- Data for Name: user_group_rights; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (14, '6f9a868e-eade-4185-bc33-27eaca7128ef', 1, 'images', 0, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (4, '2cbc069b-cf7a-43ad-877e-9eb532447f83', 0, 'access_log', 31, 0, '2026-09-10 12:16:00.512703-07', '2026-09-10 12:16:00.512703-07', 1, '{"action":["list","view","create","edit","delete"],"blocked":["list","view","create","edit","delete"],"country":["list","view","create","edit","delete"],"denied_reason":["list","view","create","edit","delete"],"duration_ms":["list","view","create","edit","delete"],"ip":["list","view","create","edit","delete"],"method":["list","view","create","edit","delete"],"module":["list","view","create","edit","delete"],"path":["list","view","create","edit","delete"],"session_id":["list","view","create","edit","delete"],"status":["list","view","create","edit","delete"],"ts":["list","view","create","edit","delete"],"user_agent":["list","view","create","edit","delete"],"user_id":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (7, '26816699-2332-4dce-a3f9-a58b5439fde2', 1, 'users', 0, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (8, '77cbc8f1-4f4c-4f9a-8307-27f4872b5809', 1, 'words', 0, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{}', NULL, NULL);
@@ -1608,7 +1647,7 @@ INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access,
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (30, 'ce5fceaa-2bdc-4bf4-a77c-44dc7b7c8746', 2, 'access_rule', 0, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (6, 'd1bf88e8-a71b-4568-8fe0-87ea0c78013d', 2, 'posts', 47, 0, '2026-09-13 16:02:57.009316-07', '2026-09-13 16:02:57.009316-07', NULL, '{"access":["list","view","create","edit"],"author":["list","view","create","edit"],"comments_count":["list","view","create","edit"],"content":["list","view","create","edit"],"created":["list","view","create","edit"],"created_by":["list","view","create","edit"],"images":["list","view","create","edit"],"likes_count":["list","view","create","edit"],"title":["list","view","create","edit"],"updated":["list","view","create","edit"],"uuid":["list","view","create","edit"],"visible_groups":["list","view","create","edit"],"visible_users":["list","view","create","edit"]}', NULL, '["title"]');
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (5, 'b4909e04-7463-4c08-a9a0-3dc9ece45b48', 1, 'posts', 3, 0, '2026-09-13 16:02:57.009316-07', '2026-09-13 16:02:57.009316-07', NULL, '{"author":["list","view"],"comments_count":["list","view"],"content":["list","view"],"images":["list","view"],"likes_count":["list","view"],"title":["list","view"]}', NULL, NULL);
-INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (31, '918441fa-1169-4c22-af9b-4bffa6d3b106', 2, 'images', 3, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"field":["list","view"],"filename":["list","view"],"mime_type":["list","view"],"module":["list","view"],"preview":["list","view"],"record_id":["list","view"]}', NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (14, '6f9a868e-eade-4185-bc33-27eaca7128ef', 1, 'images', 0, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (32, '26f5bdd2-096c-4abb-834a-2749886b3be9', 2, 'comments', 0, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (33, 'da11c050-8e5b-40f0-9d99-7e31fce3ec26', 2, 'likes', 0, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (34, '92654dbb-d9d6-4b89-a24a-ba0195e9b4a5', 2, 'message_log', 0, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{}', NULL, NULL);
@@ -1624,9 +1663,10 @@ INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access,
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (45, 'e8398de2-c858-4b03-85de-0d475f8f6df8', 0, 'user_group_rights', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"group_id":["list","view","create","edit","delete"],"module":["list","view","create","edit","delete"],"modes":["list","view","create","edit","delete"],"fields":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (46, '9bda5cff-3e55-4f36-8778-d090e822fdcb', 0, 'user_rights', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"user_id":["list","view","create","edit","delete"],"module":["list","view","create","edit","delete"],"modes":["list","view","create","edit","delete"],"fields":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (47, '2a55c71d-b462-4fc4-a6f4-6a29f016d390', 0, 'access_rule', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"action":["list","view","create","edit","delete"],"cidr":["list","view","create","edit","delete"],"enabled":["list","view","create","edit","delete"],"firewall":["list","view","create","edit","delete"],"note":["list","view","create","edit","delete"],"priority":["list","view","create","edit","delete"],"user_agent":["list","view","create","edit","delete"]}', NULL, NULL);
-INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (48, '90fc228d-dd35-4a90-aec7-d76a3167421a', 0, 'images', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"field":["list","view","create","edit","delete"],"filename":["list","view","create","edit","delete"],"mime_type":["list","view","create","edit","delete"],"module":["list","view","create","edit","delete"],"preview":["list","view","create","edit","delete"],"record_id":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (49, 'e6c5f984-e508-4191-a451-7ef0329c2a5e', 0, 'comments', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"body":["list","view","create","edit","delete"],"module_id":["list","view","create","edit","delete"],"row_id":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (50, 'd936ae58-6de2-4dbf-84be-2c2c65bcbe3e', 0, 'likes', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"module_id":["list","view","create","edit","delete"],"row_id":["list","view","create","edit","delete"],"user_id":["list","view","create","edit","delete"],"value":["list","view","create","edit","delete"]}', NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (48, '90fc228d-dd35-4a90-aec7-d76a3167421a', 0, 'images', 63, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"access":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"field":["list","view","create","edit","delete"],"filename":["list","view","create","edit","delete"],"folder":["list","view","create","edit","delete"],"mime_type":["list","view","create","edit","delete"],"module":["list","view","create","edit","delete"],"preview":["list","view","create","edit","delete"],"record_id":["list","view","create","edit","delete"],"uuid":["list","view","create","edit","delete"]}', NULL, '["filename","module","field","mime_type","folder"]');
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (31, '918441fa-1169-4c22-af9b-4bffa6d3b106', 2, 'images', 3, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"field":["list","view"],"filename":["list","view"],"folder":["list","view"],"mime_type":["list","view"],"module":["list","view"],"preview":["list","view"],"record_id":["list","view"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (51, '0bb0f7c0-7a97-4a56-b7d1-97607c187337', 0, 'message_log', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"body":["list","view","create","edit","delete"],"recipient_id":["list","view","create","edit","delete"],"sender_id":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (52, '2fa86210-b2a2-42f5-9f03-160a630c94cb', 0, 'friend_requests', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"recipient_id":["list","view","create","edit","delete"],"requester_id":["list","view","create","edit","delete"],"status":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (53, '7a43123f-b8a2-4568-9c24-e5c03c0f1b37', 0, 'contact_messages', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"email":["list","view","create","edit","delete"],"handled":["list","view","create","edit","delete"],"message":["list","view","create","edit","delete"],"name":["list","view","create","edit","delete"],"subject":["list","view","create","edit","delete"]}', NULL, NULL);
@@ -1637,13 +1677,34 @@ INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access,
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (58, 'f90dd7c1-7437-43c4-b9c7-fe2313649411', 2, 'profile', 10, 0, '2026-09-14 21:23:29.760462-07', '2026-09-14 21:23:29.760462-07', NULL, '{}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (59, 'd17d5ddd-e785-4c5c-b032-44aaf0b69518', 4, 'words', 15, 0, '2026-09-17 14:29:08.134048-07', '2026-09-17 14:29:08.134048-07', NULL, NULL, NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (42, 'bf7e70b9-1e36-4ea4-8673-466edccce0d9', 0, 'posts', 63, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"access":["list","view","create","edit","delete"],"author":["list","view","create","edit","delete"],"comments_count":["list","view","create","edit","delete"],"content":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"images":["list","view","create","edit","delete"],"likes_count":["list","view","create","edit","delete"],"title":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"uuid":["list","view","create","edit","delete"],"visible_groups":["list","view","create","edit","delete"],"visible_users":["list","view","create","edit","delete"]}', NULL, '["title","user","user_group","created_from","created_to"]');
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (60, '03e1f98e-e735-40c3-b86b-e4586bc48b38', 0, 'opencv', 63, 0, '2026-09-24 13:55:07.82042-07', '2026-09-24 13:55:07.82042-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (61, '16a170f7-83f3-41fa-9c4f-eea058b5b9d7', 2, 'opencv', 0, 0, '2026-09-24 13:55:25.106305-07', '2026-09-24 13:55:25.106305-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (62, '284ae7e5-d716-457d-ae78-3b27fba2c12c', 1, 'opencv', 0, 0, '2026-09-24 13:55:38.847514-07', '2026-09-24 13:55:38.847514-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (63, 'c0d00440-f537-4003-bd19-16fe240c502f', 0, 'graph', 63, 0, '2026-09-24 13:56:07.638577-07', '2026-09-24 13:56:07.638577-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (64, '9582a1ae-f56b-4fe4-9228-1cfa9f192e4b', 1, 'graph', 63, 0, '2026-09-24 13:58:31.328263-07', '2026-09-24 13:58:31.328263-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (65, '9601829c-d7a1-45fc-9104-626c9aa4f6bb', 2, 'graph', 63, 0, '2026-09-24 13:58:54.345412-07', '2026-09-24 13:58:54.345412-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (66, '4bdc0baa-9bdd-4926-b03a-4a1ed50bbf5d', 0, 'arrayiter', 63, 0, '2026-09-24 13:59:08.826948-07', '2026-09-24 13:59:08.826948-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (67, 'c12f39fc-fd7c-4561-a52b-1ffc221285fd', 2, 'arrayiter', 63, 0, '2026-09-24 14:00:10.036781-07', '2026-09-24 14:00:10.036781-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (68, '76ffcf91-2904-4a34-b7c2-4cab79016152', 1, 'arrayiter', 63, 0, '2026-09-24 14:11:15.115683-07', '2026-09-24 14:11:15.115683-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (69, '9bac41c9-02e4-4b03-90c1-0e1eebe22001', 0, 'hash-tool', 63, 0, '2026-09-24 14:11:44.347386-07', '2026-09-24 14:11:44.347386-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (70, '5956d21b-702c-4562-9215-bdf4419c1bb5', 1, 'hash-tool', 63, 0, '2026-09-24 14:12:05.88785-07', '2026-09-24 14:12:05.88785-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (71, '8c131b17-6f8e-4b8a-8eb6-e4ae6efc126e', 2, 'hash-tool', 63, 0, '2026-09-24 14:12:21.000449-07', '2026-09-24 14:12:21.000449-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (72, 'd7cecc83-9b7f-4723-b14c-3e8bc9412f1f', 0, 'imageproc', 63, 0, '2026-09-24 14:12:47.44135-07', '2026-09-24 14:12:47.44135-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (73, '2a97b243-1251-4e06-9f3b-b2f07a11724d', 1, 'imageproc', 63, 0, '2026-09-24 14:13:04.864156-07', '2026-09-24 14:13:04.864156-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (74, '92a2d805-5f56-48f3-ac36-6d2cfe9d271a', 2, 'imageproc', 63, 0, '2026-09-24 14:13:53.524327-07', '2026-09-24 14:13:53.524327-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (75, '6f3e39af-59a6-4a95-aace-8690db3c9ba3', 0, 'markdown-tool', 63, 0, '2026-09-24 14:14:16.730012-07', '2026-09-24 14:14:16.730012-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (76, '18c8f9db-0e55-404c-b953-76bd0e830406', 1, 'markdown-tool', 63, 0, '2026-09-24 14:14:31.329535-07', '2026-09-24 14:14:31.329535-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (77, '8a647407-5f39-4530-898b-c41ea07c81d7', 2, 'markdown-tool', 63, 0, '2026-09-24 14:14:55.16108-07', '2026-09-24 14:14:55.16108-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (78, '553fedeb-5628-4df0-8c5b-587547546602', 0, 'netmapper', 63, 0, '2026-09-24 14:15:20.787791-07', '2026-09-24 14:15:20.787791-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (79, 'b74a1683-7502-47f9-8a6b-5356b25fd645', 1, 'netmapper', 0, 0, '2026-09-24 14:16:08.322354-07', '2026-09-24 14:16:08.322354-07', 1, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (80, '9d2375a1-3687-40cb-ab96-577cd8944c08', 2, 'netmapper', 0, 0, '2026-09-24 14:16:20.149493-07', '2026-09-24 14:16:20.149493-07', 1, NULL, NULL, NULL);
 
 
 --
 -- Name: user_group_rights_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.user_group_rights_id_seq', 59, true);
+SELECT pg_catalog.setval('public.user_group_rights_id_seq', 80, true);
 
 
 --
@@ -1657,5 +1718,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ThYKIYihtWEtKoBZHw1VZCp06Yo63leCgp6TclPU2jEAaOTj7gt5db1cDwCnNxS
+\unrestrict fpkLWiUjEsCd367FZPK0PkEiW7AhWN2oqtsZyNz2nn6mzdKH9yn9lUgLuZL00g0
 

@@ -24,7 +24,7 @@ interface TextEditState {
 
 class TextEdit extends Component<TextEditProps, TextEditState> {
     static defaultProps = {
-        width: "auto",
+        width: "100%",
         height: "auto",
         fontFamily: "inherit",
         fontSize: "1rem",

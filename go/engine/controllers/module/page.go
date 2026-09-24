@@ -84,6 +84,8 @@ type PageAbstract struct {
 	Routes []PageRoute
 
 	SpecialRights []SpecialRight // named permissions beyond RequiresAuth/RequiresAdmin
+
+	CustomViews map[string]map[string]string // mode -> {viewName: label}; see ModuleAbstract.CustomViews
 }
 
 // PageDefaultModes maps page ID -> baseline field.MODE_VIEW|field.MODE_EDIT
@@ -113,7 +115,7 @@ func (p *PageAbstract) Initialize() {
 	// making the pages menu backend-driven like modules.
 	registerPageMenu(PageMenuMeta{
 		ID: p.ID, Name: p.Name, Order: p.Order,
-		Submenu: p.Submenu, Icon: p.Icon,
+		Submenu: p.Submenu, Icon: p.Icon, CustomViews: p.CustomViews,
 	})
 
 	// Advertise this page's data endpoints (fieldset endpoint + custom routes)

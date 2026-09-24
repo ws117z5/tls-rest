@@ -35,44 +35,70 @@ var Module = &ModuleAbstract[interface{}]{
 			}),
 		NewField("scope_id", TYPE_INT, false).
 			WithLabel("Scope ID").
-			WithDescription("search a user or group (by the chosen scope); 0 for global").
-			WithDefault(0).
-			WithAutocomplete("function", func(ctx context.Context, input string, values map[string]interface{}) []AutoOption {
-				scope, _ := values["scope"].(string)
-				if scope == "global" || scope == "" {
-					return []AutoOption{}
-				}
-				db, err := pgdb.GetInstanceCtx(ctx)
-				if err != nil {
-					return []AutoOption{}
-				}
-				var q string
-				switch scope {
-				case "user":
-					q = `SELECT id, user_name AS name FROM users
-					     WHERE user_name ILIKE $1 OR CAST(id AS TEXT) LIKE $1
-					     ORDER BY user_name LIMIT 20`
-				case "group":
-					q = `SELECT id, name FROM user_groups
-					     WHERE name ILIKE $1 OR CAST(id AS TEXT) LIKE $1
-					     ORDER BY name LIMIT 20`
-				default:
-					return []AutoOption{}
-				}
-				rows, err := db.RQuery(q, "%"+input+"%")
-				if err != nil {
-					return []AutoOption{}
-				}
-				out := make([]AutoOption, 0, len(rows))
-				for _, r := range rows {
-					id := functions.Coerce[int](r["id"])
-					name := functions.Coerce[string](r["name"])
-					out = append(out, AutoOption{
-						Value: strconv.Itoa(id),
-						Label: name + " (#" + strconv.Itoa(id) + ")",
-					})
-				}
-				return out
+			WithDescription("search a user or group by name (per the chosen scope); ignored when scope is global").
+			WithAutocomplete(map[string]interface{}{
+				"function": func(ctx context.Context, input string, values map[string]interface{}) []AutoOption {
+					scope, _ := values["scope"].(string)
+					if scope == "global" || scope == "" {
+						return []AutoOption{}
+					}
+					db, err := pgdb.GetInstanceCtx(ctx)
+					if err != nil {
+						return []AutoOption{}
+					}
+					var q string
+					switch scope {
+					case "user":
+						q = `SELECT id, user_name AS name FROM users
+						     WHERE user_name ILIKE $1 OR CAST(id AS TEXT) LIKE $1
+						     ORDER BY user_name LIMIT 20`
+					case "group":
+						q = `SELECT id, name FROM user_groups
+						     WHERE name ILIKE $1 OR CAST(id AS TEXT) LIKE $1
+						     ORDER BY name LIMIT 20`
+					default:
+						return []AutoOption{}
+					}
+					rows, err := db.RQuery(q, "%"+input+"%")
+					if err != nil {
+						return []AutoOption{}
+					}
+					out := make([]AutoOption, 0, len(rows))
+					for _, r := range rows {
+						id := functions.Coerce[int](r["id"])
+						name := functions.Coerce[string](r["name"])
+						out = append(out, AutoOption{
+							Value: strconv.Itoa(id),
+							Label: name,
+						})
+					}
+					return out
+				},
+				"view": func(ctx context.Context, id string, values map[string]interface{}) (string, bool) {
+					scope, _ := values["scope"].(string)
+					idInt, err := strconv.Atoi(id)
+					if err != nil {
+						return "", false
+					}
+					db, err := pgdb.GetInstanceCtx(ctx)
+					if err != nil {
+						return "", false
+					}
+					var row map[string]interface{}
+					switch scope {
+					case "user":
+						row, err = db.GetOne("SELECT user_name AS name FROM users WHERE id = $1", idInt)
+					case "group":
+						row, err = db.GetOne("SELECT name FROM user_groups WHERE id = $1", idInt)
+					default:
+						return "", false
+					}
+					if err != nil || row == nil {
+						return "", false
+					}
+					name := functions.Coerce[string](row["name"])
+					return name, name != ""
+				},
 			}),
 
 		// Parameters — one field each, not a generic key/value.

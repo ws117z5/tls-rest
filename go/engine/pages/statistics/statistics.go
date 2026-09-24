@@ -75,10 +75,10 @@ func (f filters) accessLogWhere() (string, []interface{}) {
 		add("user_agent LIKE $%d", "%"+f.userAgent+"%")
 	}
 	if !f.from.IsZero() {
-		add("ts >= $%d", f.from)
+		add("created >= $%d", f.from)
 	}
 	if !f.to.IsZero() {
-		add("ts < $%d", f.to)
+		add("created < $%d", f.to)
 	}
 	if len(conds) == 0 {
 		return "", nil

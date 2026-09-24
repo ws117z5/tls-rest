@@ -1,0 +1,104 @@
+/* Icon (js/src/engine/Icon.tsx): a small glyph cut from the shared sprite
+   sheet (/img/icons_bw.png, a 6x8+ grid of 200x200 cells), rendered as a CSS
+   mask so it fills with currentColor and tracks the surrounding text/link
+   color. `--icon-scale` (set inline by Icon.tsx's `scale` prop) multiplies
+   the base zoom, so every consumer — the menu, buttons, badges — shares one
+   sizing system instead of one-off per-context zoom values. */
+.menu-icon-sprite {
+  display: inline-block;
+  width: 200px;
+  height: 200px;
+  zoom: calc(0.08 * var(--icon-scale, 1));
+  margin-right: 6px;
+  vertical-align: middle;
+  background-color: currentColor;
+  -webkit-mask-image: url("/img/icons_bw.png");
+  mask-image: url("/img/icons_bw.png");
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 1200px 1800px;
+  mask-size: 1200px 1800px;
+}
+
+/* Discrete size classes some call sites still ask for directly; still honor
+   an Icon.tsx `scale` prop stacked on top via the same --icon-scale var. */
+.ic-14 { zoom: calc(0.14 * var(--icon-scale, 1)) !important; }
+.ic-13 { zoom: calc(0.13 * var(--icon-scale, 1)) !important; }
+.ic-12 { zoom: calc(0.12 * var(--icon-scale, 1)) !important; }
+
+/* Per-icon cell position, row by row (col * -200px, row * -200px). */
+.icon-user-rights        { mask-position: 0px     0px;     -webkit-mask-position: 0px     0px; }
+.icon-profile             { mask-position: -200px  0px;     -webkit-mask-position: -200px  0px; }
+.icon-login               { mask-position: -400px  0px;     -webkit-mask-position: -400px  0px;  zoom: calc(0.14 * var(--icon-scale, 1)) !important; }
+.icon-logout              { mask-position: -200px  -200px;  -webkit-mask-position: -200px  -200px; zoom: calc(0.14 * var(--icon-scale, 1)) !important; }
+.icon-messages            { mask-position: -400px  -400px;  -webkit-mask-position: -400px  -400px; zoom: calc(0.14 * var(--icon-scale, 1)) !important; }
+.icon-messages-new        { mask-position: -1000px -1400px; -webkit-mask-position: -1000px -1400px; zoom: calc(0.14 * var(--icon-scale, 1)) !important; }
+.icon-home                { mask-position: -600px  0px;     -webkit-mask-position: -600px  0px; }
+.icon-access-control      { mask-position: -800px  0px;     -webkit-mask-position: -800px  0px; }
+.icon-user-groups         { mask-position: -1000px 0px;     -webkit-mask-position: -1000px 0px; }
+
+.icon-posts               { mask-position: 0px     -200px;  -webkit-mask-position: 0px     -200px; }
+.icon-log                 { mask-position: -400px  -200px;  -webkit-mask-position: -400px  -200px; }
+.icon-access-log          { mask-position: -600px  -200px;  -webkit-mask-position: -600px  -200px; }
+.icon-console             { mask-position: -800px  -200px;  -webkit-mask-position: -800px  -200px; }
+.icon-users               { mask-position: -1000px -200px;  -webkit-mask-position: -1000px -200px; }
+
+.icon-words               { mask-position: 0px     -400px;  -webkit-mask-position: 0px     -400px; }
+.icon-statistics          { mask-position: -200px  -400px;  -webkit-mask-position: -200px  -400px; }
+.icon-user-delete-request { mask-position: -600px  -400px;  -webkit-mask-position: -600px  -400px; }
+.icon-terms               { mask-position: -800px  -400px;  -webkit-mask-position: -800px  -400px; }
+.icon-messages-sm         { mask-position: -1000px -400px;  -webkit-mask-position: -1000px -400px; }
+
+.icon-images              { mask-position: 0px     -600px;  -webkit-mask-position: 0px     -600px; }
+.icon-group-rights        { mask-position: -200px  -600px;  -webkit-mask-position: -200px  -600px; }
+.icon-config              { mask-position: -400px  -600px;  -webkit-mask-position: -400px  -600px; }
+.icon-comments            { mask-position: -600px  -600px;  -webkit-mask-position: -600px  -600px; }
+.icon-privacy             { mask-position: -800px  -600px;  -webkit-mask-position: -800px  -600px; }
+.icon-graphs              { mask-position: -1000px -600px;  -webkit-mask-position: -1000px -600px; }
+
+.icon-image-processing    { mask-position: 0px     -800px;  -webkit-mask-position: 0px     -800px; }
+.icon-opencv              { mask-position: -200px  -800px;  -webkit-mask-position: -200px  -800px; }
+.icon-net-mapper          { mask-position: -400px  -800px;  -webkit-mask-position: -400px  -800px; }
+/* Unlabeled in the sheet (a "[...]" bracket glyph) — wired to Array Iterator,
+   the one page whose icon would otherwise still be missing. */
+.icon-array-iterator      { mask-position: -600px  -800px;  -webkit-mask-position: -600px  -800px; }
+
+/* Sheet grew from 1200x1200 (6 rows) to 1200x1400 (7 rows) to add these —
+   generic action icons for buttons anywhere on the site (not menu-specific). */
+.icon-back                { mask-position: 0px     -1000px; -webkit-mask-position: 0px     -1000px; }
+.icon-delete              { mask-position: -200px  -1000px; -webkit-mask-position: -200px  -1000px; }
+.icon-edit                { mask-position: -400px  -1000px; -webkit-mask-position: -400px  -1000px; }
+.icon-add                 { mask-position: -600px  -1000px; -webkit-mask-position: -600px  -1000px; }
+
+.icon-dislike             { mask-position: 0px     -1200px; -webkit-mask-position: 0px     -1200px; }
+.icon-like                { mask-position: -200px  -1200px; -webkit-mask-position: -200px  -1200px; }
+.icon-legal               { mask-position: -600px  -1200px; -webkit-mask-position: -600px  -1200px; }
+.icon-hash                { mask-position: -800px  -1200px; -webkit-mask-position: -800px  -1200px; }
+.icon-markdown            { mask-position: -1000px -1200px; -webkit-mask-position: -1000px -1200px; }
+
+/* Sheet grew again, from 1200x1400 (7 rows) to 1200x1600 (8 rows) — submenu
+   icons, and papers' own module icon. */
+.icon-external            { mask-position: 0px     -1400px; -webkit-mask-position: 0px     -1400px; }
+.icon-engine              { mask-position: -200px  -1400px; -webkit-mask-position: -200px  -1400px; }
+.icon-games               { mask-position: -400px  -1400px; -webkit-mask-position: -400px  -1400px; }
+.icon-tools               { mask-position: -600px  -1400px; -webkit-mask-position: -600px  -1400px; }
+.icon-papers              { mask-position: -800px  -1400px; -webkit-mask-position: -800px  -1400px; }
+
+.icon-search              { mask-position: 0  -1600px; -webkit-mask-position: -0  -1600px; }
+
+/* Animation variants (Icon.tsx's `animate` prop). */
+@keyframes icon-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+.icon-spin {
+  animation: icon-spin 1s linear infinite;
+}
+
+@keyframes icon-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.icon-pulse {
+  animation: icon-pulse 1.2s ease-in-out infinite;
+}

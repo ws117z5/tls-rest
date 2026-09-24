@@ -147,7 +147,7 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 		if allowed, ruleID := accesslog.Decision(clientIP, r.UserAgent()); !allowed {
 			accesslog.Record(accesslog.Entry{
 				Time: startTime, Method: r.Method, Path: r.URL.Path,
-				Status: http.StatusForbidden, DurationMS: msSince(startTime),
+				Status: http.StatusForbidden, Duration: msSince(startTime),
 				UserID: uid, SessionID: sessionID, IP: clientIP, UserAgent: r.UserAgent(),
 				Blocked: true, DeniedReason: "ip_rule",
 			})
@@ -169,7 +169,7 @@ func (amw *AuthenticationMiddleware) Middleware(next http.Handler) http.Handler 
 			}
 			accesslog.Record(accesslog.Entry{
 				Time: startTime, Method: r.Method, Path: r.URL.Path,
-				Status: rec.status, DurationMS: msSince(startTime),
+				Status: rec.status, Duration: msSince(startTime),
 				UserID: uid, SessionID: sessionID, IP: clientIP, UserAgent: r.UserAgent(),
 				Module: recModule, Action: recAction, DeniedReason: reason,
 			})

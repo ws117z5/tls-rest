@@ -75,7 +75,7 @@ class BBCodeEdit extends Component<BBCodeEditProps, BBCodeEditState> {
     };
 
     render() {
-        const { width = "600px", height = "300px", disabled } = this.props;
+        const { width = "100%", height = "300px", disabled } = this.props;
         const { value, showPreview } = this.state;
 
         return (

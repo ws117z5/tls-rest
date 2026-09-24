@@ -418,12 +418,38 @@ func (bc *BaseController) filterValidFields(r *http.Request, data map[string]int
 			if field.TableSubmitFunc != nil {
 				filtered[field.Name] = field.TableSubmitFunc(tableRows(value))
 			} else {
-				filtered[field.Name] = value
+				filtered[field.Name] = coerceFieldValue(field, value)
 			}
 		}
 	}
 
 	return filtered
+}
+
+// coerceFieldValue parses a submitted string into its field's declared numeric
+// type (e.g. a picked AutoOption.Value into TYPE_INT); other values pass through.
+func coerceFieldValue(field Field, value interface{}) interface{} {
+	s, isString := value.(string)
+	if !isString {
+		return value
+	}
+	switch field.Type {
+	case TYPE_INT, TYPE_MONTH, TYPE_WEEK:
+		if s == "" {
+			return value
+		}
+		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
+			return n
+		}
+	case TYPE_FLOAT, TYPE_MONEY:
+		if s == "" {
+			return value
+		}
+		if n, err := strconv.ParseFloat(s, 64); err == nil {
+			return n
+		}
+	}
+	return value
 }
 
 // tableRows normalizes a submitted TYPE_TABLE value (a JSON string, []byte, or

@@ -29,7 +29,7 @@ type Entry struct {
 	Method       string
 	Path         string
 	Status       int
-	DurationMS   float64
+	Duration     float64
 	UserID       int
 	SessionID    string
 	IP           string
@@ -121,7 +121,7 @@ func Record(e Entry) {
 		statusClass = string(rune('0'+e.Status/100)) + "xx"
 	}
 	requestsTotal.WithLabelValues(e.Method, statusClass).Inc()
-	requestDuration.WithLabelValues(e.Method).Observe(e.DurationMS / 1000.0)
+	requestDuration.WithLabelValues(e.Method).Observe(e.Duration / 1000.0)
 	if e.Module != "" {
 		requestsByModule.WithLabelValues(e.Module).Inc()
 	}
@@ -159,18 +159,18 @@ func persist(e Entry) {
 	// the columns exposed in the admin grid; a couple of others, like
 	// session_id here, are written directly without being fieldset-exposed).
 	row := map[string]interface{}{
-		"ts":          e.Time,
-		"method":      e.Method,
-		"path":        e.Path,
-		"status":      e.Status,
-		"duration_ms": e.DurationMS,
-		"ip":          nullIfEmpty(e.IP),
-		"user_agent":  nullIfEmpty(e.UserAgent),
-		"module":      nullIfEmpty(e.Module),
-		"action":      nullIfEmpty(e.Action),
-		"blocked":     e.Blocked,
-		"country":     nullIfEmpty(CountryForIP(e.IP)),
-		"session_id":  nullIfEmpty(e.SessionID),
+		"created":    e.Time,
+		"method":     e.Method,
+		"path":       e.Path,
+		"status":     e.Status,
+		"duration":   e.Duration,
+		"ip":         nullIfEmpty(e.IP),
+		"user_agent": nullIfEmpty(e.UserAgent),
+		"module":     nullIfEmpty(e.Module),
+		"action":     nullIfEmpty(e.Action),
+		"blocked":    e.Blocked,
+		"country":    nullIfEmpty(CountryForIP(e.IP)),
+		"session_id": nullIfEmpty(e.SessionID),
 	}
 	if e.UserID > 0 {
 		row["user_id"] = e.UserID

@@ -16,9 +16,11 @@ package messages
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/cache"
@@ -134,27 +136,72 @@ func handleInbox(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"conversations": out})
 }
 
-// handleUnreadCount returns the caller's total unread count, for the menu badge.
+func unreadCount(r *http.Request, userID int) (int, error) {
+	db, err := pgdb.GetInstanceCtx(r.Context())
+	if err != nil {
+		return 0, err
+	}
+	row, err := db.GetOne(
+		`SELECT COUNT(*) AS n FROM messages WHERE recipient_id = $1 AND read_at IS NULL`, userID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return functions.Int(row["n"]), nil
+}
+
+// handleUnreadCount streams the caller's unread count for the menu badge: one
+// event on connect, then one whenever handleSend/handleThread change it —
+// replacing what used to be a 30s poll (see hub.go).
 func handleUnreadCount(w http.ResponseWriter, r *http.Request) {
 	s := requireSession(w, r)
 	if s == nil {
 		return
 	}
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	// Opt this stream out of the server's blanket write-timeout, same as any
+	// other long-lived SSE connection (see papers.GameEvents).
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
 
-	db, err := pgdb.GetInstanceCtx(r.Context())
-	if err != nil {
-		http.Error(w, "db unavailable", http.StatusInternalServerError)
+	ch := hub.subscribe(s.UserID)
+	defer hub.unsubscribe(s.UserID, ch)
+
+	send := func() bool {
+		n, err := unreadCount(r, s.UserID)
+		if err != nil {
+			return false
+		}
+		fmt.Fprintf(w, "data: %d\n\n", n)
+		flusher.Flush()
+		return true
+	}
+	if !send() {
 		return
 	}
 
-	row, err := db.GetOne(
-		`SELECT COUNT(*) AS n FROM messages WHERE recipient_id = $1 AND read_at IS NULL`, s.UserID,
-	)
-	if err != nil {
-		http.Error(w, "query failed", http.StatusInternalServerError)
-		return
+	keep := time.NewTicker(25 * time.Second)
+	defer keep.Stop()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case <-ch:
+			if !send() {
+				return
+			}
+		case <-keep.C:
+			fmt.Fprint(w, ": ping\n\n")
+			flusher.Flush()
+		}
 	}
-	writeJSON(w, http.StatusOK, map[string]interface{}{"count": functions.Int(row["n"])})
 }
 
 // handleThread returns every message between the caller and {id}, oldest
@@ -198,10 +245,13 @@ func handleThread(w http.ResponseWriter, r *http.Request) {
 
 	// Best-effort: mark what the caller just read as read. A failure here
 	// shouldn't stop the thread from rendering.
-	_, _ = db.Exec(
+	tag, _ := db.Exec(
 		`UPDATE messages SET read_at = now() WHERE recipient_id = $1 AND sender_id = $2 AND read_at IS NULL`,
 		s.UserID, otherID,
 	)
+	if tag.RowsAffected() > 0 {
+		hub.notify(s.UserID) // the caller's own unread count just dropped
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"messages": out})
 }
@@ -262,6 +312,7 @@ func handleSend(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "insert failed", http.StatusInternalServerError)
 		return
 	}
+	hub.notify(otherID)
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{"id": id})
 }

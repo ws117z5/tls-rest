@@ -135,9 +135,12 @@ func init() {
 }
 
 // Run is the process entry point: validates config, inits logging/metrics,
-// then blocks in startServer. Both params, not imports, dodge a cycle back
-// through auth -> a module -> app.RegisterModule; startCLI may be nil.
-func Run(startServer func(registerRoutes func(*mux.Router)), startCLI func()) {
+// then blocks in startServer. Params, not imports, dodge a cycle back through
+// auth -> a module -> app.RegisterModule; wires module.OnRightsChange/OnConfigChange.
+func Run(startServer func(registerRoutes func(*mux.Router)), startCLI func(), onRightsChange func(), onConfigChange func()) {
+	module.OnRightsChange = onRightsChange
+	module.OnConfigChange = onConfigChange
+
 	startTime := time.Now()
 
 	if err := constants.ValidateRequired(); err != nil {

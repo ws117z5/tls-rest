@@ -22,7 +22,7 @@ class FloatEdit extends Component<FloatEditProps> {
     static defaultProps = {
         step: "any",
         className: "",
-        width: "auto",
+        width: "100%",
     };
 
     handleChange = (e: ChangeEvent<HTMLInputElement>) => {

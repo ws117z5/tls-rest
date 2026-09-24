@@ -1,11 +1,9 @@
 import React, { Component, useEffect, useRef, useState } from "react";
 import { Link, NavLink as RouterNavLink } from "react-router";
-import axios from "axios";
 import Config, { MenuItem } from "@engine/Config";
 import Auth from "@controllers/auth";
 import { t, getLocale, setLocale, locales, subscribe } from "@engine/i18n";
-
-const UNREAD_POLL_MS = 30000;
+import Icon from "@engine/Icon";
 
 const iconStyle: React.CSSProperties = { height: "1.2em", verticalAlign: "middle", marginRight: 4 };
 
@@ -29,7 +27,7 @@ function label(item: MenuItem): React.ReactNode {
   ) : isImageIcon(item.icon) ? (
     <img src={item.icon} alt="" className="menu-icon" style={iconStyle} />
   ) : (
-    <span className={`menu-icon-sprite icon-${item.icon}`} aria-hidden="true" />
+    <Icon name={item.icon} />
   );
   if (item.title) return (<>{icon}{t(item.title)}</>);
   return icon;
@@ -72,7 +70,7 @@ const NavDropdown: React.FC<NavDropdownProps> = ({ title, icon, items, onNavigat
           onExpand();
         }}
       >
-        {icon && <span className={`menu-icon-sprite icon-${icon}`} aria-hidden="true" />}
+        {icon && <Icon name={icon} />}
         {title}
       </a>
       <div className={`dropdown-menu${open ? " show" : ""}`}>
@@ -108,7 +106,7 @@ interface MenuState {
 class Menu extends Component<{}, MenuState> {
   state: MenuState = { isOpen: false, langOpen: false, mobileSubmenu: null, unreadMessages: 0 };
   private unsubscribeI18n?: () => void;
-  private unreadTimer?: ReturnType<typeof setInterval>;
+  private unreadSource?: EventSource;
 
   // Class component, so useT()'s hook isn't available: subscribe manually and
   // force a re-render whenever the locale or a translation resolves.
@@ -116,22 +114,21 @@ class Menu extends Component<{}, MenuState> {
     this.unsubscribeI18n = subscribe(() => this.forceUpdate());
     document.addEventListener("click", this.handleDocClick);
     if (Auth.isAuthenticated()) {
-      this.pollUnreadMessages();
-      this.unreadTimer = setInterval(this.pollUnreadMessages, UNREAD_POLL_MS);
+      // Server pushes one event on connect and one on every change (new
+      // message / thread read) — see messages.go's handleUnreadCount. The
+      // browser reconnects this on its own if the connection drops.
+      this.unreadSource = new EventSource("/api/messages/unread-count");
+      this.unreadSource.onmessage = (e) => {
+        const n = parseInt(e.data, 10);
+        this.setState({ unreadMessages: isNaN(n) ? 0 : n });
+      };
     }
   }
   componentWillUnmount() {
     this.unsubscribeI18n?.();
     document.removeEventListener("click", this.handleDocClick);
-    if (this.unreadTimer != null) clearInterval(this.unreadTimer);
+    this.unreadSource?.close();
   }
-
-  pollUnreadMessages = () => {
-    axios
-      .get("/api/messages/unread-count")
-      .then((res) => this.setState({ unreadMessages: res.data?.count || 0 }))
-      .catch(() => {});
-  };
 
   // Close the language switcher on any outside click (same pattern as
   // FieldsetList's column-chooser menu).
@@ -179,7 +176,7 @@ class Menu extends Component<{}, MenuState> {
                 Auth.logout();
               }}
             >
-              <span className="menu-icon-sprite icon-logout" aria-hidden="true" />
+              <Icon name="logout" />
             </a>
           </li>
         );
@@ -227,7 +224,7 @@ class Menu extends Component<{}, MenuState> {
                   className={({ isActive }: { isActive: boolean }) => `nav-link${isActive ? " active" : ""}`}
                   onClick={this.close}
                 >
-                  <span className="menu-icon-sprite icon-home" aria-hidden="true" />
+                  <Icon name="home" />
                   {t("Home")}
                 </RouterNavLink>
               </li>
@@ -296,10 +293,7 @@ class Menu extends Component<{}, MenuState> {
                     className={({ isActive }: { isActive: boolean }) => `nav-link${isActive ? " active" : ""}`}
                   >
                     <span className="menu-message-badge-wrap">
-                      <span
-                        className={`menu-icon-sprite ${this.state.unreadMessages > 0 ? "icon-messages-new" : "icon-messages"}`}
-                        aria-hidden="true"
-                      />
+                      <Icon name={this.state.unreadMessages > 0 ? "messages-new" : "messages"} />
                       {this.state.unreadMessages > 0 && (
                         <span className="menu-message-badge">
                           {this.state.unreadMessages > 99 ? "99+" : this.state.unreadMessages}
@@ -323,7 +317,7 @@ class Menu extends Component<{}, MenuState> {
                       <img src={avatar} alt="" className="menu-avatar" />
                     ) : (
                       <span className="menu-avatar menu-avatar-fallback">
-                        <span className="menu-icon-sprite icon-profile" aria-hidden="true" />
+                        <Icon name="profile" />
                       </span>
                     )}
                     <span className="menu-account-text">
@@ -352,12 +346,12 @@ class Menu extends Component<{}, MenuState> {
             className="mobile-submenu-back nav-link"
             onClick={() => this.setState({ mobileSubmenu: null })}
           >
-            <span className="menu-icon-sprite icon-back" aria-hidden="true" />
+            <Icon name="back" />
             {t("Back")}
           </button>
           <div className="mobile-submenu-title">
             {this.state.mobileSubmenu && SUBMENU_ICONS[this.state.mobileSubmenu] && (
-              <span className={`menu-icon-sprite icon-${SUBMENU_ICONS[this.state.mobileSubmenu]}`} aria-hidden="true" />
+              <Icon name={SUBMENU_ICONS[this.state.mobileSubmenu]} />
             )}
             {this.state.mobileSubmenu && t(this.state.mobileSubmenu)}
           </div>

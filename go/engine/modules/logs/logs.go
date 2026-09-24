@@ -11,7 +11,7 @@ import (
 // fieldset matches what events.go's EventLog actually populates (see log package).
 func (m *Logs) fieldset() []Field {
 	return []Field{
-		NewField("ts", TYPE_DATE_TIME, false).WithLabel("Time").AsReadOnly(),
+		NewField("created", TYPE_DATE_TIME, false).WithLabel("Time").AsReadOnly(),
 		NewField("level", TYPE_STRING, false).WithLabel("Level").AsReadOnly(),
 		NewField("type", TYPE_STRING, false).WithLabel("Type").AsReadOnly(),
 		NewField("message", TYPE_STRING, false).WithLabel("Message").AsReadOnly(),
@@ -32,8 +32,8 @@ func (m *Logs) filters() *Filedset {
 		NewFilter("type", TYPE_STRING).WithLabel("Type").Equals(),
 		NewFilter("module", TYPE_STRING).WithLabel("Module").Equals(),
 		NewFilter("message", TYPE_STRING).WithLabel("Message").Contains(),
-		NewFilter("from", TYPE_DATE).WithLabel("From").WithSQL("ts").GreaterOrEqual(),
-		NewFilter("to", TYPE_DATE).WithLabel("To").WithSQL("ts").LessOrEqual(),
+		NewFilter("from", TYPE_DATE).WithLabel("From").WithSQL("created").GreaterOrEqual(),
+		NewFilter("to", TYPE_DATE).WithLabel("To").WithSQL("created").LessOrEqual(),
 	)
 }
 

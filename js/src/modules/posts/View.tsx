@@ -151,7 +151,7 @@ const PostsView: React.FC<CustomContainerProps> = (props) => {
           </header>
 
           <div className="card-text text-dark">
-            <Field name="content" />
+            <Field name="compiled_html" />
           </div>
         </div>
 

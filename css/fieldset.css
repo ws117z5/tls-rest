@@ -19,6 +19,18 @@
   }
 }
 
+/* Required-field validation (FieldsetForm.tsx): highlights the value cell as a whole, not each field type's own input. */
+.fieldset-cell-invalid {
+  outline: 2px solid #dc3545;
+  outline-offset: 2px;
+  border-radius: 8px;
+}
+.invalid-feedback {
+  color: #dc3545;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+
 /* Module pages (ModulePage.tsx): the shared list/view/edit chrome for every
    backend module — restyled once here rather than per module. Reuses the
    site's existing phosphor green (#6ff2a0) as the accent, just with dark
@@ -164,6 +176,49 @@
   color: var(--module-accent-ink);
 }
 
+/* Dark theme: redefining --module-* vars covers most of .module-page; a few hardcoded-light rules below need explicit overrides too. */
+html[data-theme="dark"] .module-page {
+  --module-ink: var(--app-dark-text);
+  --module-muted: var(--app-dark-muted);
+  --module-border: var(--app-dark-border);
+  background: var(--app-dark-bg);
+}
+
+html[data-theme="dark"] .module-page .btn-secondary,
+html[data-theme="dark"] .module-page .btn-outline-secondary {
+  background: var(--app-dark-raised);
+  border-color: var(--app-dark-border);
+  color: var(--app-dark-text);
+}
+
+html[data-theme="dark"] .module-page .btn-secondary:hover,
+html[data-theme="dark"] .module-page .btn-outline-secondary:hover {
+  background: var(--app-dark-border);
+}
+
+html[data-theme="dark"] .module-page .btn-outline-primary {
+  color: var(--module-accent);
+}
+
+html[data-theme="dark"] .module-page .form-control,
+html[data-theme="dark"] .module-page .form-select {
+  background: var(--app-dark-surface);
+  color: var(--app-dark-text);
+  border-color: var(--app-dark-border);
+}
+
+html[data-theme="dark"] .module-page .fieldset-filters {
+  background: var(--app-dark-surface) !important;
+}
+
+html[data-theme="dark"] .module-page .table td {
+  border-top-color: var(--app-dark-border);
+}
+
+html[data-theme="dark"] .module-page .table tbody tr:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
 /* CustomSelect (engine/fields/CustomSelect.tsx): the site-wide <select>
    replacement, same interaction as the menu's language switcher — current
    value stays put, clicking it expands the same box downward to reveal the
@@ -287,6 +342,38 @@
   background: rgba(111, 242, 160, 0.15);
 }
 
+/* Dark theme: cx-select has no --module-* vars to redefine, needs its own overrides. */
+html[data-theme="dark"] .cx-select-current {
+  background: var(--app-dark-surface);
+  color: var(--app-dark-text);
+  border-color: var(--app-dark-border);
+}
+
+html[data-theme="dark"] .cx-select-disabled .cx-select-current {
+  background: var(--app-dark-bg);
+  color: var(--app-dark-muted);
+}
+
+html[data-theme="dark"] .cx-select-caret {
+  border-right-color: var(--app-dark-muted);
+  border-bottom-color: var(--app-dark-muted);
+}
+
+html[data-theme="dark"] .cx-select-options {
+  background: var(--app-dark-surface);
+  border-color: var(--app-dark-border);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4);
+}
+
+html[data-theme="dark"] .cx-select-option {
+  color: var(--app-dark-text);
+}
+
+html[data-theme="dark"] .cx-select-option:hover,
+html[data-theme="dark"] .cx-select-option:focus {
+  background: rgba(111, 242, 160, 0.12);
+}
+
 /* Likes (engine/modules/likes/Likes.tsx): one united pill for like+dislike,
    split by a single middle divider — not two separate buttons. Active state
    recolors just that half's icon+count via currentColor (the sprite icon is
@@ -337,6 +424,6 @@
 }
 
 .likes-widget-sm .menu-icon-sprite {
-  zoom: 0.06;
+  zoom: calc(0.06 * var(--icon-scale, 1));
   margin-right: 3px;
 }

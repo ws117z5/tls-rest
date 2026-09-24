@@ -13,11 +13,11 @@ import (
 // read-only; the module itself is read-only.
 func (m *AccessLog) fieldset() []Field {
 	return []Field{
-		NewField("ts", TYPE_DATE_TIME, false).WithLabel("Time").AsReadOnly(),
+		NewField("created", TYPE_DATE_TIME, false).WithLabel("Time").AsReadOnly(),
 		NewField("method", TYPE_STRING, false).WithLabel("Method").AsReadOnly(),
 		NewField("path", TYPE_STRING, false).WithLabel("Path").AsReadOnly(),
 		NewField("status", TYPE_INT, false).WithLabel("Status").AsReadOnly(),
-		NewField("duration_ms", TYPE_FLOAT, false).WithLabel("Duration (ms)").AsReadOnly(),
+		NewField("duration", TYPE_FLOAT, false).WithLabel("Duration (ms)").AsReadOnly(),
 		NewField("user_id", TYPE_INT, false).WithLabel("User").AsReadOnly(),
 		NewField("ip", TYPE_STRING, false).WithLabel("IP").AsReadOnly(),
 		NewField("user_agent", TYPE_STRING, false).WithLabel("User agent").AsReadOnly().NonSortable(),
@@ -43,8 +43,8 @@ func (m *AccessLog) filters() *Filedset {
 		NewFilter("user_agent", TYPE_STRING).WithLabel("User agent").Contains(),
 		NewFilter("country", TYPE_STRING).WithLabel("Country").Equals(),
 		NewFilter("blocked", TYPE_CHECKBOX).WithLabel("Blocked only").Equals(),
-		NewFilter("from", TYPE_DATE).WithLabel("From").WithSQL("ts").GreaterOrEqual(),
-		NewFilter("to", TYPE_DATE).WithLabel("To").WithSQL("ts").LessOrEqual(),
+		NewFilter("from", TYPE_DATE).WithLabel("From").WithSQL("created").GreaterOrEqual(),
+		NewFilter("to", TYPE_DATE).WithLabel("To").WithSQL("created").LessOrEqual(),
 	)
 }
 
