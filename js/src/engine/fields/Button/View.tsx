@@ -1,5 +1,5 @@
 import React from "react";
-import useT from "@engine/useT";
+import useT from "@engine/controllers/useT";
 
 interface ButtonViewProps {
     id?: string;

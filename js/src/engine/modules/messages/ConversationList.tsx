@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router";
 import axios from "axios";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 // The list of conversations for the signed-in user, most recent first. Used
 // both by the standalone Messages page and embedded in the user's own

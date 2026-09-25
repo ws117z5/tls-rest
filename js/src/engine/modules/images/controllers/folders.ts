@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import axios from "axios";
-import Config from "@engine/Config";
+import Config from "@engine/controllers/Config";
 import { ImageRef } from "./images";
 
 export interface FolderSummary {

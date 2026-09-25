@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 
 import { FieldsetProvider, FieldsetForm, MODES } from "@engine/fields";
-import useT from "@engine/useT";
+import useT from "@engine/controllers/useT";
  
 // A Page is a standalone, non-module screen with a single visual representation
 // and NO modes (no list/create/delete, no per-mode routes). It renders one

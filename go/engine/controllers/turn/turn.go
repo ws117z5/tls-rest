@@ -113,11 +113,10 @@ func FetchCredentials() ([]map[string]any, error) {
 	}, nil
 }
 
-// init registers the usage-cap action and the /api/config/ice route. Routed
+// init registers the /api/config/ice route. Routed
 // directly on the root router (not under any module's /{id}-bearing
 // subrouter) so it can never lose a match to a module's generic view route.
 func init() {
-	initUsageAction()
 	module.AddRouteRegistrar(func(router *mux.Router) {
 		router.HandleFunc("/api/config/ice", GetIceServers).Methods("GET")
 	})

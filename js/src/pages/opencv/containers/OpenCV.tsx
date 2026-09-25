@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import Request from "@engine/controllers/request";
 import { Buffer } from "buffer";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 import "./opencv.css";
 

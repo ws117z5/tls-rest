@@ -1,6 +1,6 @@
 import React from 'react';
 import { FIELD_TYPES, MODES, isImmutableField } from './FieldsetProvider';
-import { t } from '@engine/i18n';
+import { t } from '@engine/controllers/i18n';
 
 // Base field component props
 export interface BaseFieldProps {

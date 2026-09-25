@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 // Friend-request control for another user's profile. Talks to:
 //   GET  /api/friends/status/{id}   -> { status }

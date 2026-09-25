@@ -1,7 +1,7 @@
 import React from "react";
 import PageComponent from "@engine/containers/PageComponent";
 import ConversationList from "@engine/modules/messages/ConversationList";
-import { t } from "@engine/i18n";
+import { t } from "@engine/controllers/i18n";
 
 // Menu-visible inbox: every conversation the signed-in user is part of. The
 // same list (ConversationList) is also embedded directly in the user's own

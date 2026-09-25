@@ -30,7 +30,10 @@ type Action struct {
 	Name        string
 	Description string
 	Run         func() (string, error)
+	Command     []string // interactive alternative to Run: runs in a pty in Dir (see process.go)
+	Dir         string
 
+	proc     *process
 	mu       sync.Mutex
 	interval time.Duration
 	stop     chan struct{}
@@ -50,6 +53,7 @@ type Snapshot struct {
 	Description string     `json:"description"`
 	IntervalSec int        `json:"interval_seconds"`
 	Running     bool       `json:"running"`
+	Interactive bool       `json:"interactive,omitempty"`
 	LastRun     string     `json:"last_run,omitempty"`
 	LastResult  string     `json:"last_result,omitempty"`
 	LastError   string     `json:"last_error,omitempty"`
@@ -99,8 +103,21 @@ func (a *Action) RunNow() (string, error) {
 	a.running = true
 	a.mu.Unlock()
 
-	result, err := a.Run()
+	if len(a.Command) > 0 {
+		if err := a.startProcess(); err != nil {
+			a.record("", err)
+			return "", err
+		}
+		return "started", nil
+	}
 
+	result, err := a.Run()
+	a.record(result, err)
+	return result, err
+}
+
+// record stores one finished run's outcome in the action's state and log.
+func (a *Action) record(result string, err error) {
 	a.mu.Lock()
 	a.running = false
 	a.lastRun = time.Now()
@@ -117,8 +134,6 @@ func (a *Action) RunNow() (string, error) {
 		a.log = a.log[len(a.log)-maxLogEntries:]
 	}
 	a.mu.Unlock()
-
-	return result, err
 }
 
 // SetSchedule runs the action every interval from now on; interval <= 0
@@ -158,7 +173,7 @@ func (a *Action) Snapshot() Snapshot {
 	defer a.mu.Unlock()
 	s := Snapshot{
 		ID: a.ID, Name: a.Name, Description: a.Description,
-		IntervalSec: int(a.interval.Seconds()), Running: a.running,
+		IntervalSec: int(a.interval.Seconds()), Running: a.running, Interactive: len(a.Command) > 0,
 		LastResult: a.result, LastError: a.lastErr,
 	}
 	if !a.lastRun.IsZero() {

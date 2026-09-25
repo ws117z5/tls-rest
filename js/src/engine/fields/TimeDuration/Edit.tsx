@@ -1,6 +1,6 @@
 import React, { Component, ChangeEvent } from "react";
 import { Unit, unitsFromFormat, toParts, fromParts } from "./util";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 interface Props {
   id?: string;

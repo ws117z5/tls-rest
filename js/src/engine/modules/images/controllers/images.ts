@@ -8,7 +8,7 @@
 // per-image override).
 
 import axios from "axios";
-import Config from "@engine/Config";
+import Config from "@engine/controllers/Config";
 
 export interface ImageRef {
     id: number | string;

@@ -1,7 +1,7 @@
 import React, { Component } from 'react';
 import { Field, BaseFieldProps } from './Field';
 import { useFieldset, MODES, isImmutableField } from './FieldsetProvider';
-import useT from '@engine/useT';
+import useT from '@engine/controllers/useT';
 import '@css/fieldset.css';
 
 // Field types that are large content editors, not single-value inputs — these

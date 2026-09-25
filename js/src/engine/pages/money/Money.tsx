@@ -2,7 +2,7 @@ import React, { Component } from "react";
 import ReactDOM from "react-dom";
 import PageComponent, {PageComponentState} from "@engine/containers/PageComponent";
 import { Navigate } from "react-router";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 interface MoneyPageState extends PageComponentState {
     redirect: boolean;

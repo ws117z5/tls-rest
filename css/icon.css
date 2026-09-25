@@ -1,4 +1,4 @@
-/* Icon (js/src/engine/Icon.tsx): a small glyph cut from the shared sprite
+/* Icon (js/src/engine/containers/Icon.tsx): a small glyph cut from the shared sprite
    sheet (/img/icons_bw.png, a 6x8+ grid of 200x200 cells), rendered as a CSS
    mask so it fills with currentColor and tracks the surrounding text/link
    color. `--icon-scale` (set inline by Icon.tsx's `scale` prop) multiplies

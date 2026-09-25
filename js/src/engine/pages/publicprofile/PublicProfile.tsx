@@ -5,7 +5,7 @@ import Likes from "@engine/modules/likes/Likes";
 import MessageThread from "@engine/modules/messages/MessageThread";
 import FriendButton from "@engine/modules/friends/FriendButton";
 import Auth from "@controllers/auth";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 interface Profile {
   id: number;

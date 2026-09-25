@@ -29,6 +29,7 @@ import (
 	// Engine pages
 	_ "tls-rest/go/engine/modules/config"
 	_ "tls-rest/go/engine/pages/actions"
+	_ "tls-rest/go/engine/pages/actions/jobs"
 	_ "tls-rest/go/engine/pages/console"
 	_ "tls-rest/go/engine/pages/login"
 	_ "tls-rest/go/engine/pages/profile"
@@ -49,4 +50,5 @@ import (
 	// Features that own arbitrary route trees with unexported handlers.
 	_ "tls-rest/go/modules/papers"
 	_ "tls-rest/go/pages/opencv"
+	_ "tls-rest/go/pages/transformerstudio"
 )

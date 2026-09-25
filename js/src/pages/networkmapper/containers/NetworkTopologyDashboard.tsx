@@ -1,6 +1,6 @@
 import React, { useRef, useEffect } from "react";
 import ForceGraph2D from "react-force-graph-2d";
-import useT from "@engine/useT";
+import useT from "@engine/controllers/useT";
 
 // Live force-directed topology graph for the admin Network Mapper page. Ported
 // from the standalone netmapper tool. Styling is inline (this app uses Bootstrap,

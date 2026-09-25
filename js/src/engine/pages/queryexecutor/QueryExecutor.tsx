@@ -1,7 +1,7 @@
 
 import PageComponent from "@engine/containers/PageComponent";
 import {TextEdit} from "@engine/fields"
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 interface QueryExecutorProps {}
 interface QueryExecutorState {}

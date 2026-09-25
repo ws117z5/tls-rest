@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useSearchParams } from "react-router";
 import axios from "axios";
 import AuthButton from "./AuthButton";
-import useT from "@engine/useT";
+import useT from "@engine/controllers/useT";
 import "./LoginContainer.css";
 
 interface LoginProps {

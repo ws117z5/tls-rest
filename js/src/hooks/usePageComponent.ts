@@ -1,7 +1,7 @@
 // usePageComponent.ts
 import { useState, useEffect, useRef } from "react";
 import axios from "axios";
-import Config from "../engine/Config";
+import Config from "@engine/controllers/Config";
 import Functional from "../engine/controllers/functional";
 
 export interface PageComponentState<T = any> {

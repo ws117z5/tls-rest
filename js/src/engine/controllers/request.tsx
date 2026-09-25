@@ -1,6 +1,6 @@
 import axios from "axios";
 import Logs from "@engine/controllers/log"
-import Config from "@engine/Config"
+import Config from "@engine/controllers/Config"
 
 class Request {
     static apiListRequest = (url, that) => {

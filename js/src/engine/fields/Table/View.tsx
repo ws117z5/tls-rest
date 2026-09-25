@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import axios from "axios";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 // TableView renders a TYPE_TABLE field read-only.
 //

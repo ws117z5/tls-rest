@@ -1,8 +1,8 @@
 import React, { Component } from 'react';
 import { Field } from './Field';
 import { useFieldset, MODES } from './FieldsetProvider';
-import Icon from '@engine/Icon';
-import useT from '@engine/useT';
+import Icon from '@engine/containers/Icon';
+import useT from '@engine/controllers/useT';
 
 // List data interface
 interface ListData {

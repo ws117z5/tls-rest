@@ -3,7 +3,7 @@ import axios from "axios";
 import { Link } from "react-router";
 import MarkdownRender from "@engine/fields/Markdown/controllers/MarkdownRender";
 import Likes from "@engine/modules/likes/Likes";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 // A threaded discussion for one record. Talks to the polymorphic comments API:
 //   GET  /api/comments/{module}/{row}  -> { comments: tree }

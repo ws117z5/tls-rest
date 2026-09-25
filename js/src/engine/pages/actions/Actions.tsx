@@ -1,7 +1,8 @@
 import React from "react";
 import axios from "axios";
 import PageComponent from "@engine/containers/PageComponent";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
+import ActionTerminal from "./ActionTerminal";
 
 interface ActionLogEntry {
 	time: string;
@@ -15,6 +16,7 @@ interface ActionSnapshot {
 	description: string;
 	interval_seconds: number;
 	running: boolean;
+	interactive?: boolean;
 	last_run?: string;
 	last_result?: string;
 	last_error?: string;
@@ -25,6 +27,7 @@ interface ActionsState {
 	actions: ActionSnapshot[];
 	error: string;
 	runningId: string;
+	runKeys: Record<string, number>;
 	intervalDrafts: Record<string, string>;
 }
 
@@ -39,7 +42,7 @@ class Actions extends PageComponent<{}, ActionsState> {
 		this.submenu = "engine";
 		this.requiresAuth = true;
 		this.requiresAdmin = true;
-		this.state = { actions: [], error: "", runningId: "", intervalDrafts: {} };
+		this.state = { actions: [], error: "", runningId: "", runKeys: {}, intervalDrafts: {} };
 	}
 
 	private unsubscribeI18n?: () => void;
@@ -68,7 +71,7 @@ class Actions extends PageComponent<{}, ActionsState> {
 		} catch {
 			// The result/error is picked up from the refreshed snapshot below either way.
 		}
-		this.setState({ runningId: "" });
+		this.setState((s) => ({ runningId: "", runKeys: { ...s.runKeys, [id]: (s.runKeys[id] || 0) + 1 } }));
 		this.load();
 	};
 
@@ -82,7 +85,7 @@ class Actions extends PageComponent<{}, ActionsState> {
 	};
 
 	render() {
-		const { actions, error, runningId, intervalDrafts } = this.state;
+		const { actions, error, runningId, runKeys, intervalDrafts } = this.state;
 		return (
 			<div style={{ padding: 16 }}>
 				<h2 style={{ marginBottom: 12 }}>{t("Actions")}</h2>
@@ -134,6 +137,8 @@ class Actions extends PageComponent<{}, ActionsState> {
 										</span>
 									)}
 								</div>
+
+								{a.interactive && <ActionTerminal key={`${a.id}-${runKeys[a.id] || 0}`} id={a.id} onDone={this.load} />}
 
 								{a.log && a.log.length > 0 && (
 									<div style={{ marginTop: 10 }}>

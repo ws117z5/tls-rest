@@ -1,9 +1,9 @@
 import React, { Component, useEffect, useRef, useState } from "react";
 import { Link, NavLink as RouterNavLink } from "react-router";
-import Config, { MenuItem } from "@engine/Config";
+import Config, { MenuItem } from "@engine/controllers/Config";
 import Auth from "@controllers/auth";
-import { t, getLocale, setLocale, locales, subscribe } from "@engine/i18n";
-import Icon from "@engine/Icon";
+import { t, getLocale, setLocale, locales, subscribe } from "@engine/controllers/i18n";
+import Icon from "@engine/containers/Icon";
 
 const iconStyle: React.CSSProperties = { height: "1.2em", verticalAlign: "middle", marginRight: 4 };
 

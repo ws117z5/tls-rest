@@ -1,7 +1,7 @@
 import React from "react";
 import { ModuleViewProps } from "@engine/controllers/registry";
-import useT from "@engine/useT";
-import Icon from "@engine/Icon";
+import useT from "@engine/controllers/useT";
+import Icon from "@engine/containers/Icon";
 
 // Strip markdown/HTML to a short plain-text excerpt of the body.
 function excerpt(body: string, max = 180): string {

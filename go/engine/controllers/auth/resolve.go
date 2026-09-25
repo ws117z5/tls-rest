@@ -311,14 +311,16 @@ func resolveSessionRights(ctx context.Context, userID int) (modes ModuleModeRigh
 			}
 
 			allowedFilters, filtersEmpty := filterFieldsFromValue(entry["filter_fields"])
-			if filtersEmpty || len(allowedFilters) == 0 {
-				filterUnrestricted[m] = true
-			} else {
-				if filterAcc[m] == nil {
-					filterAcc[m] = map[string]bool{}
-				}
-				for name := range allowedFilters {
-					filterAcc[m][name] = true
+			if functions.Int(entry["modes"])&MODE_FILTERS != 0 {
+				if filtersEmpty || len(allowedFilters) == 0 {
+					filterUnrestricted[m] = true
+				} else {
+					if filterAcc[m] == nil {
+						filterAcc[m] = map[string]bool{}
+					}
+					for name := range allowedFilters {
+						filterAcc[m][name] = true
+					}
 				}
 			}
 

@@ -1,6 +1,6 @@
 import React, { Component } from "react";
 import axios from "axios";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 import Auth from "@controllers/auth";
 
 // A direct-message thread with one other user. Talks to:

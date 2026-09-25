@@ -2,7 +2,7 @@ import React, { Component } from "react";
 import OpenCV from "./containers/OpenCV";
 import ReactDOM from "react-dom";
 import PageComponent from "@engine/containers/PageComponent";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 // Create a function to wrap up your component
 class OpenCVPage extends PageComponent {

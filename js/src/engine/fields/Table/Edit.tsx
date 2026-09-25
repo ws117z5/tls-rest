@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import axios from "axios";
 import { TextEdit, FloatEdit, SelectEdit, SelectView, CheckboxEdit } from "../index";
-import { t as translate, subscribe } from "@engine/i18n";
+import { t as translate, subscribe } from "@engine/controllers/i18n";
 
 // TableEdit renders a TYPE_TABLE field as a real sub-fieldset: every column is a
 // Field definition (name/type/label/options/readonly) coming from the backend's

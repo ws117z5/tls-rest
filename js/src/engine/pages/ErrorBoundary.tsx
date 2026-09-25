@@ -1,5 +1,5 @@
 import React from "react";
-import { t } from "@engine/i18n";
+import { t } from "@engine/controllers/i18n";
 
 interface ErrorBoundaryState {
   hasError: boolean;

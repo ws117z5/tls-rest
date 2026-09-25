@@ -3,7 +3,7 @@ import axios from "axios";
 import { ModuleViewProps } from "@engine/controllers/registry";
 import { RoomMesh } from "./videoMesh";
 import Auth from "@controllers/auth";
-import useT from "@engine/useT";
+import useT from "@engine/controllers/useT";
 import "./papers.css";
 
 interface PlayerView { key: string; name: string; word?: string; ready: boolean; active: boolean; finished: boolean; }

@@ -6,7 +6,7 @@ import axios from 'axios';
 import { AbstractComponent } from '@engine/containers/AbstractComponent';
 import Menu from "@engine/containers/Menu";
 import {Home} from "@engine/pages";
-import Config from '@engine/Config';
+import Config from '@engine/controllers/Config';
 import ModulePage, { ModeName } from '@engine/containers/ModulePage';
 import ErrorBoundary from "@engine/pages/ErrorBoundary";
 import Toasts from "@engine/containers/Toasts";

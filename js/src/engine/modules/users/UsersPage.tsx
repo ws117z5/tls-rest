@@ -1,7 +1,7 @@
 import React from "react";
 import PageComponent from "@engine/containers/PageComponent";
 import { FieldsetProvider, FieldsetList, MODES } from "@engine/fields";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 class UsersPage extends PageComponent {
   protected isPage = true;

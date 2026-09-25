@@ -4,7 +4,7 @@ import { Field } from "@engine/fields/FormLayout";
 import CommentsThread from "@engine/modules/comments/CommentsThread";
 import Likes from "@engine/modules/likes/Likes";
 import Auth from "@controllers/auth";
-import useT from "@engine/useT";
+import useT from "@engine/controllers/useT";
 
 // Params injected by ModulePage/WithLayout into custom containers.
 interface CustomContainerProps {

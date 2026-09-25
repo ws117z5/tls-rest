@@ -1,6 +1,6 @@
 import React from "react";
 import PageComponent from "@engine/containers/PageComponent";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 import { hashAll, randomInput, HashResult } from "./hashes";
 
 interface HashToolState {

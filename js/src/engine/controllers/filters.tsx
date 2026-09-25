@@ -1,6 +1,6 @@
 import React from "react";
 import type { ModuleFiltersProps } from "@engine/controllers/registry";
-import Icon from "@engine/Icon";
+import Icon from "@engine/containers/Icon";
 
 // Example module override: a bespoke filter bar for the Posts list.
 //

@@ -6,6 +6,7 @@ package actions
 import (
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"tls-rest/go/app"
@@ -43,6 +44,48 @@ func Run(w http.ResponseWriter, r *http.Request) {
 	functions.WriteJSON(w, http.StatusOK, resp)
 }
 
+// Output handles GET /api/actions/{id}/output?from=N: a Command action's terminal output since offset N.
+func Output(w http.ResponseWriter, r *http.Request) {
+	a, ok := actionsctl.Get(mux.Vars(r)["id"])
+	if !ok {
+		functions.JSONError(w, http.StatusNotFound, "unknown action")
+		return
+	}
+	from, _ := strconv.Atoi(r.URL.Query().Get("from"))
+	text, next, running := a.Output(from)
+	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{"text": text, "next": next, "running": running})
+}
+
+// Input handles POST /api/actions/{id}/input {text, enter}: types into a running Command action's terminal.
+func Input(w http.ResponseWriter, r *http.Request) {
+	a, ok := actionsctl.Get(mux.Vars(r)["id"])
+	if !ok {
+		functions.JSONError(w, http.StatusNotFound, "unknown action")
+		return
+	}
+	var body struct {
+		Text  string `json:"text"`
+		Enter bool   `json:"enter"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if err := a.Input(body.Text, body.Enter); err != nil {
+		functions.JSONError(w, http.StatusConflict, err.Error())
+		return
+	}
+	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// Stop handles POST /api/actions/{id}/stop: terminates a running Command action.
+func Stop(w http.ResponseWriter, r *http.Request) {
+	a, ok := actionsctl.Get(mux.Vars(r)["id"])
+	if !ok {
+		functions.JSONError(w, http.StatusNotFound, "unknown action")
+		return
+	}
+	a.Stop()
+	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
 // Schedule handles POST /api/actions/{id}/schedule {interval_seconds}. ADMIN
 // ONLY, enforced by Page's RequiresAdmin (see module.PageAbstract.guard). 0
 // (or omitted) cancels any existing schedule.
@@ -71,11 +114,13 @@ var Page = &module.PageAbstract{
 	Routes: []module.PageRoute{
 		{Path: "/api/actions", Methods: []string{"GET"}, Handler: List},
 		{Path: "/api/actions/{id}/run", Methods: []string{"POST"}, Handler: Run},
+		{Path: "/api/actions/{id}/output", Methods: []string{"GET"}, Handler: Output},
+		{Path: "/api/actions/{id}/input", Methods: []string{"POST"}, Handler: Input},
+		{Path: "/api/actions/{id}/stop", Methods: []string{"POST"}, Handler: Stop},
 		{Path: "/api/actions/{id}/schedule", Methods: []string{"POST"}, Handler: Schedule},
 	},
 }
 
 func init() {
 	app.RegisterPage(Page)
-	initTurnCheckAction()
 }

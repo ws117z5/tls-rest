@@ -5,6 +5,7 @@ go 1.27.0
 // +heroku goVersion go1.27
 
 require (
+	github.com/creack/pty v1.1.24
 	github.com/fatih/color v1.19.0
 	github.com/go-pg/urlstruct v1.0.1
 	github.com/go-redis/redis/v8 v8.11.5
@@ -19,6 +20,7 @@ require (
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2
 	github.com/ws117z5/mmh3 v0.0.0-20220617011039-c14ba90b5ab7
+	github.com/yuin/goldmark v1.8.6
 	//github.com/tsenart/vegeta/v12 v12.8.3 // indirect
 	go.mongodb.org/mongo-driver v1.17.9
 	gocv.io/x/gocv v0.43.0
@@ -66,7 +68,6 @@ require (
 	github.com/xdg-go/scram v1.2.0 // indirect
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
-	github.com/yuin/goldmark v1.8.6 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 	golang.org/x/text v0.41.0 // indirect

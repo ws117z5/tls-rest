@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import Functional from "@controllers/functional";
 import axios from "axios";
-import Config from "@engine/Config";
+import Config from "@engine/controllers/Config";
 import { WithRouterProps } from "@engine/containers/AbstractComponent";
 
 

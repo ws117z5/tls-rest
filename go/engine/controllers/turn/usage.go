@@ -10,12 +10,9 @@ import (
 	"time"
 
 	config "tls-rest/go/app/constants"
-	"tls-rest/go/engine/controllers/actions"
 )
 
-var usageCheckInterval = 10 * time.Minute
-
-// usage is the last-checked cap state, read by GetIceServers, written by checkUsage.
+// usage is the last-checked cap state, read by GetIceServers, written by CheckUsage.
 var usage struct {
 	mu        sync.RWMutex
 	overCap   bool
@@ -51,10 +48,10 @@ type cfGraphQLResponse struct {
 	} `json:"errors"`
 }
 
-// checkUsage queries Cloudflare's TURN analytics for bytes used since the
+// CheckUsage queries Cloudflare's TURN analytics for bytes used since the
 // start of the current UTC month and updates the cached cap state. Registered
 // as the "turn_usage" action.
-func checkUsage() (string, error) {
+func CheckUsage() (string, error) {
 	if config.TurnMonthlyCapMB <= 0 || config.CFAccountID == "" {
 		return "cap check disabled (TURN_MONTHLY_CAP_MB or CF_ACCOUNT_ID not set)", nil
 	}
@@ -146,16 +143,4 @@ func checkUsage() (string, error) {
 			usedMB, config.TurnMonthlyCapMB), nil
 	}
 	return fmt.Sprintf("%d MB used of %d MB cap", usedMB, config.TurnMonthlyCapMB), nil
-}
-
-func initUsageAction() {
-	a := &actions.Action{
-		ID:          "turn_usage",
-		Name:        "TURN usage check",
-		Description: "Polls Cloudflare's TURN analytics and suspends new TURN credentials once the monthly cap is hit.",
-		Run:         checkUsage,
-	}
-	actions.Register(a)
-	a.SetSchedule(usageCheckInterval)
-	go func() { _, _ = a.RunNow() }() // populate the cache once at startup rather than waiting a full interval
 }

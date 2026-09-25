@@ -3,7 +3,7 @@ import PageComponent from "@engine/containers/PageComponent";
 import NetworkTopologyDashboard, {
   NetworkTopologyData,
 } from "./containers/NetworkTopologyDashboard";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 // Admin-only Network Mapper page. Config.tsx gates it via requiresAdministration()
 // (see Auth.canAccessModule), so non-admins never see it in the Pages menu and

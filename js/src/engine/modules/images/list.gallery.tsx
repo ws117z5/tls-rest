@@ -3,7 +3,7 @@ import { ModuleViewProps } from "@engine/controllers/registry";
 import { imageUrl, ImageRef } from "./controllers/images";
 import { useImageFolders, useFolderImages } from "./controllers/folders";
 import FolderDeck from "./controllers/FolderDeck";
-import useT from "@engine/useT";
+import useT from "@engine/controllers/useT";
 
 const masonryStyle: React.CSSProperties = {
     margin: "-1.5rem",

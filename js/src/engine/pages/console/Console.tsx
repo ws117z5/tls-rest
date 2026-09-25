@@ -1,7 +1,7 @@
 import React from "react";
 import axios from "axios";
 import PageComponent from "@engine/containers/PageComponent";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 interface ConsoleState {
 	command: string;

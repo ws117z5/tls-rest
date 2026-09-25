@@ -581,6 +581,19 @@ func TestPosts_Filters(t *testing.T) {
 		return tok
 	}
 
+	dumpFilterRights := func(t *testing.T, label string) {
+		t.Helper()
+		ctx := context.Background()
+		grp, _ := db.GetAll(`SELECT group_id, modes, filter_fields FROM user_group_rights WHERE module = 'posts' ORDER BY group_id`)
+		usr, _ := db.GetAll(`SELECT id, user_id, modes, filter_fields FROM user_rights WHERE module = 'posts' AND user_id = $1`, tempID)
+		member, _ := db.GetOne(`SELECT groups FROM users WHERE id = $1`, tempID)
+		t.Logf("[%s] user_group_rights(posts)=%v", label, grp)
+		t.Logf("[%s] user_rights(posts, temp user)=%v", label, usr)
+		t.Logf("[%s] users.groups=%v", label, member)
+		t.Logf("[%s] resolved modes(posts)=%d, filter fields(posts)=%v (absent = unrestricted)", label,
+			auth.ResolveModuleModeRights(ctx, tempID)["posts"], auth.ResolveModuleFilterFieldRights(ctx, tempID)["posts"])
+	}
+
 	listPosts := func(t *testing.T, tok, query string) map[string]interface{} {
 		t.Helper()
 		resp := do(t, http.MethodGet, "/posts"+query, tok, nil)
@@ -672,7 +685,9 @@ func TestPosts_Filters(t *testing.T) {
 		t.Cleanup(func() { _, _ = db.DeleteRow("user_rights", "id", int(rightsID)) })
 
 		tok := token(t)
+		dumpFilterRights(t, "filter_fields=[title]")
 		names := filterNames(listPosts(t, tok, ""))
+		t.Logf("listed filters: %v", names)
 		if !names["title"] {
 			t.Errorf(`expected "title" filter listed (explicitly granted via filter_fields), got %v`, names)
 		}

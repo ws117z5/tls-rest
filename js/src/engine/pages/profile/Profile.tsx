@@ -4,7 +4,7 @@ import Fieldset from "@engine/pages/Fieldset";
 import ConversationList from "@engine/modules/messages/ConversationList";
 import PublicProfile from "@engine/pages/publicprofile/PublicProfile";
 import Auth from "@controllers/auth";
-import { t } from "@engine/i18n";
+import { t } from "@engine/controllers/i18n";
 
 // Engine page: the current user's profile. A single, rights-filtered fieldset
 // representation (no modes) backed by /api/profile, plus the user's message

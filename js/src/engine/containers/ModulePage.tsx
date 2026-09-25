@@ -10,11 +10,11 @@ import {
 import { FormLayoutBridge, WithLayout } from "@engine/fields/FormLayout";
 import { Fieldset } from "@engine/pages";
 import Auth from "@engine/controllers/auth";
-import Config from "@engine/Config";
+import Config from "@engine/controllers/Config";
 import AppConfig from "@engine/controllers/Appconfig";
-import Icon from "@engine/Icon";
+import Icon from "@engine/containers/Icon";
 import Likes from "@engine/modules/likes/Likes";
-import useT from "@engine/useT";
+import useT from "@engine/controllers/useT";
 
 // Modules whose "view" page shows a like/dislike widget (posts and comments
 // render their own via a custom layout / CommentsThread; this generic path

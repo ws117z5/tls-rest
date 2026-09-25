@@ -2,7 +2,7 @@ import React, { Component, ChangeEvent } from "react";
 import { MD_TOOLS, wrapSelection } from "@engine/fields/Markdown/controllers/markdown";
 import { processImage } from "@engine/modules/images/controllers/images";
 import MarkdownRender from "./controllers/MarkdownRender";
-import { t as translate, subscribe } from "@engine/i18n";
+import { t as translate, subscribe } from "@engine/controllers/i18n";
 
 // A markdown text editor: toolbar + textarea with a live-preview toggle. The
 // image button uploads a file and inserts image markdown (![name](guid.ext)) at

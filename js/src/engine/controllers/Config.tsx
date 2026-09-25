@@ -1,4 +1,4 @@
-import AppConfig from "@engine/controllers/Appconfig";
+import AppConfig from "./Appconfig";
 import Auth, { MenuEntry, isModuleEntry, BackendPage } from "@controllers/auth";
 
 // A resolved, renderable menu item. Modules route to the generic ModulePage;
@@ -164,9 +164,9 @@ export default class Config {
     // named) from pages/<dir>/<Name>.tsx — or a flat pages/<Name>.tsx — is picked
     // up automatically, mirroring how module view overrides are found
     // (controllers/registry.ts). Adding a page never means editing a list here.
-    //   ./pages            engine pages (this file lives in engine/)
-    //   ../pages           app pages
-    //   ./components/pages  legacy app page components
+    //   ../pages              engine pages
+    //   ../../pages           app pages
+    //   ../../components/pages  legacy app page components
     private static async loadBarrel(): Promise<Record<string, BarrelEntry>> {
         // pages/<Dir>/<PascalName>.tsx or a flat pages/<PascalName>.tsx — one
         // level deep, so sub-components (containers/, controllers/, lowercase
@@ -179,19 +179,19 @@ export default class Config {
         // `import.meta.webpackContext(` — webpack only static-analyses that exact
         // call shape, not an aliased variable.
         const contexts: __WebpackModuleApi.RequireContext[] = [
-            (import.meta as any).webpackContext("./pages", {
-                recursive: true,
-                mode: "lazy-once",
-                chunkName: "pages",
-                regExp: /^\.\/(?:[^/]+\/)?[A-Z][A-Za-z0-9]*\.tsx$/,
-            }),
             (import.meta as any).webpackContext("../pages", {
                 recursive: true,
                 mode: "lazy-once",
                 chunkName: "pages",
                 regExp: /^\.\/(?:[^/]+\/)?[A-Z][A-Za-z0-9]*\.tsx$/,
             }),
-            (import.meta as any).webpackContext("../components/pages", {
+            (import.meta as any).webpackContext("../../pages", {
+                recursive: true,
+                mode: "lazy-once",
+                chunkName: "pages",
+                regExp: /^\.\/(?:[^/]+\/)?[A-Z][A-Za-z0-9]*\.tsx$/,
+            }),
+            (import.meta as any).webpackContext("../../components/pages", {
                 recursive: true,
                 mode: "lazy-once",
                 chunkName: "pages",

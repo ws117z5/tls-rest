@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import axios from "axios";
 import PageComponent from "@engine/containers/PageComponent";
-import useT from "@engine/useT";
-import { t, subscribe } from "@engine/i18n";
+import useT from "@engine/controllers/useT";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 // Contact form. Posts to /api/contact, which stores the message server-side —
 // no email address is exposed anywhere on the site.

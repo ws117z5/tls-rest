@@ -1,5 +1,5 @@
 import React, { Component } from "react";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 interface TextListProps {
     value?: string;

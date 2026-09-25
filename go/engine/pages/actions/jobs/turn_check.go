@@ -1,5 +1,5 @@
 // TURN reachability check, backing the "turn_check" Action.
-package actions
+package jobs
 
 import (
 	"fmt"
@@ -88,7 +88,7 @@ func firstTurnAddr(urls []string) (string, error) {
 	return "", fmt.Errorf("no turn: URL in ICE server list (got %v)", urls)
 }
 
-func initTurnCheckAction() {
+func init() {
 	actionsctl.Register(&actionsctl.Action{
 		ID:          "turn_check",
 		Name:        "TURN reachability check",

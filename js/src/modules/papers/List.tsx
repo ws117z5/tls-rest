@@ -1,7 +1,7 @@
 import React, { useEffect } from "react";
 import { ModuleViewProps } from "@engine/controllers/registry";
 import Auth from "@controllers/auth";
-import useT from "@engine/useT";
+import useT from "@engine/controllers/useT";
 
 // Papers list = all active games (rooms). Each row opens the room's view.
 function playerCount(room: any): number {

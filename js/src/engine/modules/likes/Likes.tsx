@@ -1,7 +1,7 @@
 import React, { Component } from "react";
 import axios from "axios";
-import Icon from "@engine/Icon";
-import { t, subscribe } from "@engine/i18n";
+import Icon from "@engine/containers/Icon";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 // A like/dislike widget for one record, same polymorphic-target pattern as
 // the comments thread (engine/modules/comments): talks to

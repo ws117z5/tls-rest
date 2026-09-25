@@ -1,6 +1,6 @@
 import React from "react";
 import PageComponent from "@engine/containers/PageComponent";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 // The index page presents Vladimir Koroteev's CV inside a monitor that upgrades
 // from a green CRT to a flat LCD as you scroll — the résumé scrolls through the

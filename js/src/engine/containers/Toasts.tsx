@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Notify, { Notification } from "@engine/containers/Notify";
-import useT from "@engine/useT";
+import useT from "@engine/controllers/useT";
 
 // Toasts subscribes to the Notify bus and renders a stack of dismissible
 // notifications in the top-right corner. Mount once at the app root.

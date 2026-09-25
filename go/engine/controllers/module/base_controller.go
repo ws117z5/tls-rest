@@ -12,6 +12,7 @@ import (
 
 	"tls-rest/go/engine/controllers/db/cache"
 	. "tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/httpx"
 	"tls-rest/go/engine/controllers/log"
 	"tls-rest/go/engine/controllers/request"
@@ -429,25 +430,14 @@ func (bc *BaseController) filterValidFields(r *http.Request, data map[string]int
 // coerceFieldValue parses a submitted string into its field's declared numeric
 // type (e.g. a picked AutoOption.Value into TYPE_INT); other values pass through.
 func coerceFieldValue(field Field, value interface{}) interface{} {
-	s, isString := value.(string)
-	if !isString {
+	if s, ok := value.(string); !ok || s == "" {
 		return value
 	}
 	switch field.Type {
 	case TYPE_INT, TYPE_MONTH, TYPE_WEEK:
-		if s == "" {
-			return value
-		}
-		if n, err := strconv.ParseInt(s, 10, 64); err == nil {
-			return n
-		}
+		return functions.Coerce[int64](value)
 	case TYPE_FLOAT, TYPE_MONEY:
-		if s == "" {
-			return value
-		}
-		if n, err := strconv.ParseFloat(s, 64); err == nil {
-			return n
-		}
+		return functions.Coerce[float64](value)
 	}
 	return value
 }

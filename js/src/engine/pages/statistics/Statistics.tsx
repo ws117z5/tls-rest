@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import axios from "axios";
 import PageComponent from "@engine/containers/PageComponent";
-import Config from "@engine/Config";
+import Config from "@engine/controllers/Config";
 import CustomSelect from "@engine/fields/CustomSelect";
-import { t, subscribe } from "@engine/i18n";
+import { t, subscribe } from "@engine/controllers/i18n";
 
 interface BreakdownRow {
 	value: string;

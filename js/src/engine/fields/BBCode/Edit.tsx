@@ -1,6 +1,6 @@
 import React, { Component, ChangeEvent } from "react";
 import { BB_TOOLS, wrapSelection, renderBBCode } from "@engine/fields/BBCode/controllers/bbcode";
-import { t as translate, subscribe } from "@engine/i18n";
+import { t as translate, subscribe } from "@engine/controllers/i18n";
 
 // A pure BBCode text editor: toolbar tags + preview. Image handling is NOT done
 // here — images belong to a dedicated Image field on the module (see the Image

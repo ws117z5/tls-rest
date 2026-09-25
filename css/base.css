@@ -107,7 +107,7 @@ a {
   border-radius: 0.2rem;
 }
 
-/* An Icon (engine/Icon.tsx) inside a button: .btn's own flex+gap already
+/* An Icon (engine/containers/Icon.tsx) inside a button: .btn's own flex+gap already
    spaces and vertically centers it, so drop the sprite's own nav-tuned
    right-margin, and size it up a little (0.08 zoom reads as too small next
    to bold button text) — .btn-sm buttons keep the smaller default. */

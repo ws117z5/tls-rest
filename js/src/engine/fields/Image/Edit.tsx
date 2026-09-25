@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, ChangeEvent } from "react";
 import { ImageRef, imageUrl, normalizeRefs, processImage } from "@engine/modules/images/controllers/images";
-import useT from "@engine/useT";
+import useT from "@engine/controllers/useT";
 
 // Editable image field: click upload, the backend processes and stores each
 // image, and the returned reference(s) are held in the field value and shown as
