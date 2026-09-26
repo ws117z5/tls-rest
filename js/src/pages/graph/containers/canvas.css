@@ -31,3 +31,12 @@ div.rect {
     display:inline-block;
     margin-right: 5px;
 }
+
+/* Formulas are markdown-rendered ($…$); keep them inline like the old InlineMath span. */
+.function-description .inline-formula {
+    display: inline-block;
+}
+
+.function-description .inline-formula p {
+    margin: 0;
+}

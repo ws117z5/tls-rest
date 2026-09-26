@@ -413,7 +413,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		}
 		return fields
 	}
-	m.Fields = addDefaultFields(m.Fields)
+	m.Fields = addDefaultFields(ExpandReferences(m.Fields))
 
 	if m == nil {
 		panic("module is nil")
@@ -458,6 +458,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 
 	ModuleLog.Debugf("Registering module globally: %s", m.ID)
 	RegisteredModules[m.ID] = m
+	moduleControllers[m.ID] = m.Controller
 
 	// Publish menu metadata so /api/modules can list it (no go.config.json).
 	registerModuleMenu(ModuleMenuMeta{ID: m.ID, Name: m.Name, Description: m.Description, Order: m.Order, Submenu: m.Submenu, Icon: m.Icon, ReadOnly: m.ReadOnly, Hidden: m.Hidden})

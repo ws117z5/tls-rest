@@ -50,7 +50,7 @@ func NewLogs() *Logs {
 		ModuleAbstract: &ModuleAbstract[interface{}]{
 			ID:          "logs",
 			Name:        "Logs",
-			Submenu:     "engine",
+			Submenu:     "logs",
 			ReadOnly:    true,
 			Description: "Application event log",
 			Rights:      make(map[int]int),

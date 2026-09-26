@@ -18,6 +18,16 @@ interface Loaded {
 
 const loadPromises = new Map<string, Promise<Loaded>>();
 
+// Prism's "vs" theme paints functions, builtin types and class names in the plain text color; use VS Code Light+'s colors for them.
+const lightPlus = (base: Record<string, React.CSSProperties>): Record<string, React.CSSProperties> => ({
+  ...base,
+  function: { ...base["function"], color: "#795E26" },
+  "function.maybe-class-name": { ...base["function.maybe-class-name"], color: "#795E26" },
+  builtin: { ...base["builtin"], color: "#267F99" },
+  "class-name": { ...base["class-name"], color: "#267F99" },
+  variable: { ...base["variable"], color: "#001080" },
+});
+
 function load(theme: string): Promise<Loaded> {
   let p = loadPromises.get(theme);
   if (!p) {
@@ -68,7 +78,8 @@ function load(theme: string): Promise<Loaded> {
         Highlighter.registerLanguage("yaml", yaml.default);
         Highlighter.registerLanguage("html", markup.default);
         Highlighter.registerLanguage("xml", markup.default);
-        return { Highlighter, style: styleMod.default as Record<string, React.CSSProperties> };
+        const base = styleMod.default as Record<string, React.CSSProperties>;
+        return { Highlighter, style: theme === "dark" ? base : lightPlus(base) };
       }
     );
     loadPromises.set(theme, p);

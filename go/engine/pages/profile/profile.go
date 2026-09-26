@@ -7,6 +7,7 @@ package profile
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"tls-rest/go/app"
 	appconfig "tls-rest/go/engine/controllers/config"
@@ -87,6 +88,15 @@ var Page = &module.PageAbstract{
 		}
 		if len(data) == 0 {
 			return nil
+		}
+		if email, ok := data["email"].(string); ok {
+			email = strings.TrimSpace(strings.ToLower(email))
+			data["email"] = email
+			if taken, err := db.GetOne("SELECT id FROM users WHERE lower(email) = $1 AND id <> $2 LIMIT 1", email, s.UserID); err != nil {
+				return err
+			} else if taken != nil {
+				return errors.New("this email is already in use")
+			}
 		}
 		_, err = db.UpdateRow("users", data, "id", s.UserID)
 		return err

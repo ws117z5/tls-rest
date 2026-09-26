@@ -22,7 +22,7 @@ const ImagesGallery: React.FC<ModuleViewProps> = ({ data, navigate, module }) =>
     const renderTile = (row: any) => {
         const ref: ImageRef = {
             id: row.id,
-            uuid: row.uuid,
+            hash: row.preview || row.hash,
             filename: row.filename,
             mime_type: row.mime_type,
         };

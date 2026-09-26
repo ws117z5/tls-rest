@@ -26,7 +26,7 @@ var Module = &ModuleAbstract[interface{}]{
 	ID:      "user_groups",
 	Name:    "User Groups",
 	Icon:    "user-groups",
-	Submenu: "engine",
+	Submenu: "users",
 	Fields: []Field{
 		NewField("name", TYPE_STRING, true).
 			WithLabel("Group Name").

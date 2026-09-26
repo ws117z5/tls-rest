@@ -7,7 +7,7 @@
 //
 //	GET/POST /images, /images/{id}   standard CRUD over image metadata (access-filtered)
 //	POST     /api/images/process     upload + preprocess + store  (CustomRoute)
-//	GET      /image/{guid}.{ext}     serve bytes, access-controlled (CustomRoute)
+//	GET      /image/{hash}.{ext}     serve bytes, access-controlled (CustomRoute)
 //
 // Access: serving (canViewImage) follows the owning module.field's fieldset
 // rights when set at upload, else the images table's own row access.
@@ -16,7 +16,7 @@
 // create (it has no binary field type), so create/migrate the table explicitly:
 //
 //	CREATE TABLE images (
-//	    id BIGSERIAL PRIMARY KEY, uuid TEXT NOT NULL UNIQUE,
+//	    id BIGSERIAL PRIMARY KEY, uuid TEXT NOT NULL UNIQUE, hash TEXT UNIQUE,
 //	    module TEXT, field TEXT, record_id BIGINT,
 //	    filename TEXT, mime_type TEXT,
 //	    access INT NOT NULL DEFAULT 0, data BYTEA NOT NULL,
@@ -25,7 +25,9 @@
 package images
 
 import (
+	"bytes"
 	"context"
+	"image"
 	"io"
 	"mime"
 	"net/http"
@@ -41,6 +43,7 @@ import (
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
 	. "tls-rest/go/engine/controllers/module"
+	"tls-rest/go/engine/modules/images/imagehash"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
@@ -48,7 +51,12 @@ import (
 
 // --- binary upload / serve ---------------------------------------------------
 
-const maxUpload = 16 << 20 // 16 MiB
+const (
+	maxUpload     = 16 << 20 // 16 MiB
+	maxPixels     = 60_000_000
+	maxUserImages = 2000
+	maxUserBytes  = 1 << 30 // per user
+)
 
 type cachedImage struct {
 	Id       int64
@@ -68,8 +76,8 @@ var imageCache = cache.NewCache[cachedImage](loadImage, nil).
 	WithTTL(imageCacheTTL).
 	WithMaxBytes(imageCacheMaxBytes, func(ci cachedImage) int64 { return int64(len(ci.Data)) })
 
-// loadImage is the cache getter: fetches an image's id + bytes by its guid
-// (uuid) or, for legacy references, by numeric id.
+// loadImage is the cache getter: fetches an image's id + bytes by its public
+// hash or, for legacy references, by numeric id.
 func loadImage(ref string) (cachedImage, error) {
 	db, err := pgdb.GetInstance()
 	if err != nil {
@@ -77,13 +85,7 @@ func loadImage(ref string) (cachedImage, error) {
 	}
 
 	const cols = "id, data, mime_type, module, field, record_id"
-	var row map[string]interface{}
-	if isAllDigits(ref) {
-		id, _ := strconv.ParseInt(ref, 10, 64)
-		row, err = db.GetOne("SELECT "+cols+" FROM images WHERE id = $1", id)
-	} else {
-		row, err = db.GetOne("SELECT "+cols+" FROM images WHERE uuid = $1", ref)
-	}
+	row, err := db.GetOne("SELECT "+cols+" FROM images WHERE hash = $1", ref)
 	if err != nil {
 		return cachedImage{}, err
 	}
@@ -103,6 +105,7 @@ func loadImage(ref string) (cachedImage, error) {
 
 // Process handles POST /api/images/process: upload + preprocess + store.
 func Process(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxUpload+(1<<20))
 	if err := r.ParseMultipartForm(maxUpload); err != nil {
 		functions.JSONError(w, http.StatusBadRequest, "invalid multipart form: "+err.Error())
 		return
@@ -121,9 +124,15 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	mimeType := header.Header.Get("Content-Type")
+	mimeType := sniffImageMime(raw, header.Header.Get("Content-Type"))
 	if mimeType == "" {
-		mimeType = http.DetectContentType(raw)
+		functions.JSONError(w, http.StatusUnsupportedMediaType, "unsupported image type")
+		return
+	}
+	// Reject decompression bombs: a tiny file can declare a canvas that needs gigabytes to decode.
+	if cfg, _, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil && int64(cfg.Width)*int64(cfg.Height) > maxPixels {
+		functions.JSONError(w, http.StatusRequestEntityTooLarge, "image dimensions too large")
+		return
 	}
 
 	moduleName := r.FormValue("module")
@@ -132,6 +141,14 @@ func Process(w http.ResponseWriter, r *http.Request) {
 	var recordID int64
 	if v := r.FormValue("record_id"); v != "" {
 		recordID, _ = strconv.ParseInt(v, 10, 64)
+	}
+
+	// Only a registered module's record the caller could edit themselves can own an upload; any other module name (pages, free text) makes it a standalone image.
+	if _, registered := module.RegisteredModules[moduleName]; !registered {
+		recordID = 0
+	} else if recordID != 0 && !module.CanEditRow(r, moduleName, recordID) {
+		functions.JSONError(w, http.StatusForbidden, "cannot attach images to that record")
+		return
 	}
 
 	// Effective access: explicit override wins; else inherit the owning record's
@@ -163,6 +180,20 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
 		return
 	}
+
+	// Per-user storage quota (admins exempt).
+	if s := cache.SessionFromContext(r.Context()); s != nil && !s.IsAdmin {
+		used, err := db.GetOne("SELECT COUNT(*) AS n, COALESCE(SUM(octet_length(data)), 0) AS bytes FROM images WHERE created_by = $1", uploaderID)
+		if err != nil {
+			functions.JSONError(w, http.StatusInternalServerError, "quota check failed")
+			return
+		}
+		if used != nil && (functions.Int(used["n"]) >= maxUserImages || functions.Coerce[int64](used["bytes"])+int64(len(raw)) > maxUserBytes) {
+			functions.JSONError(w, http.StatusRequestEntityTooLarge, "image storage quota exceeded")
+			return
+		}
+	}
+
 	// Build the row, then run it through the module's data hooks — the same
 	// BeforeFieldset/AfterFieldset used by standard create/edit — so the upload
 	// path shares one preprocessing pipeline.
@@ -209,7 +240,8 @@ func Process(w http.ResponseWriter, r *http.Request) {
 		_, _ = db.Exec("UPDATE images SET metadata = $1::jsonb WHERE id = $2", meta, id)
 	}
 
-	imageCache.Set(guid, cachedImage{Id: id, Data: raw, MimeType: mimeType})
+	hash, _ := row["hash"].(string)
+	imageCache.Set(hash, cachedImage{Id: id, Data: raw, MimeType: mimeType})
 
 	// After a resize the stored bytes are re-encoded JPEG, so the URL extension
 	// must come from mimeType, not the (now stale) original filename.
@@ -217,14 +249,14 @@ func Process(w http.ResponseWriter, r *http.Request) {
 	if resized {
 		extFilename = ""
 	}
-	name := guid
+	name := hash
 	if ext := imageExt(extFilename, mimeType); ext != "" {
-		name = guid + "." + ext
+		name = hash + "." + ext
 	}
 
 	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"id":        id,
-		"uuid":      guid,
+		"hash":      hash,
 		"module":    moduleName,
 		"field":     field,
 		"filename":  header.Filename,
@@ -233,7 +265,7 @@ func Process(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// ServeByRef handles GET /image/{guid}.{ext}: reads bytes from cache (DB on a
+// ServeByRef handles GET /image/{hash}.{ext}: reads bytes from cache (DB on a
 // miss) and defers the access decision to the engine (module.CanViewRecord).
 func ServeByRef(w http.ResponseWriter, r *http.Request) {
 	ref := mux.Vars(r)["ref"]
@@ -263,17 +295,55 @@ func ServeByRef(w http.ResponseWriter, r *http.Request) {
 	if ct == "" {
 		ct = http.DetectContentType(ci.Data)
 	}
+	// Anything not a known image type (e.g. rows stored before the upload allowlist) is served as a download, never rendered.
+	if !allowedImageMimes[baseMime(ct)] {
+		ct = "application/octet-stream"
+		w.Header().Set("Content-Disposition", "attachment")
+	}
 	w.Header().Set("Content-Type", ct)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; sandbox")
 	w.Header().Set("Cache-Control", "private, max-age=0, must-revalidate")
 	w.Write(ci.Data)
 }
 
-// canViewImage: owned images follow the owning field's rights; standalone
-// ones fall back to the images row's own access.
+var allowedImageMimes = map[string]bool{
+	"image/png": true, "image/jpeg": true, "image/gif": true, "image/webp": true,
+	"image/bmp": true, "image/svg+xml": true, "image/heic": true, "image/heif": true, "image/avif": true,
+}
+
+func baseMime(ct string) string {
+	if mt, _, err := mime.ParseMediaType(ct); err == nil {
+		return mt
+	}
+	return strings.ToLower(strings.TrimSpace(ct))
+}
+
+// sniffImageMime returns the verified image type of raw, or "" if it isn't an allowed image; the client's declared type is used only to pick among formats the bytes can't identify.
+func sniffImageMime(raw []byte, declared string) string {
+	if detected := baseMime(http.DetectContentType(raw)); allowedImageMimes[detected] {
+		return detected
+	}
+	declared = baseMime(declared)
+	head := strings.TrimLeft(strings.TrimPrefix(string(raw[:min(len(raw), 512)]), "\xef\xbb\xbf"), " \t\r\n")
+	switch declared {
+	case "image/svg+xml":
+		if strings.HasPrefix(head, "<svg") || (strings.HasPrefix(head, "<?xml") && strings.Contains(head, "<svg")) {
+			return declared
+		}
+	case "image/heic", "image/heif", "image/avif":
+		if len(raw) >= 12 && string(raw[4:8]) == "ftyp" {
+			return declared
+		}
+	}
+	return ""
+}
+
+// canViewImage: owned images follow the owning record's full visibility (sharing lists, owner scoping, access level) and the
+// owning field's rights; standalone ones fall back to the images row's own access.
 func canViewImage(r *http.Request, ci *cachedImage) bool {
-	if ci.Module != "" && ci.RecordID != 0 && isValidIdent(ci.Module) {
-		ok, err := module.CanViewRecord(r, ci.Module, ci.RecordID)
-		if err != nil || !ok {
+	if ci.Module != "" && ci.RecordID != 0 {
+		if !module.CanViewRow(r, ci.Module, ci.RecordID) {
 			return false
 		}
 		return module.CanViewField(r, ci.Module, ci.Field)
@@ -285,7 +355,7 @@ func canViewImage(r *http.Request, ci *cachedImage) bool {
 // folderImagePreview is one image inside a folder's deck-of-cards preview.
 type folderImagePreview struct {
 	ID       int64  `json:"id"`
-	UUID     string `json:"uuid"`
+	Hash     string `json:"hash"`
 	Filename string `json:"filename"`
 	MimeType string `json:"mime_type"`
 }
@@ -320,7 +390,7 @@ func ListFolders(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := db.GetAll(
-		"SELECT id, uuid, filename, mime_type, folder FROM images WHERE "+where+" ORDER BY folder, created DESC",
+		"SELECT id, hash, filename, mime_type, folder FROM images WHERE "+where+" ORDER BY folder, created DESC",
 		args...,
 	)
 	if err != nil {
@@ -342,7 +412,7 @@ func ListFolders(w http.ResponseWriter, r *http.Request) {
 		if len(g.Previews) < 3 {
 			g.Previews = append(g.Previews, folderImagePreview{
 				ID:       functions.Coerce[int64](row["id"]),
-				UUID:     functions.Coerce[string](row["uuid"]),
+				Hash:     functions.Coerce[string](row["hash"]),
 				Filename: functions.Coerce[string](row["filename"]),
 				MimeType: functions.Coerce[string](row["mime_type"]),
 			})
@@ -477,17 +547,41 @@ type Images struct {
 // system fields added automatically by Initialize().
 func (m *Images) fieldset() []Field {
 	return []Field{
-		// Thumbnail: the image is served at /image/<uuid>, so a read-only IMAGE
-		// field aliased to the uuid column renders the picture in list/view.
-		NewField("preview", TYPE_IMAGE, false).WithLabel("Preview").WithSQL("uuid").NonSortable().
+		// Public ref: a MurmurHash3 of the uuid, set by prepareImage; images are served at /image/<hash>.
+		NewField("hash", TYPE_STRING, false).WithLabel("Hash").AsReadOnly().InModes(MODE_LIST | MODE_VIEW),
+		// Thumbnail: an IMAGE field aliased to the hash column renders the picture in list/view.
+		NewField("preview", TYPE_IMAGE, false).WithLabel("Preview").WithSQL("hash").NonSortable().
 			WithOption("listSize", 100).WithOption("editSize", 160),
 		NewField("module", TYPE_STRING, false).WithLabel("Module"),
 		NewField("field", TYPE_STRING, false).WithLabel("Field"),
 		NewField("record_id", TYPE_INT, false).WithLabel("Record"),
 		NewField("filename", TYPE_STRING, false).WithLabel("Filename"),
 		NewField("mime_type", TYPE_STRING, false).WithLabel("Type"),
-		NewField("folder", TYPE_STRING, false).WithLabel("Folder"),
+		NewField("folder", TYPE_STRING, false).WithLabel("Folder").
+			WithAutocomplete(map[string]interface{}{"function": ownFolders}),
 	}
+}
+
+// ownFolders suggests the current user's existing image folders matching input.
+func ownFolders(ctx context.Context, input string, _ map[string]interface{}) []AutoOption {
+	s := cache.SessionFromContext(ctx)
+	db, err := pgdb.GetInstanceCtx(ctx)
+	if s == nil || err != nil {
+		return []AutoOption{}
+	}
+	rows, err := db.GetAll(
+		"SELECT DISTINCT folder FROM images WHERE folder <> '' AND created_by = $1 AND folder ILIKE $2 ORDER BY folder LIMIT 20",
+		s.UserID, "%"+input+"%",
+	)
+	if err != nil {
+		return []AutoOption{}
+	}
+	out := make([]AutoOption, 0, len(rows))
+	for _, r := range rows {
+		f := functions.Coerce[string](r["folder"])
+		out = append(out, AutoOption{Value: f, Label: f})
+	}
+	return out
 }
 
 // filters declares the list-mode filter bar for the images module (admin area):
@@ -516,7 +610,7 @@ func NewImages() *Images {
 			OmitSystemFields:     []string{"updated"},
 			// A non-admin browsing the images module sees only images they
 			// uploaded (created_by = their id); admins see every image. Byte
-			// serving (/image/<uuid>) is unaffected — it stays gated by the
+			// serving (/image/<hash>) is unaffected — it stays gated by the
 			// image's own access level via CanViewRecord.
 			OwnerScoped: true,
 			CustomViews: map[string]map[string]string{
@@ -527,11 +621,7 @@ func NewImages() *Images {
 	m.ModuleAbstract.Fields = m.fieldset()
 	m.ModuleAbstract.Filters = m.filters()
 
-	// New standard data hook: on create/edit (and on the upload path below), make
-	// sure an image row always has a mime_type — deriving it from the filename
-	// when missing — so ServeByRef can always set Content-Type (a missing type
-	// breaks rendering under X-Content-Type-Options: nosniff).
-	m.ModuleAbstract.AfterFieldset = fillMimeType
+	m.ModuleAbstract.AfterFieldset = prepareImage
 
 	// The module owns its binary endpoints as custom routes (absolute paths).
 	m.ModuleAbstract.CustomRoutes = []CustomRoute{
@@ -551,9 +641,12 @@ func init() {
 	app.RegisterModule(Module, "images")
 }
 
-// fillMimeType is an AfterFieldset hook: guarantees a non-empty mime_type by
-// deriving it from the filename extension when missing.
-func fillMimeType(_ *http.Request, data map[string]interface{}) (map[string]interface{}, error) {
+// prepareImage is an AfterFieldset hook (create/edit and upload): derives hash from a new row's uuid, drops the "preview" alias, and fills a missing mime_type from the filename so ServeByRef can always set Content-Type.
+func prepareImage(_ *http.Request, data map[string]interface{}) (map[string]interface{}, error) {
+	delete(data, "preview")
+	if u, ok := data["uuid"].(string); ok && u != "" {
+		data["hash"] = imagehash.Of(u)
+	}
 	if mt, _ := data["mime_type"].(string); strings.TrimSpace(mt) == "" {
 		if fn, ok := data["filename"].(string); ok && fn != "" {
 			if guess := mime.TypeByExtension(filepath.Ext(fn)); guess != "" {

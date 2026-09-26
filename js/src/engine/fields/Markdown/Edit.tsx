@@ -106,12 +106,12 @@ class MarkdownEdit extends Component<MarkdownEditProps, MarkdownEditState> {
             try {
                 const ref = await processImage(file, this.props.module || "", this.props.id || "");
                 const alt = (ref.filename || "image").replace(/[\[\]]/g, "");
-                const target = ref.uuid ? ref.uuid : String(ref.id);
+                const target = ref.hash ? ref.hash : String(ref.id);
                 const ext =
                     ref.filename && ref.filename.includes(".")
                         ? "." + ref.filename.split(".").pop()
                         : "";
-                // Reference by guid.ext; the renderer resolves it to /image/<guid>.
+                // Reference by hash.ext; the renderer resolves it to /image/<hash>.
                 this.insertAtCaret(`![${alt}](${target}${ext})`);
             } catch (err) {
                 console.error("Image upload failed:", err);

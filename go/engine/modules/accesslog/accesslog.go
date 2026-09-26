@@ -67,7 +67,7 @@ func NewAccessLog() *AccessLog {
 			ID:       "access_log",
 			Name:     "Access Log",
 			Icon:     "access-log",
-			Submenu:  "engine",
+			Submenu:  "logs",
 			ReadOnly: true,
 			Rights:   make(map[int]int),
 			// Admin-only: DENY as the default means non-admins never reach it;

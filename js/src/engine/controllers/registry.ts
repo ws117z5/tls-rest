@@ -56,13 +56,16 @@ const registry: Record<string, ModuleViews> = {};
 // import.meta.webpackContext scans this directory (engine/modules) one level
 // deep for the override files above. It is resolved by webpack at build time —
 // matched files are bundled, unmatched module directories cost nothing.
+// mode "lazy": every override becomes its own chunk, fetched when its module/mode is first shown (rendered under a Suspense boundary).
 const engineContext = import.meta.webpackContext("../modules", {
     recursive: true,
+    mode: "lazy",
     regExp: /^\.\/[^/]+\/(list|view|edit|create|filters)(?:\.([A-Za-z0-9_-]+))?\.tsx$/i,
 });
 
 const userContext = import.meta.webpackContext("../../modules", {
     recursive: true,
+    mode: "lazy",
     regExp: /^\.\/[^/]+\/(list|view|edit|create|filters)(?:\.([A-Za-z0-9_-]+))?\.tsx$/i,
 });
 
@@ -75,9 +78,7 @@ function loadRegistry(ctx: __WebpackModuleApi.RequireContext) {
         const mode = match[2].toLowerCase() as ViewMode | "filters";
         const viewName = (match[3] || "default").toLowerCase();
 
-        const mod = ctx(key);
-        const component = mod && (mod.default || mod);
-        if (!component) return;
+        const component = React.lazy(() => ctx(key));
 
         if (!registry[moduleName]) registry[moduleName] = {};
         const views = registry[moduleName];

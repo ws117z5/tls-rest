@@ -171,7 +171,7 @@ func NewUsers() *Users {
 			RightsAffecting: true,
 			Name:            "Users",
 			Icon:            "users",
-			Submenu:         "engine",
+			Submenu:         "users",
 			Rights:          make(map[int]int),
 			// Administration module: no access unless explicitly granted (or admin).
 			DefaultPermission:    0, // PERMISSION_DENY

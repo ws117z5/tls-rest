@@ -1,4 +1,5 @@
 import React, { Component } from "react";
+import MarkdownRender from "@engine/fields/Markdown/controllers/MarkdownRender";
 import "./canvas.css";
 
 interface GraphFn {
@@ -14,11 +15,6 @@ interface FunctionGraphProps {
     fns: GraphFn[];
 }
 
-interface FunctionGraphState {
-    // react-katex + its CSS are heavy; loaded on demand (see below).
-    katex: null | { InlineMath: any };
-}
-
 //todo
 /**
  * add color picker
@@ -27,18 +23,8 @@ interface FunctionGraphState {
  * add axis descriptions
  * add CLT logic
  */
-class FunctionGraph extends Component<FunctionGraphProps, FunctionGraphState> {
-    state: FunctionGraphState = { katex: null };
-
+class FunctionGraph extends Component<FunctionGraphProps> {
     componentDidMount() {
-        // Load KaTeX only when this page mounts, then re-render the formulas.
-        Promise.all([
-            import("react-katex"),
-            import("katex/dist/katex.min.css"),
-        ])
-            .then(([m]) => this.setState({ katex: { InlineMath: m.InlineMath } }))
-            .catch(() => { /* fall back to raw text */ });
-
         this.redraw();
     }
 
@@ -116,10 +102,9 @@ class FunctionGraph extends Component<FunctionGraphProps, FunctionGraphState> {
                 <div className="description">
                     {this.props.fns.map((fn, index) => {
                         const swatchColor = fn.color || "rgba(0, 0, 0, 1)";
+                        // Formulas go through the same markdown pipeline (remark-math + rehype-katex) as posts, so KaTeX is loaded once.
                         const content = fn.latex ? (
-                            this.state.katex
-                                ? (() => { const IM = this.state.katex!.InlineMath; return <IM math={fn.latex} />; })()
-                                : <span className="katex-fallback">{fn.latex}</span>
+                            <MarkdownRender className="inline-formula" value={`$${fn.latex}$`} />
                         ) : fn.label ? (
                             <code>{fn.label}</code>
                         ) : null;

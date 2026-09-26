@@ -1,9 +1,9 @@
 // Shared helpers for the Image field type.
 //
-// An image field's value is an array of references ({id, uuid, filename}); the
+// An image field's value is an array of references ({id, hash, filename}); the
 // bytes live server-side. Upload goes through the generic images controller,
 // which runs the (module, field) preprocessor before storing. Display is by the
-// stable /image/{guid}.{ext} URL, and serving is access-controlled on the server
+// stable /image/{hash}.{ext} URL, and serving is access-controlled on the server
 // (an image inherits the access of the record it's attached to, unless it has a
 // per-image override).
 
@@ -12,7 +12,7 @@ import Config from "@engine/controllers/Config";
 
 export interface ImageRef {
     id: number | string;
-    uuid?: string;
+    hash?: string;
     filename?: string;
     mime_type?: string;
     url?: string;
@@ -35,8 +35,8 @@ function extOf(ref: ImageRef): string {
 }
 
 /**
- * URL that serves the raw image bytes (used for <img src>). Prefers the guid
- * (uuid) reference /image/{guid}.{ext}; falls back to the id for legacy refs.
+ * URL that serves the raw image bytes (used for <img src>). Prefers the hash
+ * reference /image/{hash}.{ext}; falls back to the id for legacy refs.
  * Serving is access-controlled server-side.
  */
 export function imageUrl(ref: ImageRef, opts?: { preview?: boolean }): string {
@@ -44,9 +44,9 @@ export function imageUrl(ref: ImageRef, opts?: { preview?: boolean }): string {
     if (ref.url) {
         base = `${Config.serverURL}${ref.url.replace(/^\//, "")}`;
     } else {
-        const guid = ref.uuid || String(ref.id);
+        const key = ref.hash || String(ref.id);
         const ext = extOf(ref);
-        const name = ext ? `${guid}.${ext}` : guid;
+        const name = ext ? `${key}.${ext}` : key;
         base = `${Config.serverURL}image/${name}`;
     }
     // Preview mode asks the server for the compressed 80x80 content-aware thumb.
@@ -66,9 +66,9 @@ export function normalizeRefs(value: any): ImageRef[] {
         try {
             v = JSON.parse(s);
         } catch {
-            // Not JSON — treat as a bare uuid/guid reference (e.g. the images
-            // module's "preview" field, which is just the uuid column).
-            return [{ id: s, uuid: s }];
+            // Not JSON — treat as a bare hash reference (e.g. the images
+            // module's "preview" field, which is just the hash column).
+            return [{ id: s, hash: s }];
         }
     }
     if (Array.isArray(v)) return v.filter(Boolean);

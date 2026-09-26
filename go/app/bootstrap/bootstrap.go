@@ -23,7 +23,11 @@ import (
 	_ "tls-rest/go/engine/modules/users"
 
 	// App modules
+	_ "tls-rest/go/modules/cart"
+	_ "tls-rest/go/modules/paymentplatforms"
+	_ "tls-rest/go/modules/payments"
 	_ "tls-rest/go/modules/posts"
+	_ "tls-rest/go/modules/products"
 	_ "tls-rest/go/modules/words"
 
 	// Engine pages
@@ -43,6 +47,7 @@ import (
 	_ "tls-rest/go/pages/markdowntool"
 	_ "tls-rest/go/pages/myip"
 	_ "tls-rest/go/pages/netmapper"
+	_ "tls-rest/go/pages/seo"
 
 	// Shared controllers: reusable by any module, not owned by one.
 	_ "tls-rest/go/engine/controllers/turn"

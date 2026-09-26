@@ -20,6 +20,7 @@ import (
 	"tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
+	"tls-rest/go/engine/modules/comments"
 
 	"github.com/gorilla/mux"
 )
@@ -108,6 +109,10 @@ func handleGet(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad target", http.StatusBadRequest)
 		return
 	}
+	if !comments.CanViewTarget(r, modID, rowID) {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
 
 	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
@@ -140,6 +145,10 @@ func handleReact(w http.ResponseWriter, r *http.Request) {
 	modID, rowID, ok := parseTarget(r)
 	if !ok {
 		http.Error(w, "bad target", http.StatusBadRequest)
+		return
+	}
+	if !comments.CanViewTarget(r, modID, rowID) {
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 

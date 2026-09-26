@@ -20,7 +20,7 @@ export interface BackendModule {
     endpoint: string;    // e.g. "/posts"
     modes: string[];     // subset of ["list","view","create","edit","delete"]
     specialRights?: string[]; // granted module.SpecialRight ids (see modulerights.go)
-    icon?: string;       // menu icon URL (e.g. /image/<uuid>)
+    icon?: string;       // menu icon URL (e.g. /image/<hash>)
     // Column records are addressed by; absent/"" means "id". A module keyed on
     // uuid (e.g. papers) must be linked to by uuid, not a row's numeric id.
     key_field?: string;
@@ -63,6 +63,7 @@ declare global {
 export default class Auth {
     private static head: MenuEntry[] = [];
     private static submenus: Record<string, MenuEntry[]> = {};
+    private static submenuIcons: Record<string, string> = {};
     private static user: MenuUser = { authenticated: false };
     private static loaded: boolean = false;
 
@@ -78,6 +79,10 @@ export default class Auth {
                 res.data?.submenus && typeof res.data.submenus === "object"
                     ? res.data.submenus
                     : {};
+            Auth.submenuIcons =
+                res.data?.submenu_icons && typeof res.data.submenu_icons === "object"
+                    ? res.data.submenu_icons
+                    : {};
             Auth.user =
                 res.data?.user && typeof res.data.user === "object"
                     ? { authenticated: res.data.user.authenticated === true, avatar: res.data.user.avatar, name: res.data.user.name }
@@ -86,6 +91,7 @@ export default class Auth {
             console.error("Failed to load menu:", err);
             Auth.head = [];
             Auth.submenus = {};
+            Auth.submenuIcons = {};
             Auth.user = { authenticated: false };
         } finally {
             Auth.loaded = true;
@@ -101,6 +107,9 @@ export default class Auth {
     }
     static getSubmenus(): Record<string, MenuEntry[]> {
         return Auth.submenus;
+    }
+    static getSubmenuIcon(title: string): string | undefined {
+        return Auth.submenuIcons[title];
     }
 
     /** Every entry (head + all submenus), flattened. */

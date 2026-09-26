@@ -3,6 +3,7 @@ package route
 import (
 	"net/http"
 	"path/filepath"
+	"strings"
 
 	"tls-rest/go/engine/controllers/log"
 
@@ -24,9 +25,14 @@ var DefaultStaticConfigs = []StaticConfig{
 		Name:      "CSS Files",
 	},
 	{
-		URLPath:   "/js/",
-		LocalPath: "./js/",
-		Name:      "JavaScript Files",
+		URLPath:   "/js/dist/",
+		LocalPath: "./js/dist/",
+		Name:      "JavaScript Bundles",
+	},
+	{
+		URLPath:   "/js/static/",
+		LocalPath: "./js/static/",
+		Name:      "JavaScript Static Files",
 	},
 	{
 		URLPath:   "/img/",
@@ -52,10 +58,21 @@ func RegisterStaticRoutes(router *mux.Router) {
 		})
 }
 
+// noListing answers 404 for directory URLs and source maps, so folders are never listed and bundle sources aren't published.
+func noListing(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/") || r.URL.Path == "" || strings.HasSuffix(r.URL.Path, ".map") {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // registerSingleStaticRoute registers a single static directory
 func registerSingleStaticRoute(router *mux.Router, config StaticConfig) {
 	// Create file server for the directory
-	fs := http.FileServer(http.Dir(config.LocalPath))
+	fs := noListing(http.FileServer(http.Dir(config.LocalPath)))
 
 	// Strip the URL prefix and serve files
 	handler := http.StripPrefix(config.URLPath, fs)

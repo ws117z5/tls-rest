@@ -14,7 +14,9 @@ import (
 	"tls-rest/go/engine/controllers/auth"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/controllers/httpx"
 	"tls-rest/go/engine/controllers/module"
+	"tls-rest/go/engine/controllers/submenu"
 
 	"tls-rest/go/engine/controllers/db/cache"
 )
@@ -128,6 +130,7 @@ func Index(w http.ResponseWriter, r *http.Request) {
 		Img:       config.Img,
 		Title:     "HelloWorld", //todo route.getTitle(r.URL.Path),
 		Body: map[string]interface{}{
+			"Nonce":                httpx.Nonce(r),
 			"GoogleID":             config.GoogleID,
 			"Authenticated":        authenticated,
 			"IsAdmin":              isAdmin,
@@ -184,7 +187,8 @@ func Index(w http.ResponseWriter, r *http.Request) {
 // user may see, already privilege-filtered server-side:
 //
 //	{ "head": [ ...top-level modules/pages... ],
-//	  "submenus": { "engine": [...], "pages": [...] } }
+//	  "submenus": { "engine": [...], "pages": [...] },
+//	  "submenu_icons": { "engine": "engine", ... } }
 //
 // Each module/page declares an optional Submenu (a submenu title); entries with
 // no submenu go in "head", the rest are grouped under submenus[title]. Because
@@ -341,9 +345,10 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]interface{}{
-		"user":     user,
-		"head":     head,
-		"submenus": submenus,
+		"user":          user,
+		"head":          head,
+		"submenus":      submenus,
+		"submenu_icons": submenu.Icons(),
 	})
 }
 

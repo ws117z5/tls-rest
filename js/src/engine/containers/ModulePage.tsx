@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useState } from "react";
 import axios from "axios";
 
 import { FieldsetProvider, FieldsetForm, FieldsetList, FieldsetFilters, MODES } from "../fields";
@@ -335,20 +335,22 @@ const ModulePage: React.FC<ModulePageProps> = ({
                         mode={fmMode}
                         module={module}
                     >
-                        <WithLayout
-                            component={Custom}
-                            extra={{
-                                module,
-                                mode,
-                                data,
-                                record,
-                                modes,
-                                navigate: go,
-                                reload: load,
-                                submit,
-                                remove,
-                            }}
-                        />
+                        <Suspense fallback={null}>
+                            <WithLayout
+                                component={Custom}
+                                extra={{
+                                    module,
+                                    mode,
+                                    data,
+                                    record,
+                                    modes,
+                                    navigate: go,
+                                    reload: load,
+                                    submit,
+                                    remove,
+                                }}
+                            />
+                        </Suspense>
                     </FormLayoutBridge>
                 </FieldsetProvider>
                 </div>
@@ -394,26 +396,30 @@ const ModulePage: React.FC<ModulePageProps> = ({
                 </div>
                 <div className="card module-page-card">
                     <div className="card-body">
-                        <FiltersComp
-                            module={module}
-                            meta={filtersMeta}
-                            values={draftFilters}
-                            onChange={onFilterChange}
-                            onApply={applyFilters}
-                            onReset={resetFilters}
-                        />
-                        {CustomList ? (
-                            <CustomList
+                        <Suspense fallback={null}>
+                            <FiltersComp
                                 module={module}
-                                mode="list"
-                                data={data}
-                                record={null}
-                                modes={modes}
-                                navigate={go}
-                                reload={load}
-                                submit={submit}
-                                remove={remove}
+                                meta={filtersMeta}
+                                values={draftFilters}
+                                onChange={onFilterChange}
+                                onApply={applyFilters}
+                                onReset={resetFilters}
                             />
+                        </Suspense>
+                        {CustomList ? (
+                            <Suspense fallback={null}>
+                                <CustomList
+                                    module={module}
+                                    mode="list"
+                                    data={data}
+                                    record={null}
+                                    modes={modes}
+                                    navigate={go}
+                                    reload={load}
+                                    submit={submit}
+                                    remove={remove}
+                                />
+                            </Suspense>
                         ) : (
                             <FieldsetProvider module={module} mode={MODES.LIST}>
                                 <FieldsetList

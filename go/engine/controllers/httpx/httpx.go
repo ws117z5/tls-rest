@@ -106,7 +106,17 @@ func AllowOrigin(w http.ResponseWriter, r *http.Request) bool {
 	if origin == "" {
 		return false
 	}
+	if TrustedOrigin(origin) {
+		w.Header().Set("Access-Control-Allow-Origin", origin)
+		w.Header().Set("Vary", "Origin")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		return true
+	}
+	return false
+}
 
+// TrustedOrigin reports whether an Origin header value's hostname is on the allowlist.
+func TrustedOrigin(origin string) bool {
 	name := origin
 	if i := strings.Index(name, "://"); i >= 0 {
 		name = name[i+3:]
@@ -114,14 +124,19 @@ func AllowOrigin(w http.ResponseWriter, r *http.Request) bool {
 	if hn, _, err := net.SplitHostPort(name); err == nil {
 		name = hn
 	}
-
 	for _, allowed := range hostsSnapshot() {
 		if strings.EqualFold(name, allowed) {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			return true
 		}
 	}
 	return false
+}
+
+// SameOrigin reports whether origin is this request's own host (scheme ignored), whatever the allowlist says.
+func SameOrigin(origin string, r *http.Request) bool {
+	host := origin
+	if i := strings.Index(host, "://"); i >= 0 {
+		host = host[i+3:]
+	}
+	return strings.EqualFold(host, r.Host)
 }

@@ -2,6 +2,7 @@ package users
 
 import (
 	"context"
+	"errors"
 	"strings"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
@@ -15,10 +16,12 @@ type OAuthAccount struct {
 	Provider   string // "google" | "github" | "facebook" | "vk"
 	ProviderID string // the provider's stable user id
 	Email      string // may be empty (some providers/users don't expose it)
-	FirstName  string
-	LastName   string
-	Image      string
-	Username   string // provider handle, if any (e.g. GitHub login) — used as a username fallback
+	// EmailVerified is true only when the provider vouches for Email; unverified emails are never used to link or stored.
+	EmailVerified bool
+	FirstName     string
+	LastName      string
+	Image         string
+	Username      string // provider handle, if any (e.g. GitHub login) — used as a username fallback
 }
 
 // FindOrCreateOAuthUser resolves an OAuth sign-in to a local user id + display
@@ -44,11 +47,15 @@ func FindOrCreateOAuthUser(ctx context.Context, a *OAuthAccount) (int64, string,
 		}
 	}
 
-	// 2) Known email → link this provider onto the existing account.
-	if a.Email != "" {
+	// 2) Provider-verified email → link this provider onto an account that has neither a provider link nor a password.
+	// A password account's email was never verified (anyone can register with it), so linking would hand its owner the real user's identity.
+	if a.Email != "" && a.EmailVerified {
 		if row, e := db.GetOne(
-			`SELECT id, user_name FROM users WHERE lower(email) = lower($1) LIMIT 1`, a.Email,
+			`SELECT id, user_name, auth_provider, password_hash FROM users WHERE lower(email) = lower($1) LIMIT 1`, a.Email,
 		); e == nil && row != nil {
+			if functions.Coerce[string](row["auth_provider"]) != "" || functions.Coerce[string](row["password_hash"]) != "" {
+				return 0, "", errors.New("email belongs to an account that uses another sign-in method")
+			}
 			id := functions.Coerce[int64](row["id"])
 			if a.Provider != "" && a.ProviderID != "" {
 				_, _ = db.UpdateRow("users", map[string]interface{}{
@@ -71,7 +78,7 @@ func FindOrCreateOAuthUser(ctx context.Context, a *OAuthAccount) (int64, string,
 		"user_name":        username,
 		"first_name":       firstName,
 		"last_name":        a.LastName,
-		"email":            emptyToNil(a.Email),
+		"email":            emptyToNil(verifiedEmail(a)),
 		"image":            a.Image,
 		"auth_provider":    emptyToNil(a.Provider),
 		"auth_provider_id": emptyToNil(a.ProviderID),
@@ -121,6 +128,13 @@ func oauthUsername(a *OAuthAccount) string {
 		}
 	}
 	return a.Provider + "_" + a.ProviderID
+}
+
+func verifiedEmail(a *OAuthAccount) string {
+	if a.EmailVerified {
+		return a.Email
+	}
+	return ""
 }
 
 // emptyToNil returns nil for an empty string so the column is stored NULL rather

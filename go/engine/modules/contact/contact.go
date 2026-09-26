@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/httpx"
 	"tls-rest/go/engine/controllers/module"
 )
 
@@ -34,7 +36,7 @@ var Module = &module.ModuleAbstract[interface{}]{
 	DefaultPermissionSet: true,
 	Rights:               make(map[int]int),
 	CustomRoutes: []module.CustomRoute{
-		{Path: "/api/contact", Methods: []string{"POST"}, Handler: handleSubmit, Absolute: true},
+		{Path: "/api/contact", Methods: []string{"POST"}, Handler: httpx.RateLimit("contact", 5, 10*time.Minute, handleSubmit), Absolute: true},
 	},
 }
 

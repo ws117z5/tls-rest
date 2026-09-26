@@ -50,11 +50,12 @@ FROM ghcr.io/hybridgroup/opencv:4.13.0
 ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION}
 
-# Install runtime tools required by your Go app (libpcap for network capture, ca-certificates for TLS)
+# Install runtime tools required by your Go app (libpcap for network capture, ca-certificates for TLS, ufw for the accesslog firewall rules)
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     ca-certificates \
     libpcap0.8 \
+    ufw \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

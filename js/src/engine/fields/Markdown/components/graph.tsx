@@ -79,11 +79,11 @@ const DotGraph: React.FC<DotGraphProps> = ({
   }
 
   // Guaranteed JSX Return Path 2: Normal State
+  // Rendered as an <img> data URL so the SVG stays inert (no scripts, no javascript: links from DOT URL= attributes).
   return (
-    <div
-      className={className}
-      dangerouslySetInnerHTML={{ __html: svgContent }}
-    />
+    <div className={className}>
+      {svgContent && <img alt="graph" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgContent)}`} />}
+    </div>
   );
 };
 

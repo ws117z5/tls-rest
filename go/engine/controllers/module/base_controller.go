@@ -116,9 +116,9 @@ func (bc *BaseController) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	bc.Engine.WithRequest(r)
+	engine := bc.Engine.WithRequest(r)
 
-	result, err := bc.Engine.ExecuteQuery(MODE_LIST)
+	result, err := engine.ExecuteQuery(MODE_LIST)
 	if err != nil {
 		bc.respondError(w, http.StatusInternalServerError, "Failed to fetch records", err)
 		return
@@ -288,6 +288,10 @@ func (bc *BaseController) Edit(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "ID is required", http.StatusBadRequest)
 		return
 	}
+	if status := bc.authorizeRowWrite(r, id); status != 0 {
+		http.Error(w, http.StatusText(status), status)
+		return
+	}
 
 	// Body from the shared request bag (JSON / form / multipart, parsed once).
 	rq := request.From(r)
@@ -344,6 +348,10 @@ func (bc *BaseController) Delete(w http.ResponseWriter, r *http.Request) {
 
 	if id == "" {
 		http.Error(w, "ID is required", http.StatusBadRequest)
+		return
+	}
+	if status := bc.authorizeRowWrite(r, id); status != 0 {
+		http.Error(w, http.StatusText(status), status)
 		return
 	}
 

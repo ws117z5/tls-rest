@@ -147,8 +147,8 @@ github.com/vmihailenco/tagparser v0.1.2 h1:gnjoVuB/kljJ5wICEEOpx98oXMWPLj22G67Vb
 github.com/vmihailenco/tagparser v0.1.2/go.mod h1:OeAg3pn3UbLjkWt+rN9oFYB6u/cQgqMEUPoW2WPyhdI=
 github.com/wlynxg/anet v0.0.5 h1:J3VJGi1gvo0JwZ/P1/Yc/8p63SoW98B5dHkYDmpgvvU=
 github.com/wlynxg/anet v0.0.5/go.mod h1:eay5PRQr7fIVAMbTbchTnO9gG65Hg/uYGdc7mguHxoA=
-github.com/ws117z5/mmh3 v0.0.0-20220617011039-c14ba90b5ab7 h1:KX7VJxJwTuAEy0XHRuZN9aXdvgapeoHZG4aadpcjjcE=
-github.com/ws117z5/mmh3 v0.0.0-20220617011039-c14ba90b5ab7/go.mod h1:6toyFVjpBd3V6+YuGOHbPFNAEX76L2wDTwD6qF9A4uI=
+github.com/ws117z5/mmh3 v1.0.1 h1:9BUOYSRY8WlZjnApK0nJ3UEKgFfCKxFNyPDpjsLms7Q=
+github.com/ws117z5/mmh3 v1.0.1/go.mod h1:bO373uDQJEajp3s3Xs99NkERqfqx00bbIKpuVkcdXl4=
 github.com/xdg-go/pbkdf2 v1.0.0 h1:Su7DPu48wXMwC3bs7MCNG+z4FhcyEuz5dlvchbq0B0c=
 github.com/xdg-go/pbkdf2 v1.0.0/go.mod h1:jrpuAogTd400dnrH08LKmI/xc1MbPOebTwRqcT5RDeI=
 github.com/xdg-go/scram v1.2.0 h1:bYKF2AEwG5rqd1BumT4gAnvwU/M9nBp2pTSxeZw7Wvs=

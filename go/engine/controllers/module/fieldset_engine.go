@@ -55,11 +55,12 @@ func NewFieldsetEngine(module *ModuleAbstract[interface{}], tableName string) *F
 	}
 }
 
-// WithRequest sets the HTTP request context for parameter parsing
+// WithRequest returns a per-request copy bound to r; fe itself is shared by concurrent requests and must never be mutated.
 func (fe *FieldsetEngine) WithRequest(r *http.Request) *FieldsetEngine {
-	fe.Request = r
-	fe.Context = r.Context()
-	return fe
+	c := *fe
+	c.Request = r
+	c.Context = r.Context()
+	return &c
 }
 
 // ParseQueryParams extracts and validates query parameters from the request
@@ -206,7 +207,7 @@ func (fe *FieldsetEngine) buildSelectQuery(params *QueryParams, mode int, includ
 		query += " WHERE " + strings.Join(whereConditions, " AND ")
 	}
 
-	if params.Sort != "" && fe.isValidSortField(params.Sort) {
+	if params.Sort != "" && fe.isValidSortField(v, params.Sort) {
 		query += fmt.Sprintf(" ORDER BY %s %s", params.Sort, params.Order)
 	} else if ds := fe.defaultSortField(); ds != "" {
 		query += fmt.Sprintf(" ORDER BY %s %s", ds, params.Order)
@@ -236,8 +237,8 @@ func (fe *FieldsetEngine) buildScopeConditions(params *QueryParams, v viewer, ar
 		}
 	}
 
-	if params.Search != "" && fe.hasSearchableFields() {
-		if sc := fe.buildSearchConditions(params.Search, argIndex, args); len(sc) > 0 {
+	if params.Search != "" && fe.hasSearchableFields(v) {
+		if sc := fe.buildSearchConditions(v, params.Search, argIndex, args); len(sc) > 0 {
 			conds = append(conds, fmt.Sprintf("(%s)", strings.Join(sc, " OR ")))
 		}
 	}
@@ -450,20 +451,21 @@ func searchable(f Field) bool {
 	return f.Type == TYPE_STRING || f.Type == TYPE_TEXT
 }
 
-func (fe *FieldsetEngine) hasSearchableFields() bool {
+// hasSearchableFields reports whether any field the viewer may read takes part in search.
+func (fe *FieldsetEngine) hasSearchableFields(v viewer) bool {
 	for _, field := range fe.Fields {
-		if searchable(field) {
+		if searchable(field) && v.fieldReadableInData(field) {
 			return true
 		}
 	}
 	return false
 }
 
-func (fe *FieldsetEngine) buildSearchConditions(search string, argIndex *int, args *[]interface{}) []string {
+func (fe *FieldsetEngine) buildSearchConditions(v viewer, search string, argIndex *int, args *[]interface{}) []string {
 	var conditions []string
 
 	for _, field := range fe.Fields {
-		if searchable(field) {
+		if searchable(field) && v.fieldReadableInData(field) {
 			conditions = append(conditions, fmt.Sprintf("%s ILIKE $%d", field.Name, *argIndex))
 			*args = append(*args, "%"+search+"%")
 			*argIndex++
@@ -476,9 +478,22 @@ func (fe *FieldsetEngine) buildSearchConditions(search string, argIndex *int, ar
 func (fe *FieldsetEngine) buildFilterConditions(filters map[string]interface{}, argIndex *int, args *[]interface{}) []string {
 	var conditions []string
 
+	// Same gate as declared filters: needs MODE_FILTERS and a field the viewer may see and filter by.
+	gated := fe.Module != nil && fe.Request != nil
+	var v viewer
+	if gated {
+		v = viewerForModule(fe.Request, fe.Module.ID)
+		if !v.canFilter(fe.Module.ID) {
+			return nil
+		}
+	}
+
 	for fieldName, value := range filters {
 		field := fe.getFieldByName(fieldName)
 		if field == nil || !field.Filterable {
+			continue
+		}
+		if gated && !(v.fieldVisibleInSchema(*field) && v.canFilterField(fieldName)) {
 			continue
 		}
 
@@ -495,9 +510,10 @@ func (fe *FieldsetEngine) buildFilterConditions(filters map[string]interface{}, 
 	return conditions
 }
 
-func (fe *FieldsetEngine) isValidSortField(fieldName string) bool {
+// isValidSortField allows sorting only by stored columns the viewer may read; otherwise ordering leaks hidden values.
+func (fe *FieldsetEngine) isValidSortField(v viewer, fieldName string) bool {
 	field := fe.getFieldByName(fieldName)
-	return field != nil && !field.Virtual
+	return field != nil && !field.Virtual && v.fieldReadableInData(*field)
 }
 
 // defaultSortField returns the column to ORDER BY when the request names none:

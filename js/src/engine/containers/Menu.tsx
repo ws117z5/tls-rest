@@ -7,15 +7,6 @@ import Icon from "@engine/containers/Icon";
 
 const iconStyle: React.CSSProperties = { height: "1.2em", verticalAlign: "middle", marginRight: 4 };
 
-// Submenu dropdown-header icons, keyed by raw submenu name (not translated).
-const SUBMENU_ICONS: Record<string, string> = {
-  engine: "engine",
-  games: "games",
-  tools: "tools",
-  External: "external",
-  Legal: "legal",
-};
-
 // An icon is a sprite name, an image URL/path, or "" (none) — see menu.css.
 const isImageIcon = (icon: string) => /^(?:https?:)?\//.test(icon);
 
@@ -238,7 +229,7 @@ class Menu extends Component<{}, MenuState> {
                   <NavDropdown
                     key={"s" + title}
                     title={t(title)}
-                    icon={SUBMENU_ICONS[title]}
+                    icon={Auth.getSubmenuIcon(title)}
                     items={items}
                     onNavigate={this.close}
                     onExpand={() => this.setState({ mobileSubmenu: title })}
@@ -350,8 +341,8 @@ class Menu extends Component<{}, MenuState> {
             {t("Back")}
           </button>
           <div className="mobile-submenu-title">
-            {this.state.mobileSubmenu && SUBMENU_ICONS[this.state.mobileSubmenu] && (
-              <Icon name={SUBMENU_ICONS[this.state.mobileSubmenu]} />
+            {this.state.mobileSubmenu && Auth.getSubmenuIcon(this.state.mobileSubmenu) && (
+              <Icon name={Auth.getSubmenuIcon(this.state.mobileSubmenu)!} />
             )}
             {this.state.mobileSubmenu && t(this.state.mobileSubmenu)}
           </div>

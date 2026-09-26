@@ -2,8 +2,6 @@ package auth
 
 import (
 	"context"
-	"fmt"
-	"net"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -11,6 +9,7 @@ import (
 
 	"tls-rest/go/engine/controllers/config"
 	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/controllers/httpx"
 
 	"tls-rest/go/engine/controllers/db/cache"
 )
@@ -76,72 +75,15 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 		return manageTokenSession(r.Context(), tok)
 	}
 
-	cookie, err := r.Cookie("X-Session-ID")
-
-	hash := ""
-	expire := time.Now().Add(30 * 24 * time.Hour) // 30 days
-
-	if err != nil {
-		hash, _ = functions.GetRandomHash(16)
-	} else {
-		hash = cookie.Value
-	}
-
-	ip := r.Header.Get("X-Forwarded-For")
-	if ip == "" {
-		host, _, err := net.SplitHostPort(r.RemoteAddr)
-
-		if err != nil {
-			ip = r.RemoteAddr // fallback to full RemoteAddr if parsing fails
-		} else {
-			ip = host
-		}
-	}
-
-	// Get User-Agent
+	ip := httpx.ClientIP(r)
 	ua := r.UserAgent()
 
-	ci := cache.Session{
-		UserAgent:  ua,
-		IP:         ip,
-		Expire:     expire, // 30 days
-		LastAccess: time.Now(),
-	}
-
-	//if coockie is not set, create a new one
-	if err != nil {
-		cookie = &http.Cookie{
-			Name:    "X-Session-ID",
-			Value:   hash,
-			Expires: expire,
-			Path:    "/",
-		}
-
-		http.SetCookie(w, cookie)
-
-		fillSessionRights(r.Context(), &ci)
-		cache.SessionCacheInstance.Set(cookie.Value, ci)
-
-		return &ci
-	} else {
-		// If the cookie exists, we can check its value
-
-		stored, err := cache.SessionCacheInstance.Get(cookie.Value)
-
-		if err != nil {
-			// If the session does not exist, create a new one
-			fillSessionRights(r.Context(), &ci)
-			cache.SessionCacheInstance.Set(hash, ci)
-			return &ci
-		} else {
-			if stored.Expire.Before(time.Now()) {
-				// If the session has expired, create a new one
-				fmt.Println("Session expired, creating a new one")
-			}
-			// Update the existing session
+	// Only a live session the server itself issued is honoured; a missing, unknown (client-chosen) or expired id gets a fresh server-minted one.
+	if cookie, err := r.Cookie("X-Session-ID"); err == nil {
+		if stored, e := cache.SessionCacheInstance.Get(cookie.Value); e == nil && stored != nil && stored.Expire.After(time.Now()) {
 			stored.UserAgent = ua
 			stored.IP = ip
-			stored.Expire = time.Now().Add(30 * 24 * time.Hour) // 30 days
+			stored.Expire = time.Now().Add(30 * 24 * time.Hour) // sliding 30 days
 			stored.LastAccess = time.Now()
 
 			// Rights are cached in the session; only re-resolve when a
@@ -153,10 +95,30 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 				fillSessionConfig(r.Context(), stored)
 			}
 
-			cache.SessionCacheInstance.Set(hash, *stored)
-
+			cache.SessionCacheInstance.Set(cookie.Value, *stored)
 			return stored
 		}
+	}
+
+	hash, _ := functions.GetRandomHash(16)
+	expire := time.Now().Add(30 * 24 * time.Hour)
+	ci := cache.Session{UserAgent: ua, IP: ip, Expire: expire, LastAccess: time.Now()}
+	http.SetCookie(w, sessionCookie(r, hash, expire))
+	fillSessionRights(r.Context(), &ci)
+	cache.SessionCacheInstance.Set(hash, ci)
+	return &ci
+}
+
+// sessionCookie builds the session cookie: unreadable by scripts, not sent on cross-site subrequests, and HTTPS-only when served over HTTPS.
+func sessionCookie(r *http.Request, value string, expire time.Time) *http.Cookie {
+	return &http.Cookie{
+		Name:     "X-Session-ID",
+		Value:    value,
+		Expires:  expire,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   httpx.Scheme(r) == "https",
+		SameSite: http.SameSiteLaxMode,
 	}
 }
 
@@ -169,38 +131,29 @@ func GetSessionID(ctx context.Context) string {
 	return ""
 }
 
-// Login establishes an authenticated session for userID on the current request's
-// session cookie (creating the cookie if absent) and refreshes the resolved
-// rights/admin status. Used by both password login and OAuth callbacks — the one
-// place that actually sets UserID on a session.
+// Login establishes an authenticated session for userID under a brand-new
+// session id (the previous one is invalidated, so a pre-planted id can't be
+// promoted to an authenticated session) and resolves rights/admin status. Used
+// by both password login and OAuth callbacks — the one place that actually sets
+// UserID on a session.
 func Login(w http.ResponseWriter, r *http.Request, userID int, username string) {
 	expire := time.Now().Add(30 * 24 * time.Hour)
 
-	cookie, err := r.Cookie("X-Session-ID")
-	hash := ""
-	if err != nil {
-		hash, _ = functions.GetRandomHash(16)
-		http.SetCookie(w, &http.Cookie{
-			Name:    "X-Session-ID",
-			Value:   hash,
-			Expires: expire,
-			Path:    "/",
-		})
-	} else {
-		hash = cookie.Value
+	hash, _ := functions.GetRandomHash(16)
+	http.SetCookie(w, sessionCookie(r, hash, expire))
+
+	if old, err := r.Cookie("X-Session-ID"); err == nil && old.Value != "" {
+		RevokeToken(old.Value)
 	}
 
-	var s *cache.Session
-	if stored, e := cache.SessionCacheInstance.Get(hash); e == nil && stored != nil {
-		s = stored
-	} else {
-		s = &cache.Session{UserAgent: r.UserAgent(), IP: r.RemoteAddr}
+	s := &cache.Session{
+		UserAgent:  r.UserAgent(),
+		IP:         httpx.ClientIP(r),
+		UserID:     userID,
+		Username:   username,
+		Expire:     expire,
+		LastAccess: time.Now(),
 	}
-
-	s.UserID = userID
-	s.Username = username
-	s.Expire = expire
-	s.LastAccess = time.Now()
 	fillSessionRights(r.Context(), s)
 
 	cache.SessionCacheInstance.Set(hash, *s)

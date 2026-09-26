@@ -17,12 +17,15 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
+	"unicode/utf8"
 
 	"tls-rest/go/app"
 	"tls-rest/go/engine/controllers/db/cache"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/controllers/httpx"
 	"tls-rest/go/engine/controllers/module"
 
 	"github.com/gorilla/mux"
@@ -49,7 +52,7 @@ var Module = &module.ModuleAbstract[interface{}]{
 	Rights:               make(map[int]int),
 	CustomRoutes: []module.CustomRoute{
 		{Path: "/api/comments/{module}/{row}", Methods: []string{"GET"}, Handler: handleList, Absolute: true},
-		{Path: "/api/comments/{module}/{row}", Methods: []string{"POST"}, Handler: handleCreate, Absolute: true},
+		{Path: "/api/comments/{module}/{row}", Methods: []string{"POST"}, Handler: httpx.RateLimit("comment", 20, time.Minute, handleCreate), Absolute: true},
 	},
 }
 
@@ -130,6 +133,30 @@ func commentLikes(db *pgdb.Db, ids []int, userID int) (map[int]likeSummary, erro
 	return out, nil
 }
 
+// maxBodyRunes caps one comment's length.
+const maxBodyRunes = 5000
+
+// CanViewTarget reports whether the viewer may see the record a comment or
+// reaction hangs off. Replies (module "comments") are resolved up to the
+// record at the root of their thread, whose own visibility rules then apply.
+func CanViewTarget(r *http.Request, modID string, rowID int) bool {
+	db, err := pgdb.GetInstanceCtx(r.Context())
+	if err != nil {
+		return false
+	}
+	for depth := 0; modID == selfModule; depth++ {
+		if depth >= 64 {
+			return false
+		}
+		parent, err := db.GetOne("SELECT module_id, row_id FROM comments WHERE id = $1", rowID)
+		if err != nil || parent == nil {
+			return false
+		}
+		modID, rowID = functions.Coerce[string](parent["module_id"]), functions.Int(parent["row_id"])
+	}
+	return module.CanViewRow(r, modID, int64(rowID))
+}
+
 // handleList returns the whole comment tree rooted at (module, row).
 func handleList(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
@@ -137,6 +164,10 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 	rowID, err := strconv.Atoi(vars["row"])
 	if modID == "" || err != nil || rowID < 0 {
 		http.Error(w, "bad target", http.StatusBadRequest)
+		return
+	}
+	if !CanViewTarget(r, modID, rowID) {
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 
@@ -227,10 +258,15 @@ func handleCreate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad target", http.StatusBadRequest)
 		return
 	}
+	if !CanViewTarget(r, modID, rowID) {
+		http.Error(w, "not found", http.StatusNotFound)
+		return
+	}
 
 	var in struct {
 		Body string `json:"body"`
 	}
+	r.Body = http.MaxBytesReader(w, r.Body, 64<<10)
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
@@ -238,6 +274,10 @@ func handleCreate(w http.ResponseWriter, r *http.Request) {
 	body := strings.TrimSpace(in.Body)
 	if body == "" {
 		http.Error(w, "empty comment", http.StatusBadRequest)
+		return
+	}
+	if utf8.RuneCountInString(body) > maxBodyRunes {
+		http.Error(w, "comment too long", http.StatusRequestEntityTooLarge)
 		return
 	}
 

@@ -125,6 +125,9 @@ type Field struct {
 	// Resize configures server-side resizing for TYPE_IMAGE fields, applied on
 	// upload. Set via WithResize.
 	Resize *ResizeOptions `json:"-"`
+
+	// Ref marks this field as the destination of a stored id column; set via AsReference / DestinationTable, finished by ExpandReferences.
+	Ref *Reference `json:"-"`
 }
 
 // ResizeOptions bounds a TYPE_IMAGE field's stored size. Width/Height (px, 0 =

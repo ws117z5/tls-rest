@@ -37,7 +37,7 @@ var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "message_log",
 	Name:    "Message Log",
 	Icon:    "messages",
-	Submenu: "engine",
+	Submenu: "logs",
 	Fields: []field.Field{
 		field.NewField("sender_id", field.TYPE_INT, true).WithLabel("Sender"),
 		field.NewField("recipient_id", field.TYPE_INT, true).WithLabel("Recipient"),

@@ -14,6 +14,7 @@ import (
 	"tls-rest/go/engine/controllers/auth"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
+	"tls-rest/go/engine/controllers/httpx"
 	"tls-rest/go/engine/controllers/module"
 
 	"golang.org/x/crypto/bcrypt"
@@ -63,6 +64,11 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !httpx.Allow("login-email|"+c.Email, 10, 15*time.Minute) {
+		httpx.RetryAfter(w, 15*time.Minute)
+		return
+	}
+
 	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, "database unavailable")
@@ -106,12 +112,10 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 type oauthCredentials struct {
 	Provider    string `json:"provider"`     // "google" | "github" | "facebook" | "vk"
 	AccessToken string `json:"access_token"` // provider token from the device
-	Email       string `json:"email"`        // optional; used when the provider returns none
 	External    bool   `json:"external"`     // true = mobile client, response includes a bearer token
 }
 
-// OAuth handles POST /api/auth/oauth {provider, access_token, email?,
-// external?}: verifies the provider token, finds/creates the local user,
+// OAuth handles POST /api/auth/oauth {provider, access_token, external?}: verifies the provider token, finds/creates the local user,
 // establishes a session, and (for external clients) returns a bearer token.
 func OAuth(w http.ResponseWriter, r *http.Request) {
 	var c oauthCredentials
@@ -124,7 +128,7 @@ func OAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, username, err := auth.ProviderLoginWithToken(r.Context(), r, c.Provider, c.AccessToken, c.Email)
+	id, username, err := auth.ProviderLoginWithToken(r.Context(), r, c.Provider, c.AccessToken)
 	if err != nil {
 		functions.JSONError(w, http.StatusUnauthorized, "oauth authentication failed")
 		return
@@ -201,10 +205,10 @@ var Page = &module.PageAbstract{
 	Name: "Login",
 	Icon: "login",
 	Routes: []module.PageRoute{
-		{Path: "/api/login", Methods: []string{"POST"}, Handler: Login},
-		{Path: "/api/auth/oauth", Methods: []string{"POST"}, Handler: OAuth},
+		{Path: "/api/login", Methods: []string{"POST"}, Handler: httpx.RateLimit("login", 20, time.Minute, Login)},
+		{Path: "/api/auth/oauth", Methods: []string{"POST"}, Handler: httpx.RateLimit("oauth", 20, time.Minute, OAuth)},
 		{Path: "/api/logout", Methods: []string{"POST"}, Handler: Logout},
-		{Path: "/api/register", Methods: []string{"POST"}, Handler: Register},
+		{Path: "/api/register", Methods: []string{"POST"}, Handler: httpx.RateLimit("register", 5, time.Hour, Register)},
 	},
 }
 

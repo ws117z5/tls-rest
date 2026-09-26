@@ -367,8 +367,8 @@ func Bytes(v interface{}) []byte {
 
 // ImageFieldURL resolves a TYPE_IMAGE column's raw stored value to a single
 // usable image URL, or "" if empty. The value is a JSON array of refs (each
-// already carrying a "/image/<uuid>.<ext>" url) — or, for older rows, a bare
-// url/uuid string. Needed anywhere a TYPE_IMAGE column is read outside the
+// already carrying a "/image/<hash>.<ext>" url) — or, for older rows, a bare
+// url/hash string. Needed anywhere a TYPE_IMAGE column is read outside the
 // generic engine's own field rendering, which resolves this automatically.
 func ImageFieldURL(raw interface{}) string {
 	s, _ := raw.(string)
@@ -379,14 +379,14 @@ func ImageFieldURL(raw interface{}) string {
 
 	var refs []struct {
 		URL  string `json:"url"`
-		UUID string `json:"uuid"`
+		Hash string `json:"hash"`
 	}
 	if err := json.Unmarshal([]byte(s), &refs); err == nil && len(refs) > 0 {
 		if refs[0].URL != "" {
 			return refs[0].URL
 		}
-		if refs[0].UUID != "" {
-			return "/image/" + refs[0].UUID
+		if refs[0].Hash != "" {
+			return "/image/" + refs[0].Hash
 		}
 		return ""
 	}

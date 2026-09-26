@@ -72,6 +72,8 @@ func blockIPForUARule(ip, userAgent string) {
 	}
 	comment := fmt.Sprintf("by tls-rest from %s rule, %s", userAgent, time.Now().Format(time.RFC3339))
 	if err := ufw("deny", "from", ip, "comment", comment); err != nil {
+		// Remembered even on failure: a missing or unprivileged ufw won't fix itself, and retrying would exec and log on every request.
+		uaBlocked[ip] = true
 		log.For("firewall").Warnf("ufw deny from %s (user-agent rule) failed: %v", ip, err)
 		return
 	}

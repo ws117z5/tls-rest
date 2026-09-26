@@ -60,7 +60,7 @@ func RunServer(registerAppRoutes func(*mux.Router)) {
 		NextProtos: []string{"h2", "http/1.1"},
 	}
 
-	handler := middleware.SecureHeaders(route.GetRouter(registerAppRoutes))
+	handler := middleware.SecureHeaders(middleware.CSRFGuard(route.GetRouter(registerAppRoutes)))
 
 	srv := &http.Server{
 		Addr:              ":8443",

@@ -28,7 +28,7 @@ const ImagesList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
     const renderCard = (row: any) => {
         const ref: ImageRef = {
             id: row.id,
-            uuid: row.uuid,
+            hash: row.preview || row.hash,
             filename: row.filename,
             mime_type: row.mime_type,
         };

@@ -5,9 +5,9 @@
 // content can never inject markup. This module only holds the pure helpers the
 // editor and renderer need — no React, no DOM.
 //
-// Images uploaded to the backend are referenced by their guid in normal image
-// syntax, e.g. ![caption](<guid>.png); resolveImageSrc turns a bare guid into
-// the /image/<guid>.<ext> URL, which the server serves with access control.
+// Images uploaded to the backend are referenced by their hash in normal image
+// syntax, e.g. ![caption](<hash>.png); resolveImageSrc turns a bare hash into
+// the /image/<hash>.<ext> URL, which the server serves with access control.
 // Absolute http(s) and root-relative URLs are passed through unchanged.
 
 const IMG_BASE = "/image/";
@@ -20,7 +20,7 @@ export function safeUrl(url: string): string {
 }
 
 // Resolve an image src: pass through safe absolute/root-relative URLs, and turn
-// a bare image reference (guid, optionally with a .ext) into its /image/ URL.
+// a bare image reference (hash, optionally with a .ext) into its /image/ URL.
 export function resolveImageSrc(src: string): string {
     const s = (src || "").trim();
     if (!s) return "";

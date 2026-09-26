@@ -165,6 +165,7 @@ func fetchGoogle(ctx context.Context, cfg *oauth2.Config, tok *oauth2.Token) (*u
 	var g struct {
 		ID        string `json:"id"`
 		Email     string `json:"email"`
+		Verified  bool   `json:"verified_email"`
 		FirstName string `json:"given_name"`
 		LastName  string `json:"family_name"`
 		Picture   string `json:"picture"`
@@ -173,11 +174,12 @@ func fetchGoogle(ctx context.Context, cfg *oauth2.Config, tok *oauth2.Token) (*u
 		return nil, err
 	}
 	return &users.OAuthAccount{
-		ProviderID: g.ID,
-		Email:      g.Email,
-		FirstName:  g.FirstName,
-		LastName:   g.LastName,
-		Image:      g.Picture,
+		ProviderID:    g.ID,
+		Email:         g.Email,
+		EmailVerified: g.Verified,
+		FirstName:     g.FirstName,
+		LastName:      g.LastName,
+		Image:         g.Picture,
 	}, nil
 }
 
@@ -196,32 +198,31 @@ func fetchGithub(ctx context.Context, cfg *oauth2.Config, tok *oauth2.Token) (*u
 		return nil, err
 	}
 
-	email := u.Email
-	if email == "" {
-		// Primary email can be private on /user; fetch it explicitly.
-		var emails []struct {
-			Email    string `json:"email"`
-			Primary  bool   `json:"primary"`
-			Verified bool   `json:"verified"`
-		}
-		if err := apiGetJSON(ctx, client, "https://api.github.com/user/emails", headers, &emails); err == nil {
-			for _, e := range emails {
-				if e.Primary && e.Verified {
-					email = e.Email
-					break
-				}
+	// Only the primary verified address from /user/emails counts; the public profile email carries no verification guarantee.
+	email, verified := u.Email, false
+	var emails []struct {
+		Email    string `json:"email"`
+		Primary  bool   `json:"primary"`
+		Verified bool   `json:"verified"`
+	}
+	if err := apiGetJSON(ctx, client, "https://api.github.com/user/emails", headers, &emails); err == nil {
+		for _, e := range emails {
+			if e.Primary && e.Verified {
+				email, verified = e.Email, true
+				break
 			}
 		}
 	}
 
 	first, last := splitName(u.Name)
 	return &users.OAuthAccount{
-		ProviderID: strconv.FormatInt(u.ID, 10),
-		Email:      email,
-		FirstName:  first,
-		LastName:   last,
-		Image:      u.AvatarURL,
-		Username:   u.Login,
+		ProviderID:    strconv.FormatInt(u.ID, 10),
+		Email:         email,
+		EmailVerified: verified,
+		FirstName:     first,
+		LastName:      last,
+		Image:         u.AvatarURL,
+		Username:      u.Login,
 	}, nil
 }
 
@@ -243,11 +244,12 @@ func fetchFacebook(ctx context.Context, cfg *oauth2.Config, tok *oauth2.Token) (
 		return nil, err
 	}
 	return &users.OAuthAccount{
-		ProviderID: fb.ID,
-		Email:      fb.Email,
-		FirstName:  fb.FirstName,
-		LastName:   fb.LastName,
-		Image:      fb.Picture.Data.URL,
+		ProviderID:    fb.ID,
+		Email:         fb.Email,
+		EmailVerified: fb.Email != "", // Facebook only returns an address it has confirmed
+		FirstName:     fb.FirstName,
+		LastName:      fb.LastName,
+		Image:         fb.Picture.Data.URL,
 	}, nil
 }
 
@@ -275,7 +277,7 @@ func fetchVK(ctx context.Context, cfg *oauth2.Config, tok *oauth2.Token) (*users
 	u := vr.Response[0]
 	return &users.OAuthAccount{
 		ProviderID: strconv.FormatInt(u.ID, 10),
-		Email:      email,
+		Email:      email, // unverified: VK gives no confirmation flag, so it is never used to link or stored
 		FirstName:  u.FirstName,
 		LastName:   u.LastName,
 		Image:      u.Photo200,
@@ -300,9 +302,7 @@ func splitName(full string) (first, last string) {
 // with that token (the same fetch used by the web callback), upserts the local
 // user, and returns the local user id + username. It sets NO cookie: the caller
 // issues a bearer token (IssueToken) for the mobile session.
-//
-// emailOverride is used only when the provider doesn't return an email.
-func ProviderLoginWithToken(ctx context.Context, r *http.Request, providerName, accessToken, emailOverride string) (int, string, error) {
+func ProviderLoginWithToken(ctx context.Context, r *http.Request, providerName, accessToken string) (int, string, error) {
 	p := providers[strings.ToLower(strings.TrimSpace(providerName))]
 	if p == nil {
 		return 0, "", fmt.Errorf("unknown provider %q", providerName)
@@ -320,9 +320,6 @@ func ProviderLoginWithToken(ctx context.Context, r *http.Request, providerName, 
 		return 0, "", err
 	}
 	acc.Provider = p.name
-	if acc.Email == "" && emailOverride != "" {
-		acc.Email = strings.TrimSpace(strings.ToLower(emailOverride))
-	}
 
 	uid, username, err := users.FindOrCreateOAuthUser(ctx, acc)
 	if err != nil {

@@ -149,6 +149,7 @@ func Run(startServer func(registerRoutes func(*mux.Router)), startCLI func(), on
 	}
 
 	httpx.SetTrustedHosts(strings.Split(constants.Env("APP_HOSTS", "localhost"), ","))
+	httpx.SetTrustedProxies(strings.Split(constants.Env("TRUSTED_PROXIES", ""), ","))
 
 	accesslog.Init()
 

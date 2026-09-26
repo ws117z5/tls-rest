@@ -107,21 +107,12 @@ func (p *Posts) fieldset() []Field {
 			WithOption("height", "300px").
 			NonSortable(),
 
-		// html_id/compiled_html: content's markdown is compiled server-side on
-		// save (AfterFieldset below) and stored in the shared html module, not
-		// re-parsed client-side — compiled_html is what view mode renders.
-		NewField("html_id", TYPE_INT, false).
-			WithLabel("Html Id").
-			AsReadOnly().
-			InModes(MODE_VIEW),
-
+		// content's markdown is compiled server-side on save (AfterFieldset below)
+		// into the shared html module (html_id); view mode renders compiled_html.
 		NewField("compiled_html", TYPE_HTML, false).
+			AsReference("html_id", TYPE_INT).
+			DestinationTable("html").
 			WithLabel("Content (HTML)").
-			WithSQL("(SELECT compiled_html FROM html WHERE html.id = posts.html_id)").
-			AsVirtual().
-			AsReadOnly().
-			NonSortable().
-			NonSearchable().
 			InModes(MODE_VIEW),
 
 		// Sharing lists: who besides you and admins may see this post. Empty

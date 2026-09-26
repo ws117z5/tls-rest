@@ -1,6 +1,6 @@
 module tls-rest
 
-go 1.27.0
+go 1.27.1
 
 // +heroku goVersion go1.27
 
@@ -19,7 +19,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2
-	github.com/ws117z5/mmh3 v0.0.0-20220617011039-c14ba90b5ab7
+	github.com/ws117z5/mmh3 v1.0.1
 	github.com/yuin/goldmark v1.8.6
 	//github.com/tsenart/vegeta/v12 v12.8.3 // indirect
 	go.mongodb.org/mongo-driver v1.17.9

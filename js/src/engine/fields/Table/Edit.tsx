@@ -97,6 +97,9 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
   // (e.g. group *names* resolved by the field's SQL for the view), neither of
   // which is an editable row set — so the initial rows come from TableData.
   private touched = false;
+  private loaded = false;
+  private lastMask = 0;
+  private remembered: Record<string, string[]> = {};
 
   constructor(props: TableEditProps) {
     super(props);
@@ -115,14 +118,16 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
   componentDidUpdate(prev: TableEditProps) {
     if (this.contextSig(prev) !== this.contextSig()) {
       this.touched = false;
+      this.loaded = false;
+      this.remembered = {};
       this.loadServerRows();
+    } else if (this.loaded && this.mask() !== this.lastMask) {
+      this.applyMaskChange(this.lastMask, this.mask());
     } else if (this.touched && prev.value !== this.props.value) {
       this.setState({ rows: this.computeRows(this.state.serverRows) });
     }
   }
 
-  // syncFrom returns the sibling bitmask field name gating this table's
-  // matching checkbox columns (syncColumnsFromBitmask), or "".
   private syncFrom(): string {
     return (
       this.props.field?.options?.syncColumnsFromBitmask ||
@@ -131,17 +136,31 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
     );
   }
 
-  // visibleColumns hides (never mutates) a checkbox column whose matching bit
-  // is off in the sibling bitmask field — e.g. unchecking "Filters" in
-  // "Allowed Modes" hides the Filter Access table's checkbox column, but its
-  // stored per-row values are untouched, so re-checking it shows the same
-  // state as before.
-  private visibleColumns(): ColumnDef[] {
+  private mask(): number {
     const sync = this.syncFrom();
-    const cols = this.columns();
-    if (!sync) return cols;
-    const mask = Number((this.props.formValues || {})[sync]) || 0;
-    return cols.filter((c) => !(c.name in BITMASK_BITS) || (mask & BITMASK_BITS[c.name]) !== 0);
+    return sync ? Number((this.props.formValues || {})[sync]) || 0 : 0;
+  }
+
+  // Flipping a mode bit off clears its column (remembering what was checked); flipping it on restores that, or checks the whole column if nothing was remembered.
+  private applyMaskChange(from: number, to: number) {
+    this.lastMask = to;
+    const key = this.keyColumn();
+    const names = new Set(this.columns().map((c) => c.name));
+    const rows = this.state.rows.map((r) => ({ ...r }));
+    Object.entries(BITMASK_BITS).forEach(([col, bit]) => {
+      const was = (from & bit) !== 0;
+      const is = (to & bit) !== 0;
+      if (!names.has(col) || was === is) return;
+      if (!is) {
+        this.remembered[col] = rows.filter((r) => truthy(r[col])).map((r) => String(r[key]));
+        rows.forEach((r) => (r[col] = false));
+      } else {
+        const keep = new Set(this.remembered[col] || []);
+        rows.forEach((r) => (r[col] = keep.size === 0 || keep.has(String(r[key]))));
+      }
+    });
+    this.setState({ rows });
+    this.emit(rows);
   }
 
   // --- config ---------------------------------------------------------------
@@ -196,8 +215,13 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
       const serverRows: Row[] = ((res.data && res.data.rows) || []).filter(
         (r: any) => r && typeof r === "object"
       );
+      this.remembered = this.checkedByColumn(serverRows);
+      this.loaded = true;
+      this.lastMask = this.mask();
       this.setState({ serverRows, rows: this.computeRows(serverRows), loading: false });
     } catch {
+      this.loaded = true;
+      this.lastMask = this.mask();
       this.setState({ serverRows: [], rows: this.computeRows([]), loading: false });
     }
   }
@@ -218,6 +242,15 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
       byKey[String(r[key])] = r;
     });
     return serverRows.map((sr) => ({ ...sr, ...(byKey[String(sr[key])] || {}) }));
+  }
+
+  private checkedByColumn(rows: Row[]): Record<string, string[]> {
+    const key = this.keyColumn();
+    const out: Record<string, string[]> = {};
+    Object.keys(BITMASK_BITS).forEach((col) => {
+      out[col] = rows.filter((r) => truthy(r[col])).map((r) => String(r[key]));
+    });
+    return out;
   }
 
   private blankRow(): Row {
@@ -311,7 +344,7 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
   render() {
     const { label } = this.props;
     const allCols = this.columns();
-    const cols = this.visibleColumns();
+    const cols = allCols;
     const { rows, loading } = this.state;
 
     if (!allCols.length) {
@@ -319,19 +352,6 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
     }
     if (loading) {
       return <div className="text-muted">{translate("Loading…")}</div>;
-    }
-
-    // Every checkbox column this table has is currently gated off (e.g. the
-    // Filter Access table when "Filters" isn't in Allowed Modes) — nothing
-    // left to show; the hidden data is untouched and reappears once re-enabled.
-    const gated = allCols.filter((c) => c.name in BITMASK_BITS);
-    if (gated.length > 0 && cols.filter((c) => c.name in BITMASK_BITS).length === 0) {
-      const names = gated.map((c) => (c.label ? translate(c.label) : c.name)).join(", ");
-      return (
-        <div className="text-muted small">
-          {translate("Enable")} {names} {translate("in Allowed Modes to configure this.")}
-        </div>
-      );
     }
 
     // A field can set its own table width (WithOption("width", ...) on the

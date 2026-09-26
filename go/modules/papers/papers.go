@@ -20,17 +20,17 @@ type PapersModule struct {
 const roomHashSeed uint32 = 0x50415052 // "PAPR"
 
 // hashRoomUUID derives a room's public identifier from its real uuid via
-// MurmurHash3 (32-bit)
+// MurmurHash3 (64-bit)
 func hashRoomUUID(uuid string) string {
-	h, err := mmh3.Hash32(uuid, roomHashSeed)
+	h, err := mmh3.Hash64(uuid, roomHashSeed)
 	if err != nil {
 		return ""
 	}
-	sum := h.AsUint32()
+	sum := h.AsUint64()
 	if len(sum) == 0 {
 		return ""
 	}
-	return fmt.Sprintf("%08x", sum[0])
+	return fmt.Sprintf("%016x", sum[0])
 }
 
 // setRoomHash is an AfterFieldset hook: derives and stores the hash on create,

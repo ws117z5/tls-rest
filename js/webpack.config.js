@@ -80,6 +80,8 @@ module.exports = [
     output: {
       path: path.resolve(__dirname, 'dist'),
       filename: '[name].js',
+      // Lazy chunks live in dist/async/: the server adds a <script> for every top-level dist/*.js (GetFiles), which would download them all up front.
+      chunkFilename: 'async/[name].[contenthash:8].js',
       clean: true, // Empties /dist before every build
     },
   },
@@ -115,6 +117,8 @@ module.exports = [
     output: {
       path: path.resolve(__dirname, 'dist'),
       filename: '[name].js',
+      // Lazy chunks live in dist/async/: the server adds a <script> for every top-level dist/*.js (GetFiles), which would download them all up front.
+      chunkFilename: 'async/[name].[contenthash:8].js',
       clean: true, // Empties /dist before every build
     },
   },

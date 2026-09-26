@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { FIELD_TYPES, MODES, isImmutableField } from './FieldsetProvider';
 import { t } from '@engine/controllers/i18n';
 
@@ -68,15 +68,13 @@ const COMPONENT_KEY = /^\.\/([A-Za-z0-9]+)\/(Edit|View|List)\.tsx$/;
 // directory name -> { [mode]: Component }
 const COMPONENTS: Record<string, ModeMap> = {};
 
-const fieldCtx = (import.meta as any).webpackContext('.', { recursive: true, regExp: /^\.\/([A-Za-z0-9]+)\/(Edit|View|List)\.tsx$/ });
+// Lazy: each Edit/View/List file becomes its own chunk, fetched the first time a field of that type renders in that mode.
+const fieldCtx = (import.meta as any).webpackContext('.', { recursive: true, mode: 'lazy', regExp: /^\.\/([A-Za-z0-9]+)\/(Edit|View|List)\.tsx$/ });
 fieldCtx.keys().forEach((key: string) => {
   const m = COMPONENT_KEY.exec(key);
   if (!m) return;
-  const mod = fieldCtx(key) as any;
-  const component = mod && (mod.default || mod);
-  if (!component) return;
   if (!COMPONENTS[m[1]]) COMPONENTS[m[1]] = {};
-  COMPONENTS[m[1]][FILE_MODE[m[2]]] = component;
+  COMPONENTS[m[1]][FILE_MODE[m[2]]] = React.lazy(() => fieldCtx(key));
 });
 
 // Historical quirk: a checkbox in view mode is rendered with its list widget
@@ -139,30 +137,34 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
   const autocompleteKind = field.autocomplete ?? (field.options && (field.options as any).autocomplete);
   if (autocompleteKind && AutocompleteEdit && (mode === MODES.EDIT || mode === MODES.CREATE)) {
     return (
-      <AutocompleteEdit
-        id={field.name}
-        fieldName={field.name}
-        module={props.module}
-        value={props.value}
-        placeholder={t(field.placeholder || field.description || field.label || '')}
-        disabled={field.readonly || props.disabled}
-        required={field.required}
-        className={props.className}
-        onChange={props.onChange}
-        formValues={props.formValues}
-      />
+      <Suspense fallback={null}>
+        <AutocompleteEdit
+          id={field.name}
+          fieldName={field.name}
+          module={props.module}
+          value={props.value}
+          placeholder={t(field.placeholder || field.description || field.label || '')}
+          disabled={field.readonly || props.disabled}
+          required={field.required}
+          className={props.className}
+          onChange={props.onChange}
+          formValues={props.formValues}
+        />
+      </Suspense>
     );
   }
   // View/List: only Int needs id->label resolution; String's value is already the label.
   if (autocompleteKind && AutocompleteView && field.type === FIELD_TYPES.INT && (mode === MODES.VIEW || mode === MODES.LIST)) {
     return (
-      <AutocompleteView
-        id={field.name}
-        fieldName={field.name}
-        module={props.module}
-        value={props.value}
-        formValues={props.formValues}
-      />
+      <Suspense fallback={null}>
+        <AutocompleteView
+          id={field.name}
+          fieldName={field.name}
+          module={props.module}
+          value={props.value}
+          formValues={props.formValues}
+        />
+      </Suspense>
     );
   }
   
@@ -222,7 +224,11 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
     ...(field.options || {}),
   };
 
-  const rendered = <Component {...enhancedProps} />;
+  const rendered = (
+    <Suspense fallback={null}>
+      <Component {...enhancedProps} />
+    </Suspense>
+  );
 
   // Display modifiers apply to read-only rendering (list & view): zero-as-blank,
   // unit suffix, sign-based CSS class, and foreign-key links.

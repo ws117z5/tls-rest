@@ -3,6 +3,7 @@ package html
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"fmt"
 	stdhtml "html"
 	"os/exec"
@@ -25,7 +26,8 @@ func renderGraphBlocks(src string) (string, map[string]string) {
 		token := fmt.Sprintf("GRAPH_BLOCK_PLACEHOLDER_%d", i)
 		i++
 		if svg, err := renderDOT(dot); err == nil {
-			subs["<p>"+token+"</p>"] = `<div class="markdown-graph" role="graph">` + svg + `</div>`
+			// An <img> data URL keeps the SVG inert: no scripts, no clickable javascript: links from DOT URL= attributes.
+			subs["<p>"+token+"</p>"] = `<div class="markdown-graph" role="graph"><img alt="graph" src="data:image/svg+xml;base64,` + base64.StdEncoding.EncodeToString([]byte(svg)) + `"></div>`
 		} else {
 			subs["<p>"+token+"</p>"] = `<div style="color:red;padding:10px;border:1px solid red"><strong>DOT Error:</strong> ` + stdhtml.EscapeString(err.Error()) + `</div>`
 		}

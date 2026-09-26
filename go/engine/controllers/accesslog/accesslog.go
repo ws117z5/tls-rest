@@ -7,13 +7,12 @@ package accesslog
 
 import (
 	stdlog "log"
-	"net"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
 	"tls-rest/go/engine/controllers/db/pgdb"
+	"tls-rest/go/engine/controllers/httpx"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -151,22 +150,9 @@ func persist(e Entry) {
 	}
 }
 
-// ClientIP extracts the best-effort client IP, honouring a terminating proxy
-// (X-Forwarded-For first hop, then X-Real-IP) and falling back to RemoteAddr.
+// ClientIP is the caller's address, honouring forwarding headers only from trusted proxies (see httpx.ClientIP).
 func ClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		if i := strings.IndexByte(xff, ','); i >= 0 {
-			return strings.TrimSpace(xff[:i])
-		}
-		return strings.TrimSpace(xff)
-	}
-	if xr := r.Header.Get("X-Real-IP"); xr != "" {
-		return strings.TrimSpace(xr)
-	}
-	if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
-		return host
-	}
-	return r.RemoteAddr
+	return httpx.ClientIP(r)
 }
 
 func nullIfEmpty(s string) interface{} {

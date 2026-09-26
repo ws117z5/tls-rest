@@ -375,11 +375,20 @@ func TestPosts_CreateMode(t *testing.T) {
 			if resp.StatusCode == http.StatusCreated {
 				out := decode(t, resp)
 				id := functions.Int(out["id"])
-				t.Cleanup(func() {
-					_, _ = db.DeleteRow("posts", "id", id)
-				})
+				t.Cleanup(func() { deletePostWithHTML(db, id) })
 			}
 		})
+	}
+}
+
+// deletePostWithHTML removes an API-created post and the html row its save compiled.
+func deletePostWithHTML(db *pgdb.Db, id int) {
+	row, _ := db.GetOne("SELECT html_id FROM posts WHERE id = $1", id)
+	_, _ = db.DeleteRow("posts", "id", id)
+	if row != nil {
+		if htmlID := functions.Int(row["html_id"]); htmlID > 0 {
+			_, _ = db.DeleteRow("html", "id", htmlID)
+		}
 	}
 }
 
@@ -417,7 +426,7 @@ func TestPosts_VisibilityIsPrivateByDefault(t *testing.T) {
 	}
 	created := decode(t, createResp)
 	postID := functions.Int(created["id"])
-	t.Cleanup(func() { _, _ = db.DeleteRow("posts", "id", postID) })
+	t.Cleanup(func() { deletePostWithHTML(db, postID) })
 
 	// The author can always view their own post.
 	t.Run("author can view", func(t *testing.T) {
@@ -706,6 +715,126 @@ func TestPosts_Filters(t *testing.T) {
 		noMatch := listPosts(t, tok, "?title=no-such-post-zzz")
 		if fmt.Sprint(match["Total"]) == fmt.Sprint(noMatch["Total"]) {
 			t.Errorf("expected the granted title= filter to still work; got the same Total (%v) for a match and a non-match", match["Total"])
+		}
+	})
+}
+
+// Hand-crafted query params (?search=, ?sort=, ?filters.<field>=) must not reach
+// data the viewer's rights hide: a user restricted to the "title" field can't
+// search, order or filter by "content", and filters.* needs MODE_FILTERS.
+func TestPosts_QueryParamsRespectRights(t *testing.T) {
+	db, err := pgdb.GetInstance()
+	if err != nil {
+		t.Fatalf("db unavailable: %v", err)
+	}
+	toks := tokens(t)
+
+	tempID, err := createFixtureUser(db, "queryparams", []int{})
+	if err != nil {
+		t.Fatalf("creating temp user: %v", err)
+	}
+	t.Cleanup(func() { _, _ = db.DeleteRow("users", "id", tempID) })
+
+	uniq := fmt.Sprintf("rtqp%d", time.Now().UnixNano())
+	contentToken := "cq" + uniq
+	titleA, contentA := uniq+"-a", "zzz-"+contentToken
+	titleB, contentB := uniq+"-b", "aaa-"+contentToken
+
+	// Authored by the temp user so the sharing ACL shows both posts to them without any group.
+	var postIDs []int
+	for _, p := range [][2]string{{titleA, contentA}, {titleB, contentB}} {
+		id, err := db.InsertRow("posts", map[string]interface{}{"title": p[0], "content": p[1], "created_by": tempID})
+		if err != nil {
+			t.Fatalf("inserting post: %v", err)
+		}
+		postIDs = append(postIDs, int(id))
+	}
+	t.Cleanup(func() {
+		for _, id := range postIDs {
+			_, _ = db.DeleteRow("posts", "id", id)
+		}
+	})
+	idA, idB := postIDs[0], postIDs[1]
+
+	// grantTitleOnly gives the temp user list/view (plus extra modes) on posts, field-restricted to "title".
+	grantTitleOnly := func(t *testing.T, extraModes int) string {
+		t.Helper()
+		rightsID, err := db.InsertRow("user_rights", map[string]interface{}{
+			"user_id": tempID,
+			"module":  "posts",
+			"modes":   auth.MODE_LIST | auth.MODE_VIEW | extraModes,
+			"fields":  map[string][]string{"title": {"list", "view"}},
+		})
+		if err != nil {
+			t.Fatalf("inserting user_rights: %v", err)
+		}
+		t.Cleanup(func() { _, _ = db.DeleteRow("user_rights", "id", int(rightsID)) })
+		tok, _, err := auth.IssueToken(context.Background(), tempID, "rights_test_queryparams")
+		if err != nil {
+			t.Fatalf("issue token: %v", err)
+		}
+		return tok
+	}
+
+	list := func(t *testing.T, tok, query string) (ids []int, total int) {
+		t.Helper()
+		resp := do(t, http.MethodGet, "/posts"+query, tok, nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("GET /posts%s: got %d, want 200", query, resp.StatusCode)
+		}
+		out := decode(t, resp)
+		rows, _ := out["Data"].([]interface{})
+		for _, r := range rows {
+			if m, ok := r.(map[string]interface{}); ok {
+				ids = append(ids, functions.Int(m["id"]))
+			}
+		}
+		return ids, functions.Int(out["Total"])
+	}
+
+	t.Run("search ignores fields the viewer can't read", func(t *testing.T) {
+		tok := grantTitleOnly(t, 0)
+
+		if _, total := list(t, tok, "?search="+uniq); total != 2 {
+			t.Errorf("control: searching a readable field (title) should find both posts, got Total %d", total)
+		}
+		if _, total := list(t, tok, "?search="+contentToken); total != 0 {
+			t.Errorf("search matched on unreadable field \"content\": Total %d, want 0", total)
+		}
+		if _, total := list(t, toks["admin"], "?search="+contentToken); total != 2 {
+			t.Errorf("control: admin searching content should find both posts, got Total %d", total)
+		}
+	})
+
+	t.Run("sort ignores fields the viewer can't read", func(t *testing.T) {
+		tok := grantTitleOnly(t, 0)
+
+		def, _ := list(t, tok, "?search="+uniq+"&order=asc")
+		byContent, _ := list(t, tok, "?search="+uniq+"&sort=content&order=asc")
+		if fmt.Sprint(def) != fmt.Sprint(byContent) {
+			t.Errorf("sort=content reordered results for a viewer who can't read content: default %v, sorted %v", def, byContent)
+		}
+
+		adminByContent, _ := list(t, toks["admin"], "?search="+uniq+"&sort=content&order=asc")
+		if fmt.Sprint(adminByContent) != fmt.Sprint([]int{idB, idA}) {
+			t.Errorf("control: admin sort=content asc should give [%d %d], got %v", idB, idA, adminByContent)
+		}
+	})
+
+	t.Run("filters.* needs MODE_FILTERS", func(t *testing.T) {
+		tok := grantTitleOnly(t, 0)
+		if _, total := list(t, tok, "?filters.title="+titleA); total != 2 {
+			t.Errorf("filters.title applied without MODE_FILTERS: Total %d, want 2 (unfiltered)", total)
+		}
+	})
+
+	t.Run("filters.* on an unreadable field is ignored even with MODE_FILTERS", func(t *testing.T) {
+		tok := grantTitleOnly(t, auth.MODE_FILTERS)
+		if _, total := list(t, tok, "?filters.title="+titleA); total != 1 {
+			t.Errorf("control: filters.title with MODE_FILTERS should narrow to 1 post, got Total %d", total)
+		}
+		if _, total := list(t, tok, "?filters.content="+contentA); total != 2 {
+			t.Errorf("filters.content applied though \"content\" is unreadable: Total %d, want 2 (unfiltered)", total)
 		}
 	})
 }
