@@ -25,6 +25,11 @@ func (p *Posts) filters() *Filedset {
 			WithLabel("Title").
 			Contains(),
 
+		// Exact match against one tag in the tags array (jsonb containment).
+		NewFilter("tag", TYPE_STRING).
+			WithLabel("Tag").
+			WithSQLWhere("tags @> jsonb_build_array(%s)"),
+
 		// Admin-only: filter posts by their creator, searched by user name.
 		NewFilter("user", TYPE_STRING).
 			WithLabel("User").

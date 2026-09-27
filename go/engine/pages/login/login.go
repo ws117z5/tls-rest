@@ -112,10 +112,11 @@ func Logout(w http.ResponseWriter, r *http.Request) {
 type oauthCredentials struct {
 	Provider    string `json:"provider"`     // "google" | "github" | "facebook" | "vk"
 	AccessToken string `json:"access_token"` // provider token from the device
+	IDToken     string `json:"id_token"`     // Google ID token from the Android app (provider "google")
 	External    bool   `json:"external"`     // true = mobile client, response includes a bearer token
 }
 
-// OAuth handles POST /api/auth/oauth {provider, access_token, external?}: verifies the provider token, finds/creates the local user,
+// OAuth handles POST /api/auth/oauth {provider, access_token | id_token, external?}: verifies the provider token, finds/creates the local user,
 // establishes a session, and (for external clients) returns a bearer token.
 func OAuth(w http.ResponseWriter, r *http.Request) {
 	var c oauthCredentials
@@ -123,12 +124,22 @@ func OAuth(w http.ResponseWriter, r *http.Request) {
 		functions.JSONError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	if strings.TrimSpace(c.Provider) == "" || strings.TrimSpace(c.AccessToken) == "" {
-		functions.JSONError(w, http.StatusBadRequest, "provider and access_token are required")
+	googleIDToken := strings.EqualFold(strings.TrimSpace(c.Provider), "google") && strings.TrimSpace(c.IDToken) != ""
+	if strings.TrimSpace(c.Provider) == "" || (strings.TrimSpace(c.AccessToken) == "" && !googleIDToken) {
+		functions.JSONError(w, http.StatusBadRequest, "provider and access_token (or a google id_token) are required")
 		return
 	}
 
-	id, username, err := auth.ProviderLoginWithToken(r.Context(), r, c.Provider, c.AccessToken)
+	var (
+		id       int
+		username string
+		err      error
+	)
+	if googleIDToken {
+		id, username, err = auth.GoogleIDTokenLogin(r.Context(), strings.TrimSpace(c.IDToken))
+	} else {
+		id, username, err = auth.ProviderLoginWithToken(r.Context(), r, c.Provider, c.AccessToken)
+	}
 	if err != nil {
 		functions.JSONError(w, http.StatusUnauthorized, "oauth authentication failed")
 		return

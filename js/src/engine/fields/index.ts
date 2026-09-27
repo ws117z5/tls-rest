@@ -7,8 +7,6 @@ export {default as FloatEdit} from "./Float/Edit"
 export {default as TextEdit} from "./Text/Edit"
 export {default as TextList} from "./Text/List"
 
-export {default as ImageEdit} from "./Image/Edit"
-
 export {default as CheckboxList} from "./Checkbox/List"
 export {default as CheckboxEdit} from "./Checkbox/Edit"
 

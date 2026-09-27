@@ -3,7 +3,8 @@ import axios from "axios";
 
 import { FieldsetProvider, FieldsetForm, MODES } from "@engine/fields";
 import useT from "@engine/controllers/useT";
- 
+import AppConfig from "@engine/controllers/Appconfig";
+
 // A Page is a standalone, non-module screen with a single visual representation
 // and NO modes (no list/create/delete, no per-mode routes). It renders one
 // fieldset for one record, gated by rights: the endpoint returns the record and
@@ -49,6 +50,8 @@ const Fieldset: React.FC<FieldsetProps> = ({ endpoint, editable = false, moduleN
             try {
                 await axios.put(endpoint, form);
                 setSaved(true);
+                // A page can change the user's config (profile's theme); re-read it so the change shows now, not after a refresh.
+                await AppConfig.load();
             } catch (e) {
                 console.error("Save failed:", e);
             }

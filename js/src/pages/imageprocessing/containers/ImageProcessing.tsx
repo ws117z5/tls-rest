@@ -1,6 +1,6 @@
 import React, { Component, ChangeEvent } from "react";
 import "./image.processing.css";
-import { ImageEdit, SelectEdit } from "@engine/fields";
+import { SelectEdit } from "@engine/fields";
 
 //todo move to typescript to speed up the pixel manipulation process
 export default class ImageProcessing extends Component {
@@ -139,7 +139,7 @@ export default class ImageProcessing extends Component {
 
         return (
             <div id="im_proc" onMouseDown={this.onMouseDown} onMouseUp={this.onMouseUp}>
-                <ImageEdit onChange={this.onLoad}/>
+                <input type="file" accept="image/*" onChange={this.onLoad} />
                 <SelectEdit options={filters} onChange={this.evaluateFilter} params={this}/> 
 
                 <canvas id="im_proc_canvas"></canvas>

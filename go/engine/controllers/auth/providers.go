@@ -314,12 +314,21 @@ func ProviderLoginWithToken(ctx context.Context, r *http.Request, providerName, 
 		return 0, "", fmt.Errorf("access_token is required")
 	}
 
+	clientID := ""
+	if p.name == "google" {
+		var err error
+		if clientID, err = verifyGoogleAccessToken(ctx, accessToken); err != nil {
+			return 0, "", err
+		}
+	}
+
 	cfg := p.config(r)
 	acc, err := p.fetch(ctx, cfg, &oauth2.Token{AccessToken: accessToken})
 	if err != nil {
 		return 0, "", err
 	}
 	acc.Provider = p.name
+	acc.ClientID = clientID
 
 	uid, username, err := users.FindOrCreateOAuthUser(ctx, acc)
 	if err != nil {

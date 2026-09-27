@@ -22,6 +22,9 @@ type OAuthAccount struct {
 	LastName      string
 	Image         string
 	Username      string // provider handle, if any (e.g. GitHub login) — used as a username fallback
+	// ClientID is the OAuth client the token was issued to (Google's azp, e.g. the Android app), set only after verification;
+	// an external_config row with the same client_id decides which group this sign-in joins.
+	ClientID string
 }
 
 // FindOrCreateOAuthUser resolves an OAuth sign-in to a local user id + display
@@ -31,7 +34,30 @@ type OAuthAccount struct {
 //  1. match on (auth_provider, auth_provider_id) — the provider's own id;
 //  2. else match on email and link this provider onto that existing account;
 //  3. else create a new user.
+//
+// A sign-in whose verified client (a.ClientID) matches an external_config row also joins that row's group, existing users included.
 func FindOrCreateOAuthUser(ctx context.Context, a *OAuthAccount) (int64, string, error) {
+	id, name, err := findOrCreateOAuthUser(ctx, a)
+	if err != nil {
+		return 0, "", err
+	}
+	if db, e := pgdb.GetInstanceCtx(ctx); e == nil {
+		if groupID, byClient, ok := externalRule(db, a.Provider, a.ClientID); ok && byClient {
+			ensureGroup(db, id, groupID)
+		}
+	}
+	return id, name, nil
+}
+
+// ensureGroup adds the user to the group if they are not a member yet.
+func ensureGroup(db *pgdb.Db, userID int64, groupID int) {
+	_, _ = db.Exec(`
+		UPDATE users SET groups = COALESCE(groups, '[]'::jsonb) || to_jsonb($2::int)
+		WHERE id = $1 AND NOT COALESCE(groups, '[]'::jsonb) @> to_jsonb($2::int)`,
+		userID, groupID)
+}
+
+func findOrCreateOAuthUser(ctx context.Context, a *OAuthAccount) (int64, string, error) {
 	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return 0, "", err
@@ -83,7 +109,7 @@ func FindOrCreateOAuthUser(ctx context.Context, a *OAuthAccount) (int64, string,
 		"auth_provider":    emptyToNil(a.Provider),
 		"auth_provider_id": emptyToNil(a.ProviderID),
 	}
-	if groupID, ok := externalAppGroup(db, a.Provider); ok {
+	if groupID, _, ok := externalRule(db, a.Provider, a.ClientID); ok {
 		row["groups"] = []interface{}{groupID}
 	}
 
@@ -94,18 +120,23 @@ func FindOrCreateOAuthUser(ctx context.Context, a *OAuthAccount) (int64, string,
 	return id, username, nil
 }
 
-// externalAppGroup looks up which user group new sign-ins via provider
-// should join, from an admin-configured external_config row — false if none
-// is configured for this provider.
-func externalAppGroup(db *pgdb.Db, provider string) (int, bool) {
+// externalRule finds the external_config row governing a sign-in: the one for this provider whose client_id is the verified
+// client the token was issued to (byClient), else the provider-wide row that has no client_id. ok is false if neither exists.
+func externalRule(db *pgdb.Db, provider, clientID string) (groupID int, byClient, ok bool) {
 	if provider == "" {
-		return 0, false
+		return 0, false, false
 	}
-	row, err := db.GetOne(`SELECT group_id FROM external_config WHERE provider = $1 LIMIT 1`, provider)
+	if clientID != "" {
+		row, err := db.GetOne(`SELECT group_id FROM external_config WHERE provider = $1 AND client_id = $2 LIMIT 1`, provider, clientID)
+		if err == nil && row != nil {
+			return functions.Int(row["group_id"]), true, true
+		}
+	}
+	row, err := db.GetOne(`SELECT group_id FROM external_config WHERE provider = $1 AND COALESCE(client_id, '') = '' LIMIT 1`, provider)
 	if err != nil || row == nil {
-		return 0, false
+		return 0, false, false
 	}
-	return functions.Int(row["group_id"]), true
+	return functions.Int(row["group_id"]), false, true
 }
 
 // oauthUsername derives a non-empty display name: "First L." when a name is

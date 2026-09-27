@@ -134,7 +134,8 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
   const { field, mode } = props;
 
   // Autocomplete is an option (WithAutocomplete) on String/Int, not its own type.
-  const autocompleteKind = field.autocomplete ?? (field.options && (field.options as any).autocomplete);
+  // TYPE_LABEL also takes WithAutocomplete, but its own Edit component queries suggestions itself (chips, not a single value).
+  const autocompleteKind = field.type !== FIELD_TYPES.LABEL && (field.autocomplete ?? (field.options && (field.options as any).autocomplete));
   if (autocompleteKind && AutocompleteEdit && (mode === MODES.EDIT || mode === MODES.CREATE)) {
     return (
       <Suspense fallback={null}>

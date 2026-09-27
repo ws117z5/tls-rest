@@ -52,6 +52,12 @@ const TYPE_YES_NO = "YesNo"
 const TYPE_MONTH = "Month"
 const TYPE_TABLE = "Table"
 
+// TYPE_LABEL renders a free-typed tag/label list: type text, Enter to add a
+// chip, click a chip to remove it. The value is a JSON array of strings.
+// WithAutocomplete (the "function"/"sql"/"source" kinds) suggests existing
+// values as the user types, same as on TYPE_STRING.
+const TYPE_LABEL = "Label"
+
 // TYPE_BITMASK_SELECT renders a checkbox-per-option editor whose value is the
 // integer OR of the selected option values (a bitmask). Options come from a
 // WithOptions(func) provider.

@@ -46,7 +46,8 @@ export const FIELD_TYPES = {
   YES_NO: 'YesNo',
   MONTH: 'Month',
   MARKDOWN: 'Markdown',
-  IMAGE: 'Image'
+  IMAGE: 'Image',
+  LABEL: 'Label'
 };
 
 // Mode constants

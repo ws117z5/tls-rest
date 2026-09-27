@@ -17,7 +17,7 @@ func (p *Posts) SitemapEntries(ctx context.Context) []sitemap.Entry {
 		return nil
 	}
 	rows, err := db.GetAll(
-		"SELECT id, updated FROM posts WHERE access <= 0 AND visible_groups @> $1::jsonb ORDER BY updated DESC LIMIT 5000",
+		"SELECT id, slug, updated FROM posts WHERE access <= 0 AND visible_groups @> $1::jsonb ORDER BY updated DESC LIMIT 5000",
 		fmt.Sprintf("[%d]", auth.GuestGroupID),
 	)
 	if err != nil {
@@ -25,7 +25,11 @@ func (p *Posts) SitemapEntries(ctx context.Context) []sitemap.Entry {
 	}
 	out := make([]sitemap.Entry, 0, len(rows))
 	for _, r := range rows {
-		e := sitemap.Entry{Path: fmt.Sprintf("/posts/%v", r["id"])}
+		ref := r["id"]
+		if slug, _ := r["slug"].(string); slug != "" {
+			ref = slug
+		}
+		e := sitemap.Entry{Path: fmt.Sprintf("/posts/%v", ref)}
 		if t, ok := r["updated"].(time.Time); ok {
 			e.Lastmod = t
 		}

@@ -52,6 +52,27 @@ func shareableGroups(ctx context.Context, viewer map[string]interface{}) []map[s
 	return out
 }
 
+// existingTags suggests tags already used on other posts, for the tags field's autocomplete.
+func existingTags(ctx context.Context, input string, _ map[string]interface{}) []AutoOption {
+	db, err := pgdb.GetInstanceCtx(ctx)
+	if err != nil {
+		return nil
+	}
+	rows, err := db.GetAll(`
+		SELECT DISTINCT tag FROM (
+			SELECT jsonb_array_elements_text(tags) AS tag FROM posts
+		) t WHERE tag ILIKE $1 ORDER BY tag LIMIT 20`, "%"+input+"%")
+	if err != nil {
+		return nil
+	}
+	out := make([]AutoOption, 0, len(rows))
+	for _, r := range rows {
+		tag := functions.Coerce[string](r["tag"])
+		out = append(out, AutoOption{Value: tag, Label: tag})
+	}
+	return out
+}
+
 // fieldset defines the module's fields. It is the field-set counterpart to
 // filters() in filters.go: both build a set that the fieldset engine consumes.
 func (p *Posts) fieldset() []Field {
@@ -71,6 +92,21 @@ func (p *Posts) fieldset() []Field {
 			WithOption("width", "600px").
 			WithSQL("(SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE users.id = posts.created_by LIMIT 1)").
 			AsVirtual(),
+
+		// Optional, unique; when set the post is also reachable at /posts/<slug> (see viewByRef in routes.go).
+		NewField("slug", TYPE_STRING, false).
+			WithLabel("Slug").
+			WithDescription("Optional; lets the post be opened at /posts/<slug> instead of /posts/<id>").
+			WithValidation("pattern", "^[a-z0-9]+(-[a-z0-9]+)*$").
+			WithValidation("patternMessage", "lowercase letters, numbers and hyphens only").
+			WithOption("width", "300px"),
+
+		NewField("tags", TYPE_LABEL, false).
+			WithLabel("Tags").
+			WithDescription("Type a tag and press Enter to add it").
+			WithAutocomplete(map[string]interface{}{"function": existingTags}).
+			NonSortable().
+			NonSearchable(),
 
 		NewField("images", TYPE_IMAGE, false).
 			WithLabel("Images").
@@ -109,9 +145,7 @@ func (p *Posts) fieldset() []Field {
 
 		// content's markdown is compiled server-side on save (AfterFieldset below)
 		// into the shared html module (html_id); view mode renders compiled_html.
-		NewField("compiled_html", TYPE_HTML, false).
-			AsReference("html_id", TYPE_INT).
-			DestinationTable("html").
+		NewHTMLField("compiled_html").
 			WithLabel("Content (HTML)").
 			InModes(MODE_VIEW),
 
@@ -219,6 +253,12 @@ func NewPosts() *Posts {
 			// for this module entirely (see buildVisibilityCondition).
 			VisibilityUsersField:  "visible_users",
 			VisibilityGroupsField: "visible_groups",
+			// GET /posts/<ref>: a numeric ref is the id, same as always; anything else is looked up as a slug
+			// and rewritten to its id (see viewByRef in routes.go) before the normal, rights-checked View runs.
+			// Registered ahead of the engine's own GET /{id}, so it replaces that route entirely for posts.
+			CustomRoutes: []CustomRoute{
+				{Path: "/{ref}", Methods: []string{"GET"}, Handler: viewByRef},
+			},
 		},
 	}
 

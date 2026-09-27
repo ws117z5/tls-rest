@@ -30,7 +30,7 @@ const PostsList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
           key={row.id}
           className="card"
           style={{ cursor: "pointer" }}
-          onClick={() => navigate(`/${module}/${row.id}`)}
+          onClick={() => navigate(`/${module}/${row.slug || row.id}`)}
         >
           <div className="card-body py-2">
             <h5 className="card-title mb-1">{row.title || `#${row.id}`}</h5>

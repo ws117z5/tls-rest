@@ -3,6 +3,7 @@ package module
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"tls-rest/go/engine/controllers/db/cache"
@@ -220,6 +221,12 @@ func (p *PageAbstract) handleGet(w http.ResponseWriter, r *http.Request) {
 		if v.fieldVisibleInSchema(f) {
 			fields = append(fields, f)
 		}
+	}
+
+	// Same as a module's fieldset: turn option providers and table-backed selects into concrete option lists.
+	tableOpts := fetchTableFieldOptions(r.Context(), collectTableFieldRefs(fields, "f"))
+	for i, f := range fields {
+		fields[i] = resolveFieldOptions(r.Context(), f, v, fmt.Sprintf("f%d", i), tableOpts)
 	}
 
 	writePageJSON(w, http.StatusOK, map[string]interface{}{

@@ -88,6 +88,11 @@ var Module = &ModuleAbstract[interface{}]{
 			WithOptions(providerOptions).
 			WithValueWidth(300),
 
+		NewField("client_id", TYPE_STRING, false).
+			WithLabel("OAuth Client ID").
+			WithDescription("The app's own client id (e.g. the Android client id from Google Cloud). Sign-ins issued to it join the group below, existing users included and its rights apply; leave empty for a rule covering every sign-in of the provider (new users only)").
+			WithValueWidth(300),
+
 		NewField("group_id", TYPE_INT, true).
 			WithLabel("User Group").
 			WithDescription("New users signing in via this provider join this group").

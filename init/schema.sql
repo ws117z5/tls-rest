@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict kt1eirZDBvf3sePZwdBrBel3Bi0hz4CWgGm0jz9kwk0EfjfToZnkb1i5hQznnd0
+\restrict sbPWQR7aOgtMQYMt6tgLwbO92y1kTCf8ECKPTlzqHxoHWVX9v0hzrS5eW2YXk1L
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -349,7 +349,8 @@ CREATE TABLE public.external_config (
     app_module text NOT NULL,
     provider text NOT NULL,
     group_id integer NOT NULL,
-    related_modules jsonb
+    related_modules jsonb,
+    client_id character varying(255)
 );
 
 
@@ -462,7 +463,8 @@ CREATE TABLE public.html (
     updated timestamp with time zone DEFAULT now(),
     created_by integer,
     access integer DEFAULT 0,
-    compiled_html text
+    compiled_html text,
+    slug character varying(255)
 );
 
 
@@ -529,6 +531,43 @@ CREATE TABLE public.integration_test_table (
     description text,
     created_at timestamp with time zone DEFAULT now()
 );
+
+
+--
+-- Name: legal; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.legal (
+    id bigint NOT NULL,
+    uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    slug character varying(255) NOT NULL,
+    title character varying(255) NOT NULL,
+    effective character varying(255),
+    html_id bigint,
+    created_by integer,
+    created timestamp with time zone DEFAULT now() NOT NULL,
+    updated timestamp with time zone DEFAULT now() NOT NULL,
+    access integer DEFAULT 0 NOT NULL
+);
+
+
+--
+-- Name: legal_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.legal_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: legal_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.legal_id_seq OWNED BY public.legal.id;
 
 
 --
@@ -844,7 +883,9 @@ CREATE TABLE public.posts (
     access integer,
     visible_users jsonb,
     visible_groups jsonb,
-    html_id integer
+    html_id integer,
+    tags jsonb DEFAULT '[]'::jsonb NOT NULL,
+    slug character varying(255)
 );
 
 
@@ -1232,6 +1273,13 @@ ALTER TABLE ONLY public.images ALTER COLUMN id SET DEFAULT nextval('public.image
 
 
 --
+-- Name: legal id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.legal ALTER COLUMN id SET DEFAULT nextval('public.legal_id_seq'::regclass);
+
+
+--
 -- Name: likes id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1441,6 +1489,22 @@ ALTER TABLE ONLY public.images
 
 ALTER TABLE ONLY public.integration_test_table
     ADD CONSTRAINT integration_test_table_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: legal legal_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.legal
+    ADD CONSTRAINT legal_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: legal legal_slug_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.legal
+    ADD CONSTRAINT legal_slug_key UNIQUE (slug);
 
 
 --
@@ -1660,10 +1724,10 @@ CREATE INDEX idx_comments_target ON public.comments USING btree (module_id, row_
 
 
 --
--- Name: idx_external_config_provider; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_external_config_provider_client; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_external_config_provider ON public.external_config USING btree (provider);
+CREATE UNIQUE INDEX idx_external_config_provider_client ON public.external_config USING btree (provider, COALESCE(client_id, ''::character varying));
 
 
 --
@@ -1678,6 +1742,20 @@ CREATE UNIQUE INDEX idx_friends_pair ON public.friends USING btree (LEAST(reques
 --
 
 CREATE INDEX idx_friends_recipient ON public.friends USING btree (recipient_id, status);
+
+
+--
+-- Name: idx_html_slug; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_html_slug ON public.html USING btree (slug) WHERE ((slug IS NOT NULL) AND ((slug)::text <> ''::text));
+
+
+--
+-- Name: idx_legal_html_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_legal_html_id ON public.legal USING btree (html_id);
 
 
 --
@@ -1720,6 +1798,20 @@ CREATE INDEX idx_payments_user ON public.payments USING btree (user_id, created 
 --
 
 CREATE INDEX idx_posts_html_id ON public.posts USING btree (html_id);
+
+
+--
+-- Name: idx_posts_slug; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX idx_posts_slug ON public.posts USING btree (slug) WHERE ((slug IS NOT NULL) AND ((slug)::text <> ''::text));
+
+
+--
+-- Name: idx_posts_tags; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_posts_tags ON public.posts USING gin (tags);
 
 
 --
@@ -1808,6 +1900,14 @@ ALTER TABLE ONLY public.cart
 
 
 --
+-- Name: legal legal_html_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.legal
+    ADD CONSTRAINT legal_html_id_fkey FOREIGN KEY (html_id) REFERENCES public.html(id);
+
+
+--
 -- Name: user_group_rights user_group_rights_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1835,7 +1935,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict kt1eirZDBvf3sePZwdBrBel3Bi0hz4CWgGm0jz9kwk0EfjfToZnkb1i5hQznnd0
+\unrestrict sbPWQR7aOgtMQYMt6tgLwbO92y1kTCf8ECKPTlzqHxoHWVX9v0hzrS5eW2YXk1L
 
 
 -- Durable role/rights seed.
@@ -1843,7 +1943,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict ZkMQrvQo5jwUMbIQ4ayJG4TcrKmsuGYXeQKtDnPsITUK4QgOBkJRZqmbed159t0
+\restrict nVNrZPj4Z3dxshIPRc9vxGTXx5yWM1JzyG5RRNIYbGw478p74y3kdqxmnqUAJLk
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -1976,5 +2076,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict ZkMQrvQo5jwUMbIQ4ayJG4TcrKmsuGYXeQKtDnPsITUK4QgOBkJRZqmbed159t0
+\unrestrict nVNrZPj4Z3dxshIPRc9vxGTXx5yWM1JzyG5RRNIYbGw478p74y3kdqxmnqUAJLk
 

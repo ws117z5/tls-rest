@@ -109,3 +109,12 @@ func Created() Field {
 		AsReadOnly().
 		InModes(MODE_LIST | MODE_VIEW)
 }
+
+// NewHTMLField builds a read-only rich-text field whose content lives in the shared html table: the module gets an
+// html_id column pointing at the html row, and the field (named name) reads that row's compiled_html. A module can
+// have one such field, since the stored column is always html_id.
+func NewHTMLField(name string) Field {
+	return NewField(name, TYPE_HTML, false).
+		AsReference("html_id", TYPE_INT, "compiled_html").
+		DestinationTable("html")
+}

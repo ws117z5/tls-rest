@@ -179,10 +179,12 @@ func (fe *FieldsetEngine) buildSelectQuery(params *QueryParams, mode int, includ
 	v := viewerForModule(fe.Request, fe.Module.ID)
 	cols := tableColumnsCached(fe.TableName)
 
+	var sqlFields []Field
 	for _, field := range fe.Fields {
 		if fe.shouldIncludeField(field, mode) && v.fieldReadableInData(field) {
 			if field.SQL != "" {
 				selectFields = append(selectFields, field.SQL+" AS "+field.Name)
+				sqlFields = append(sqlFields, field)
 			} else {
 				if len(cols) > 0 && !cols[strings.ToLower(field.Name)] {
 					continue
@@ -200,7 +202,7 @@ func (fe *FieldsetEngine) buildSelectQuery(params *QueryParams, mode int, includ
 		selectFields = append([]string{"COUNT(*) OVER() AS " + totalCountAlias}, selectFields...)
 	}
 
-	query := fmt.Sprintf("SELECT %s FROM %s", strings.Join(selectFields, ", "), fe.TableName)
+	query := fmt.Sprintf("SELECT %s FROM %s%s", strings.Join(selectFields, ", "), fe.TableName, ReferenceJoins(fe.TableName, sqlFields))
 
 	whereConditions := fe.buildScopeConditions(params, v, &argIndex, &args)
 	if len(whereConditions) > 0 {

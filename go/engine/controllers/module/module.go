@@ -734,6 +734,9 @@ func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 		// TableSource-backed table, kept out of the fieldset's own SELECT and
 		// loaded via the /table/{field} endpoint).
 		sqlType = "JSONB"
+	case TYPE_LABEL:
+		// A label field stores a JSON array of strings (["a","b"]).
+		sqlType = "JSONB"
 	case TYPE_MONEY:
 		sqlType = "NUMERIC(15,2)"
 	default:
