@@ -102,15 +102,13 @@ func parseTarget(r *http.Request) (modID string, rowID int, ok bool) {
 }
 
 // handleGet returns the current reaction counts for (module, row), plus the
-// caller's own reaction if signed in. Works for anonymous callers.
+// caller's own reaction if signed in. Works for anonymous callers, and for any
+// target id (a bare aggregate count, not the target's content, so there's
+// nothing here for a hidden/nonexistent target to leak).
 func handleGet(w http.ResponseWriter, r *http.Request) {
 	modID, rowID, ok := parseTarget(r)
 	if !ok {
 		http.Error(w, "bad target", http.StatusBadRequest)
-		return
-	}
-	if !comments.CanViewTarget(r, modID, rowID) {
-		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 

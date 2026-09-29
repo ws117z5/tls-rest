@@ -154,7 +154,7 @@ func NewField(name, fieldType string, required bool) Field {
 		Label:      name,                    // Default label is the field name
 		Filterable: fieldType != TYPE_TABLE, // Tables are not filterable by default
 		Sortable:   fieldType != TYPE_TABLE, // Tables are not sortable by default
-		Searchable: fieldType == TYPE_STRING || fieldType == TYPE_TEXT,
+		Searchable: fieldType == TYPE_STRING || fieldType == TYPE_TEXT || fieldType == TYPE_MARKDOWN,
 		Mode:       MODE_ALL, // Default to all modes
 		Validation: make(map[string]interface{}),
 		Options:    make(map[string]interface{}),

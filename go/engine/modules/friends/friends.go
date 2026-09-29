@@ -35,7 +35,7 @@ var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "friend_requests",
 	Name:    "Friend Requests",
 	Icon:    "user-groups",
-	Submenu: "engine",
+	Submenu: "users",
 	Fields: []field.Field{
 		field.NewField("requester_id", field.TYPE_INT, true).WithLabel("Requester"),
 		field.NewField("recipient_id", field.TYPE_INT, true).WithLabel("Recipient"),

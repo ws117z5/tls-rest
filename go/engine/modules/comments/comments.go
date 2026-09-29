@@ -136,9 +136,10 @@ func commentLikes(db *pgdb.Db, ids []int, userID int) (map[int]likeSummary, erro
 // maxBodyRunes caps one comment's length.
 const maxBodyRunes = 5000
 
-// CanViewTarget reports whether the viewer may see the record a comment or
-// reaction hangs off. Replies (module "comments") are resolved up to the
-// record at the root of their thread, whose own visibility rules then apply.
+// CanViewTarget reports whether the viewer may see the record a comment or reaction hangs off. A target that doesn't
+// exist at all (never created, or already deleted) has nothing to protect, so it's treated as viewable — only a
+// target that EXISTS but sits outside the viewer's visibility is denied. Replies (module "comments") are resolved up
+// to the record at the root of their thread, whose own visibility rules then apply.
 func CanViewTarget(r *http.Request, modID string, rowID int) bool {
 	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
@@ -153,6 +154,9 @@ func CanViewTarget(r *http.Request, modID string, rowID int) bool {
 			return false
 		}
 		modID, rowID = functions.Coerce[string](parent["module_id"]), functions.Int(parent["row_id"])
+	}
+	if !module.RowExists(r, modID, int64(rowID)) {
+		return true
 	}
 	return module.CanViewRow(r, modID, int64(rowID))
 }

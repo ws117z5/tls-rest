@@ -25,7 +25,7 @@ var Module = &module.ModuleAbstract[interface{}]{
 	ID:      "deletion_requests",
 	Name:    "Deletion Requests",
 	Icon:    "user-delete-request",
-	Submenu: "engine",
+	Submenu: "users",
 	Fields: []field.Field{
 		field.NewField("email", field.TYPE_STRING, true).WithLabel("Email"),
 		field.NewField("user_id", field.TYPE_INT, false).WithLabel("User ID"),

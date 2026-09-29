@@ -76,6 +76,21 @@ func CanViewRow(r *http.Request, moduleID string, id int64) bool {
 	return err == nil && row != nil
 }
 
+// RowExists reports whether a row with this id exists in moduleID's table at all, ignoring rights entirely. Used to
+// tell "nothing to protect" (the id was never created, or was already deleted) apart from "exists but is hidden".
+func RowExists(r *http.Request, moduleID string, id int64) bool {
+	bc := moduleControllers[moduleID]
+	if bc == nil {
+		return false
+	}
+	db, err := bc.Engine.Module.getDB(r.Context())
+	if err != nil {
+		return false
+	}
+	row, err := db.GetOne("SELECT 1 FROM "+bc.Engine.TableName+" WHERE id = $1", id)
+	return err == nil && row != nil
+}
+
 // CanEditRow is CanViewRow's write counterpart: the same checks Edit applies (author-only on owner-scoped/sharing modules).
 func CanEditRow(r *http.Request, moduleID string, id int64) bool {
 	bc := moduleControllers[moduleID]

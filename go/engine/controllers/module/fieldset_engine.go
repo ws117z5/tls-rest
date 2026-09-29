@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,12 +19,11 @@ import (
 
 // QueryParams holds pagination and filtering parameters
 type QueryParams struct {
-	Page    int                    `url:"page,default:1"`
-	Limit   int                    `url:"limit,default:20"`
-	Sort    string                 `url:"sort"`
-	Order   string                 `url:"order"`
-	Search  string                 `url:"search"`
-	Filters map[string]interface{} `url:"filters"`
+	Page   int    `url:"page,default:1"`
+	Limit  int    `url:"limit,default:20"`
+	Sort   string `url:"sort"`
+	Order  string `url:"order"`
+	Search string `url:"search"`
 }
 
 // QueryResult contains the result of a query with pagination info
@@ -137,24 +135,27 @@ func tableColumns(db *pgdb.Db, table string) (map[string]bool, error) {
 	return cols, nil
 }
 
-// UnmarshalURL satisfies the urlstruct interface
-func (p *QueryParams) UnmarshalURL(values url.Values) error {
-	if p.Filters == nil {
-		p.Filters = make(map[string]interface{})
+// dotFilters reads ?filters.<field>=value (and the legacy ?filters[field]=value) straight off the request.
+// go-pg/urlstruct (ParseQueryParams) has no support for decoding into a map-typed struct field, so a
+// map[string]interface{} tagged `url:"filters"` is never actually populated by it — this reads the same
+// query values without going through that library.
+func dotFilters(r *http.Request) map[string]interface{} {
+	if r == nil {
+		return nil
 	}
-
-	for key, vals := range values {
+	out := map[string]interface{}{}
+	for key, vals := range r.URL.Query() {
 		if len(vals) == 0 || vals[0] == "" {
 			continue
 		}
-
-		if strings.HasPrefix(key, "filters.") {
-			filterKey := strings.TrimPrefix(key, "filters.")
-			p.Filters[filterKey] = vals[0]
+		switch {
+		case strings.HasPrefix(key, "filters."):
+			out[strings.TrimPrefix(key, "filters.")] = vals[0]
+		case strings.HasPrefix(key, "filters[") && strings.HasSuffix(key, "]"):
+			out[key[len("filters["):len(key)-1]] = vals[0]
 		}
 	}
-
-	return nil
+	return out
 }
 
 // totalCountAlias is the COUNT(*) OVER() column ExecuteQuery rides along
@@ -245,8 +246,8 @@ func (fe *FieldsetEngine) buildScopeConditions(params *QueryParams, v viewer, ar
 		}
 	}
 
-	if params.Filters != nil {
-		conds = append(conds, fe.buildFilterConditions(params.Filters, argIndex, args)...)
+	if filters := dotFilters(fe.Request); len(filters) > 0 {
+		conds = append(conds, fe.buildFilterConditions(filters, argIndex, args)...)
 	}
 
 	conds = append(conds, fe.buildDeclaredFilterConditions(argIndex, args)...)
@@ -350,7 +351,9 @@ func (fe *FieldsetEngine) BuildCountQuery(params *QueryParams) (string, []interf
 
 	query := fmt.Sprintf("SELECT COUNT(*) FROM %s", fe.TableName)
 
-	v := viewerFromRequest(fe.Request)
+	// Same viewer as buildSelectQuery — viewerFromRequest (moduleID "") would treat every field as
+	// unrestricted, letting a hidden field back into the count's own search/filter conditions.
+	v := viewerForModule(fe.Request, fe.Module.ID)
 	whereConditions := fe.buildScopeConditions(params, v, &argIndex, &args)
 	if len(whereConditions) > 0 {
 		query += " WHERE " + strings.Join(whereConditions, " AND ")
@@ -450,7 +453,7 @@ func searchable(f Field) bool {
 	if !f.Searchable {
 		return false
 	}
-	return f.Type == TYPE_STRING || f.Type == TYPE_TEXT
+	return f.Type == TYPE_STRING || f.Type == TYPE_TEXT || f.Type == TYPE_MARKDOWN
 }
 
 // hasSearchableFields reports whether any field the viewer may read takes part in search.
@@ -468,7 +471,13 @@ func (fe *FieldsetEngine) buildSearchConditions(v viewer, search string, argInde
 
 	for _, field := range fe.Fields {
 		if searchable(field) && v.fieldReadableInData(field) {
-			conditions = append(conditions, fmt.Sprintf("%s ILIKE $%d", field.Name, *argIndex))
+			// A virtual/computed field (e.g. posts.author) has no real column named field.Name; its SQL
+			// expression is what must be matched (same convention as filters.go's filterColumn).
+			expr := field.Name
+			if field.SQL != "" {
+				expr = field.SQL
+			}
+			conditions = append(conditions, fmt.Sprintf("%s ILIKE $%d", expr, *argIndex))
 			*args = append(*args, "%"+search+"%")
 			*argIndex++
 		}

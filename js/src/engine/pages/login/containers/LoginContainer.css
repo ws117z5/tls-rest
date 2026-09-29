@@ -221,3 +221,82 @@
 .login-link:hover strong {
     text-decoration: underline;
 }
+
+/* --- dark theme ---
+   This file is bundled into the JS chunk and its <style> tag lands in <head>
+   after theme-dark.css's own rules, so it wins ties on load order alone; these
+   overrides also carry the extra [data-theme="dark"] specificity so they win
+   regardless. Colors reuse the app's --app-dark-* tokens (css/theme-dark.css). */
+
+html[data-theme="dark"] .login-card {
+    background: var(--app-dark-surface);
+    border-color: var(--app-dark-border);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+html[data-theme="dark"] .login-title {
+    color: var(--app-dark-text);
+}
+
+html[data-theme="dark"] .login-subtitle {
+    color: var(--app-dark-muted);
+}
+
+html[data-theme="dark"] .login-error {
+    color: #f3b4b4;
+    background: rgba(159, 29, 29, 0.25);
+    border-color: rgba(159, 29, 29, 0.5);
+}
+
+html[data-theme="dark"] .login-reason {
+    color: #a9d1f7;
+    background: rgba(11, 74, 143, 0.25);
+    border-color: rgba(11, 74, 143, 0.5);
+}
+
+html[data-theme="dark"] .login-label {
+    color: var(--app-dark-muted);
+}
+
+html[data-theme="dark"] .login-input {
+    color: var(--app-dark-text);
+    background: var(--app-dark-raised);
+    border-color: var(--app-dark-border);
+}
+
+html[data-theme="dark"] .login-input:focus {
+    border-color: #5b8def;
+    box-shadow: 0 0 0 3px rgba(91, 141, 239, 0.25);
+}
+
+html[data-theme="dark"] .login-divider {
+    color: var(--app-dark-muted);
+}
+
+html[data-theme="dark"] .login-divider::before,
+html[data-theme="dark"] .login-divider::after {
+    background: var(--app-dark-border);
+}
+
+html[data-theme="dark"] .auth-button {
+    color: var(--app-dark-text);
+    background: var(--app-dark-raised);
+    border-color: var(--app-dark-border);
+}
+
+html[data-theme="dark"] .auth-button:hover:not(:disabled) {
+    background: var(--app-dark-surface);
+    border-color: var(--app-dark-border);
+}
+
+html[data-theme="dark"] .auth-button:active:not(:disabled) {
+    background: var(--app-dark-bg);
+}
+
+html[data-theme="dark"] .login-link {
+    color: var(--app-dark-muted);
+}
+
+html[data-theme="dark"] .login-link strong {
+    color: var(--app-dark-link);
+}
