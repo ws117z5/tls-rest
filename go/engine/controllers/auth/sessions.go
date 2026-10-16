@@ -38,7 +38,7 @@ func BumpRightsEpoch() { atomic.AddInt64(&rightsEpoch, 1) }
 // Anonymous sessions (UserID <= 0) resolve as a member of auth.GuestGroupID
 // (module defaults still apply on top) and are never admin.
 func fillSessionRights(ctx context.Context, s *cache.Session) {
-	s.ModuleModes, s.FieldRights, s.SpecialRights, s.FilterFieldRights, s.AccessLevel, s.IsAdmin = resolveSessionRights(ctx, s.UserID)
+	s.ModuleModes, s.FieldRights, s.SpecialRights, s.FilterFieldRights, s.AccessLevel, s.IsAdmin, s.Role = resolveSessionRights(ctx, s.UserID)
 	s.RightsEpoch = CurrentRightsEpoch()
 	// Resolve config alongside rights so a freshly created/refreshed session has
 	// both populated.

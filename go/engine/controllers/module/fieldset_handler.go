@@ -146,11 +146,21 @@ func resolveAutocompleteView(ctx context.Context, f *Field, id string, values ma
 }
 
 // findField returns a pointer to the named field within fields, or nil when the
-// fieldset has no such field.
+// fieldset has no such field. Top-level names win over a same-named TYPE_TABLE
+// column; only after no top-level match does it recurse into each TYPE_TABLE
+// field's own TableColumns (e.g. config's module_views "view" column), so a
+// table's own autocomplete columns reuse this same /autocomplete/{field} route.
 func findField(fields []Field, name string) *Field {
 	for i := range fields {
 		if fields[i].Name == name {
 			return &fields[i]
+		}
+	}
+	for i := range fields {
+		if fields[i].Type == TYPE_TABLE && len(fields[i].TableColumns) > 0 {
+			if f := findField(fields[i].TableColumns, name); f != nil {
+				return f
+			}
 		}
 	}
 	return nil
@@ -420,6 +430,7 @@ func resolveFieldOptions(ctx context.Context, field Field, v viewer, key string,
 			"userID":  v.userID,
 			"isAdmin": v.isAdmin,
 			"level":   v.level,
+			"role":    v.role,
 		})
 		out.Options = newOpts
 		return out

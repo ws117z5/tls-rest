@@ -9,6 +9,7 @@ import (
 	_ "tls-rest/go/engine/modules/comments"
 	_ "tls-rest/go/engine/modules/contact"
 	_ "tls-rest/go/engine/modules/deletion"
+	_ "tls-rest/go/engine/modules/events"
 	_ "tls-rest/go/engine/modules/externalconfig"
 	_ "tls-rest/go/engine/modules/friends"
 	_ "tls-rest/go/engine/modules/html"
@@ -24,6 +25,7 @@ import (
 
 	// App modules
 	_ "tls-rest/go/modules/cart"
+	_ "tls-rest/go/modules/claudenotify"
 	_ "tls-rest/go/modules/paymentplatforms"
 	_ "tls-rest/go/modules/payments"
 	_ "tls-rest/go/modules/posts"
@@ -41,6 +43,7 @@ import (
 
 	// App pages
 	_ "tls-rest/go/pages/arrayiterator"
+	_ "tls-rest/go/pages/calendar"
 	_ "tls-rest/go/pages/graph"
 	_ "tls-rest/go/pages/hashtool"
 	_ "tls-rest/go/pages/imageprocessing"

@@ -90,14 +90,16 @@ interface MenuState {
   // for the main drawer view. Unused above the mobile breakpoint.
   mobileSubmenu: string | null;
   unreadMessages: number;
+  dueEvents: number;
 }
 
 // The menu is server-driven: Config.getHead() are the top-level entries and
 // Config.getSubmenus() the dropdown groups, both already privilege-filtered.
 class Menu extends Component<{}, MenuState> {
-  state: MenuState = { isOpen: false, langOpen: false, mobileSubmenu: null, unreadMessages: 0 };
+  state: MenuState = { isOpen: false, langOpen: false, mobileSubmenu: null, unreadMessages: 0, dueEvents: 0 };
   private unsubscribeI18n?: () => void;
   private unreadSource?: EventSource;
+  private dueSource?: EventSource;
 
   // Class component, so useT()'s hook isn't available: subscribe manually and
   // force a re-render whenever the locale or a translation resolves.
@@ -113,12 +115,19 @@ class Menu extends Component<{}, MenuState> {
         const n = parseInt(e.data, 10);
         this.setState({ unreadMessages: isNaN(n) ? 0 : n });
       };
+      // Same pattern for event reminders — see events/notify.go's handleDueCount.
+      this.dueSource = new EventSource("/api/events/due-count");
+      this.dueSource.onmessage = (e) => {
+        const n = parseInt(e.data, 10);
+        this.setState({ dueEvents: isNaN(n) ? 0 : n });
+      };
     }
   }
   componentWillUnmount() {
     this.unsubscribeI18n?.();
     document.removeEventListener("click", this.handleDocClick);
     this.unreadSource?.close();
+    this.dueSource?.close();
   }
 
   // Close the language switcher on any outside click (same pattern as
@@ -144,11 +153,12 @@ class Menu extends Component<{}, MenuState> {
     const profileItem = head.find((i) => i.key === "profile");
     const loginItem = head.find((i) => i.key === "login");
     const messagesItem = head.find((i) => i.key === "messages");
+    const calendarItem = head.find((i) => i.key === "calendar");
     // A module needs MODE_LIST to get a menu link — routes for its other
     // granted modes (e.g. view-only) still register in app.tsx regardless.
     const showsInMenu = (i: MenuItem) => i.kind !== "module" || i.modes.indexOf("list") !== -1;
     const leftHead = head
-      .filter((i) => i.key !== "profile" && i.key !== "login" && i.key !== "messages")
+      .filter((i) => i.key !== "profile" && i.key !== "login" && i.key !== "messages" && i.key !== "calendar")
       .filter(showsInMenu);
 
     const renderHeadItem = (item: MenuItem, idx: number): React.ReactNode => {
@@ -288,6 +298,27 @@ class Menu extends Component<{}, MenuState> {
                       {this.state.unreadMessages > 0 && (
                         <span className="menu-message-badge">
                           {this.state.unreadMessages > 99 ? "99+" : this.state.unreadMessages}
+                        </span>
+                      )}
+                    </span>
+                  </RouterNavLink>
+                </li>
+              )}
+
+              {authed && calendarItem && (
+                <li className="nav-item">
+                  <RouterNavLink
+                    to={calendarItem.path}
+                    onClick={this.close}
+                    title={t("Calendar")}
+                    aria-label={t("Calendar")}
+                    className={({ isActive }: { isActive: boolean }) => `nav-link${isActive ? " active" : ""}`}
+                  >
+                    <span className="menu-message-badge-wrap">
+                      <Icon name="calendar" />
+                      {this.state.dueEvents > 0 && (
+                        <span className="menu-message-badge">
+                          {this.state.dueEvents > 99 ? "99+" : this.state.dueEvents}
                         </span>
                       )}
                     </span>

@@ -59,9 +59,9 @@ func SecureHeaders(next http.Handler) http.Handler {
 		nonce := httpx.NewNonce()
 		h.Set("Content-Security-Policy", "default-src 'self'; "+
 			"script-src 'self' 'nonce-"+nonce+"' 'unsafe-eval' 'wasm-unsafe-eval' https://accounts.google.com; "+
-			"style-src 'self' 'unsafe-inline' https://accounts.google.com; "+
+			"style-src 'self' 'unsafe-inline' https://accounts.google.com https://fonts.googleapis.com; "+
 			"img-src 'self' data: blob: https:; "+
-			"font-src 'self' data:; "+
+			"font-src 'self' data: https://fonts.gstatic.com; "+
 			"connect-src 'self' https: http: ws: wss:; "+
 			"media-src 'self' blob:; "+
 			"worker-src 'self' blob:; "+

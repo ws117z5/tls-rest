@@ -251,7 +251,7 @@ func allModesMask() int {
 // rights, per-module field/filter rights, access level and admin status in
 // one round trip, instead of calling the Resolve* functions below separately.
 // Those stay as-is for their other, narrower callers.
-func resolveSessionRights(ctx context.Context, userID int) (modes ModuleModeRights, fieldRights map[string]map[string]int, specialRights map[string]map[string]bool, filterFieldRights map[string]map[string]bool, accessLevel int, isAdmin bool) {
+func resolveSessionRights(ctx context.Context, userID int) (modes ModuleModeRights, fieldRights map[string]map[string]int, specialRights map[string]map[string]bool, filterFieldRights map[string]map[string]bool, accessLevel int, isAdmin bool, role string) {
 	modes = ModuleModeRights{}
 	for module, def := range ModuleDefaults() {
 		modes[module] = defaultModesFor(def)
@@ -266,19 +266,20 @@ func resolveSessionRights(ctx context.Context, userID int) (modes ModuleModeRigh
 
 	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
-		return modes, fieldRights, specialRights, filterFieldRights, accessLevel, false
+		return modes, fieldRights, specialRights, filterFieldRights, accessLevel, false, ""
 	}
 
 	query, args := combinedRightsQuery(userID)
 	rows, err := db.RQuery(query, args...)
 	if err != nil || len(rows) == 0 {
-		return modes, fieldRights, specialRights, filterFieldRights, accessLevel, false
+		return modes, fieldRights, specialRights, filterFieldRights, accessLevel, false, ""
 	}
 	row := rows[0]
 
 	accessLevel = functions.Int(row["access_level"])
 	if userID > 0 {
 		isAdmin, _ = row["is_admin"].(bool)
+		role = functions.Coerce[string](row["user_role"])
 	}
 
 	acc := map[string]map[string]int{}
@@ -332,7 +333,15 @@ func resolveSessionRights(ctx context.Context, userID int) (modes ModuleModeRigh
 			}
 		}
 	}
+	// Group rights (+ module default already seeded above).
 	applyRights(row["group_rights"])
+
+	// Role ceiling: narrows what the group just granted, per module the role
+	// declares a restriction for — never elevates, and runs before user rights
+	// so an admin's explicit per-user grant (below) stays exempt from it.
+	applyRoleCeiling(row["role_rights"], modes, acc, unrestricted, filterAcc, filterUnrestricted, specialRights)
+
+	// User rights: additive on top of the (group, role-ceiling'd) result.
 	applyRights(row["user_rights"])
 
 	for m, names := range filterAcc {
@@ -347,7 +356,87 @@ func resolveSessionRights(ctx context.Context, userID int) (modes ModuleModeRigh
 		}
 	}
 
-	return modes, fieldRights, specialRights, filterFieldRights, accessLevel, isAdmin
+	return modes, fieldRights, specialRights, filterFieldRights, accessLevel, isAdmin, role
+}
+
+// applyRoleCeiling narrows modes/fieldAcc/filterAcc/specialAcc down to what the
+// user's role allows, per module — only for a module the role declares a
+// restriction for; every other module is left exactly as the group pass set
+// it (the role doesn't restrict it). Must run after group rights are applied
+// (it narrows exactly what the group just granted) and before user rights are
+// added (those stay exempt from the ceiling).
+//
+// fieldUnrestricted[m]/filterUnrestricted[m] being false AND the module having
+// no entry in fieldAcc/filterAcc at all both mean the same thing here — "the
+// group never restricted this module" — so both are treated as unrestricted
+// when deciding whether the role's own restriction becomes the whole ceiling
+// or must be intersected with an existing one.
+func applyRoleCeiling(
+	list interface{},
+	modes ModuleModeRights,
+	fieldAcc map[string]map[string]int, fieldUnrestricted map[string]bool,
+	filterAcc map[string]map[string]bool, filterUnrestricted map[string]bool,
+	specialAcc map[string]map[string]bool,
+) {
+	items, _ := list.([]interface{})
+	for _, item := range items {
+		entry, _ := item.(map[string]interface{})
+		if entry == nil {
+			continue
+		}
+		m, _ := entry["module"].(string)
+		if m == "" {
+			continue
+		}
+
+		// The row's existence is itself the restriction, even a modes bitmask
+		// of 0 (an admin deliberately locking the role out of this module).
+		modes[m] &= functions.Int(entry["modes"])
+
+		if ceiling, empty := fieldRightsFromValue(entry["fields"]); !empty && len(ceiling) > 0 {
+			if fieldUnrestricted[m] || fieldAcc[m] == nil {
+				fieldUnrestricted[m] = false
+				fieldAcc[m] = ceiling
+			} else {
+				for field := range fieldAcc[m] {
+					mask, ok := ceiling[field]
+					if !ok {
+						delete(fieldAcc[m], field)
+						continue
+					}
+					fieldAcc[m][field] &= mask
+				}
+			}
+		}
+
+		if ceiling, empty := filterFieldsFromValue(entry["filter_fields"]); !empty && len(ceiling) > 0 {
+			if filterUnrestricted[m] || filterAcc[m] == nil {
+				filterUnrestricted[m] = false
+				filterAcc[m] = ceiling
+			} else {
+				for name := range filterAcc[m] {
+					if !ceiling[name] {
+						delete(filterAcc[m], name)
+					}
+				}
+			}
+		}
+
+		// Special rights have no "unrestricted" sentinel (they're purely
+		// additive grants) — a module the group granted none of can't gain any
+		// from the role, so there's nothing to intersect.
+		if ids := specialRightIDs(entry["special_rights"]); len(ids) > 0 && specialAcc[m] != nil {
+			ceiling := make(map[string]bool, len(ids))
+			for _, id := range ids {
+				ceiling[id] = true
+			}
+			for id := range specialAcc[m] {
+				if !ceiling[id] {
+					delete(specialAcc[m], id)
+				}
+			}
+		}
+	}
 }
 
 // filterFieldsFromValue is fieldRightsFromValue's counterpart for a stored
@@ -413,6 +502,12 @@ func combinedRightsQuery(userID int) (string, []interface{}) {
 		userRightsFilter = fmt.Sprintf("$%d", len(args))
 	}
 
+	userRoleFilter := "NULL"
+	if userID > 0 {
+		args = append(args, userID)
+		userRoleFilter = fmt.Sprintf("$%d", len(args))
+	}
+
 	query := fmt.Sprintf(`
 		WITH groups AS (%s),
 		gr AS (
@@ -420,21 +515,34 @@ func combinedRightsQuery(userID int) (string, []interface{}) {
 		),
 		ur AS (
 			SELECT module, modes, fields, special_rights, filter_fields FROM user_rights WHERE user_id = %s
+		),
+		my_role AS (
+			SELECT user_role FROM users WHERE id = %s
+		),
+		rr AS (
+			SELECT module, modes, fields, special_rights, filter_fields FROM user_role_rights
+			WHERE role = (SELECT user_role FROM my_role)
+			  AND group_id IN (SELECT group_id FROM groups)
 		)
 		SELECT
 			COALESCE(MAX(group_id), 0) AS access_level,
 			EXISTS (SELECT 1 FROM user_groups ug WHERE ug.is_admin AND ug.id IN (SELECT group_id FROM groups)) AS is_admin,
+			(SELECT user_role FROM my_role) AS user_role,
 			COALESCE((SELECT jsonb_agg(jsonb_build_object('module', module, 'modes', modes, 'fields', fields, 'special_rights', special_rights, 'filter_fields', filter_fields)) FROM gr), '[]'::jsonb) AS group_rights,
-			COALESCE((SELECT jsonb_agg(jsonb_build_object('module', module, 'modes', modes, 'fields', fields, 'special_rights', special_rights, 'filter_fields', filter_fields)) FROM ur), '[]'::jsonb) AS user_rights
+			COALESCE((SELECT jsonb_agg(jsonb_build_object('module', module, 'modes', modes, 'fields', fields, 'special_rights', special_rights, 'filter_fields', filter_fields)) FROM ur), '[]'::jsonb) AS user_rights,
+			COALESCE((SELECT jsonb_agg(jsonb_build_object('module', module, 'modes', modes, 'fields', fields, 'special_rights', special_rights, 'filter_fields', filter_fields)) FROM rr), '[]'::jsonb) AS role_rights
 		FROM groups
-	`, groupsCTE, userRightsFilter)
+	`, groupsCTE, userRightsFilter, userRoleFilter)
 
 	return query, args
 }
 
 // ResolveModuleModeRights builds the per-module allowed-mode bitmask for a
-// user: module default, OR-ed with group rights, OR-ed with the user's own
-// rights. An anonymous caller (id <= 0) resolves as a member of GuestGroupID.
+// user: module default, OR-ed with group rights, then narrowed by the user's
+// role (a ceiling over group-inherited rights only — see resolveSessionRights),
+// then OR-ed with the user's own individually-granted rights (exempt from the
+// role ceiling). An anonymous caller (id <= 0) resolves as a member of
+// GuestGroupID and has no role.
 func ResolveModuleModeRights(ctx context.Context, userID int) ModuleModeRights {
 	rights := ModuleModeRights{}
 	for module, def := range ModuleDefaults() {
@@ -463,6 +571,18 @@ func ResolveModuleModeRights(ctx context.Context, userID int) ModuleModeRights {
 	}
 
 	if userID > 0 {
+		if rows, rerr := db.RQuery(`
+			SELECT module, modes FROM user_role_rights
+			WHERE role = (SELECT user_role FROM users WHERE id = $1)
+			  AND group_id IN (`+groupExpr+`)
+		`, userID); rerr == nil {
+			for _, row := range rows {
+				if m, _ := row["module"].(string); m != "" {
+					rights[m] &= functions.Int(row["modes"])
+				}
+			}
+		}
+
 		if rows, uerr := db.RQuery(`
 			SELECT module, modes FROM user_rights WHERE user_id = $1
 		`, userID); uerr == nil {

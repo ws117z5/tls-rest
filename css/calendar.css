@@ -1,0 +1,157 @@
+/* Calendar page (js/src/pages/calendar/Calendar.tsx). The grid itself stays
+   compact and anchored to the top-left of the page instead of stretching
+   full width; selecting a range opens a persistent panel to its right
+   (not a floating overlay). Below the breakpoint the panel moves above the
+   grid instead of beside it — DOM order is grid-then-panel, so
+   column-reverse flips only the painted order, not the markup. */
+.calendar-layout {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.calendar-grid-card {
+  flex: 0 1 auto;
+  max-width: 760px;
+  width: 100%;
+  overflow-x: auto;
+}
+
+.calendar-side-panel {
+  flex: 1 1 260px;
+  max-width: 320px;
+  min-width: 240px;
+}
+
+@media (max-width: 768px) {
+  .calendar-layout {
+    flex-direction: column-reverse;
+  }
+  .calendar-grid-card,
+  .calendar-side-panel {
+    max-width: 100%;
+  }
+}
+
+/* Grid chrome, themed off the same --module-* variables module-page cards
+   use (fieldset.css) so light/dark both work without any calendar-specific
+   theme rules — literal fallbacks cover the (unlikely) case fieldset.css
+   isn't loaded on this page for some other reason. */
+.calendar-month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 1px;
+  background: var(--module-border, #e7eae8);
+}
+
+.calendar-day-cell {
+  background: #fff;
+  min-height: 100px;
+  padding: 4px;
+  cursor: pointer;
+}
+
+html[data-theme="dark"] .calendar-day-cell {
+  background: var(--app-dark-surface, #262b31);
+}
+
+.calendar-day-cell.calendar-day-outside {
+  opacity: 0.5;
+}
+
+.calendar-day-number {
+  font-size: 0.85rem;
+  color: var(--module-muted, #6b7570);
+}
+
+.calendar-day-number.calendar-day-today {
+  font-weight: 700;
+  color: var(--module-accent-strong, #35d67e);
+}
+
+.calendar-event-chip {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  padding: 0 0.4rem;
+  margin-bottom: 2px;
+  background: var(--module-accent-soft, rgba(111, 242, 160, 0.18));
+  color: var(--module-ink, #16261c);
+}
+
+.calendar-time-grid {
+  border: 1px solid var(--module-border, #e7eae8);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.calendar-time-header {
+  display: flex;
+  border-bottom: 1px solid var(--module-border, #e7eae8);
+}
+
+.calendar-time-header-cell {
+  flex: 1;
+  text-align: center;
+  padding: 6px 2px;
+  border-left: 1px solid var(--module-border, #e7eae8);
+  font-weight: 500;
+  color: var(--module-ink, #16261c);
+}
+
+.calendar-time-header-cell.calendar-day-today {
+  font-weight: 700;
+  color: var(--module-accent-strong, #35d67e);
+}
+
+.calendar-time-body {
+  display: flex;
+}
+
+.calendar-hour-gutter {
+  width: 48px;
+  flex-shrink: 0;
+}
+
+.calendar-hour-label {
+  font-size: 0.7rem;
+  color: var(--module-muted, #6b7570);
+  text-align: right;
+  padding-right: 4px;
+}
+
+.calendar-hour-row {
+  border-top: 1px solid var(--module-border, #e7eae8);
+}
+
+.calendar-time-col {
+  flex: 1;
+  position: relative;
+  border-left: 1px solid var(--module-border, #e7eae8);
+  user-select: none;
+}
+
+.calendar-drag-box {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  background: var(--module-accent-soft, rgba(111, 242, 160, 0.18));
+  border: 1px solid var(--module-accent-strong, #35d67e);
+  border-radius: 4px;
+}
+
+.calendar-event-block {
+  position: absolute;
+  left: 2px;
+  right: 2px;
+  overflow: hidden;
+  border-radius: 4px;
+  padding: 0 4px;
+  font-size: 0.75rem;
+  background: var(--module-accent, #6ff2a0);
+  color: var(--module-accent-ink, #06331c);
+}

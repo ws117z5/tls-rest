@@ -62,6 +62,20 @@ class TableView extends Component<TableViewProps, TableViewState> {
     this.unsubscribeI18n?.();
   }
 
+  // The surrounding form often mounts fields before the record itself has
+  // loaded (formValues = {}), so the mount-time fetch above can run with no
+  // "id" yet and permanently cache an empty result. Re-fetch once the context
+  // a TableData hook actually reads (id, and for the rights modules, module)
+  // arrives — same signature TableEdit already re-fetches on.
+  componentDidUpdate(prev: TableViewProps) {
+    if (this.shouldFetch() && this.sig(prev) !== this.sig(this.props)) this.load();
+  }
+
+  private sig(props: TableViewProps): string {
+    const fv = props.formValues || {};
+    return JSON.stringify({ id: fv.id, module: fv.module });
+  }
+
   private columns(): ColumnDef[] {
     return this.props.field?.tableFieldset || this.props.tableFieldset || [];
   }

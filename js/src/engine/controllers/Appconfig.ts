@@ -54,6 +54,26 @@ class AppConfig {
     static theme(): string {
         return AppConfig.config.theme || "light";
     }
+
+    // syncWithGoogleDefault: whether a newly-created event's own "sync with
+    // Google Calendar" checkbox (events.sync_with_google) should start
+    // checked — the user's own profile preference (Profile.tsx).
+    static syncWithGoogleDefault(): boolean {
+        return AppConfig.config.sync_with_google_default !== "false";
+    }
+
+    // moduleView resolves the admin-configured default view (ModulePage's layout toggle) for module+mode at this
+    // user's scope (global < group < user; see engine/controllers/config.Resolve), or undefined if none is set.
+    static moduleView(module: string, mode: string): string | undefined {
+        const raw = AppConfig.config.module_views;
+        if (!raw) return undefined;
+        try {
+            const map = JSON.parse(raw) as Record<string, string>;
+            return map[`${module}:${mode}`];
+        } catch {
+            return undefined;
+        }
+    }
 }
 
 export default AppConfig;

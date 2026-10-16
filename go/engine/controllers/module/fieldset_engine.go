@@ -313,6 +313,9 @@ func (fe *FieldsetEngine) buildVisibilityCondition(v viewer, argIndex *int, args
 				*argIndex++
 			}
 		}
+		if fe.Module.VisibilityExtraWhere != "" {
+			alt = append(alt, fe.Module.VisibilityExtraWhere)
+		}
 
 		if len(alt) == 0 {
 			return "FALSE"

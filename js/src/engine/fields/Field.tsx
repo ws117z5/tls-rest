@@ -1,6 +1,8 @@
 import React, { Suspense } from 'react';
 import { FIELD_TYPES, MODES, isImmutableField } from './FieldsetProvider';
 import { t } from '@engine/controllers/i18n';
+import { getTableFieldView } from '@engine/controllers/registry';
+import CascadingSelect from './Autocomplete/CascadingSelect';
 
 // Base field component props
 export interface BaseFieldProps {
@@ -136,6 +138,25 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
   // Autocomplete is an option (WithAutocomplete) on String/Int, not its own type.
   // TYPE_LABEL also takes WithAutocomplete, but its own Edit component queries suggestions itself (chips, not a single value).
   const autocompleteKind = field.type !== FIELD_TYPES.LABEL && (field.autocomplete ?? (field.options && (field.options as any).autocomplete));
+
+  // An autocomplete field that opted into widget:"select" needs its options
+  // dependent on the record being edited (e.g. its own id), not just the
+  // viewer's authority — WithOptionsCtx only exposes the latter. This posts
+  // the record's current form values to the same /autocomplete/{field}
+  // endpoint and renders every result as a real <select>, not a type-ahead.
+  if (autocompleteKind && field.options && (field.options as any).widget === 'select' && (mode === MODES.EDIT || mode === MODES.CREATE)) {
+    return (
+      <CascadingSelect
+        owner={props.module || ''}
+        field={field.name}
+        value={props.value}
+        context={props.formValues || {}}
+        disabled={field.readonly || props.disabled}
+        onChange={(v: string) => props.onChange && props.onChange(v)}
+      />
+    );
+  }
+
   if (autocompleteKind && AutocompleteEdit && (mode === MODES.EDIT || mode === MODES.CREATE)) {
     return (
       <Suspense fallback={null}>
@@ -169,6 +190,29 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
     );
   }
   
+  // A TYPE_TABLE field may be fully replaced by a module-declared component
+  // (modules/<module>/table.<fieldName>.tsx, auto-discovered the same way the
+  // per-mode view overrides above are — see controllers/registry.ts) instead of
+  // the generic Table Edit/View/List renderer, across every mode.
+  if (field.type === FIELD_TYPES.TABLE && props.module) {
+    const TableOverride = getTableFieldView(props.module, field.name);
+    if (TableOverride) {
+      return (
+        <Suspense fallback={null}>
+          <TableOverride
+            module={props.module}
+            field={field}
+            value={props.value}
+            formValues={props.formValues || {}}
+            mode={mode}
+            disabled={field.readonly || props.disabled}
+            onChange={props.onChange}
+          />
+        </Suspense>
+      );
+    }
+  }
+
   // Find the appropriate component for the field type and mode. A field may
   // opt into the select widget (widget:"select") even when its stored type is
   // e.g. Int (a foreign-key id) — honour that so table-backed selects render as

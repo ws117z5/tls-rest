@@ -396,7 +396,12 @@ func (bc *BaseController) validateRequiredFields(data map[string]interface{}, mo
 			continue
 		}
 
-		if field.Required {
+		// A field that declares a default_value is never "missing" — leaving it
+		// unsubmitted just means the default stands in (seeded onto filteredData
+		// further down, after this check). Same rule FieldsetFormClass.validateField
+		// already applies client-side; this brings the server in line with it.
+		hasDefault := field.DefaultValue != nil && field.DefaultValue != ""
+		if field.Required && !hasDefault {
 			if value, exists := data[field.Name]; !exists || value == nil || value == "" {
 				return fmt.Errorf("field '%s' is required", field.Name)
 			}

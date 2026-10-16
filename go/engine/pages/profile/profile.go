@@ -26,6 +26,13 @@ var Page = &module.PageAbstract{
 	Endpoint:     "/api/profile",
 	Editable:     true,
 	RequiresAuth: true,
+	Routes: []module.PageRoute{
+		{Path: "/api/profile/google/connect", Methods: []string{"GET"}, Handler: handleGoogleConnect},
+		{Path: "/api/profile/google/callback", Methods: []string{"GET"}, Handler: handleGoogleCallback},
+		{Path: "/api/profile/google/disconnect", Methods: []string{"POST"}, Handler: handleGoogleDisconnect},
+		{Path: "/api/profile/google/status", Methods: []string{"GET"}, Handler: handleGoogleStatus},
+		{Path: "/api/profile/claude-token", Methods: []string{"POST"}, Handler: handleGenerateClaudeToken},
+	},
 	Fields: []field.Field{
 		field.NewField("user_name", field.TYPE_STRING, true).
 			WithLabel("Username").WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
@@ -48,6 +55,13 @@ var Page = &module.PageAbstract{
 					{"value": "dark", "name": "Dark"},
 				}
 			}),
+		// Default state of a new event's own "sync with Google Calendar"
+		// checkbox (events.go's sync_with_google) — per-user, same config-row
+		// override mechanism as theme. Only meaningful once Google Calendar is
+		// connected below, but left always editable like theme is.
+		field.NewField("sync_with_google_default", field.TYPE_CHECKBOX, false).
+			WithLabel("New events sync with Google Calendar by default").
+			WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
 	},
 
 	Load: func(ctx context.Context, s *cache.Session) (map[string]interface{}, error) {
@@ -66,8 +80,15 @@ var Page = &module.PageAbstract{
 		if len(row) == 0 {
 			return nil, errors.New("No enrty found")
 		}
-		if cfg, err := db.GetOne("SELECT theme FROM config WHERE scope = 'user' AND scope_id = $1 LIMIT 1", s.UserID); err == nil && cfg != nil {
+		if cfg, err := db.GetOne("SELECT theme, sync_with_google_default FROM config WHERE scope = 'user' AND scope_id = $1 LIMIT 1", s.UserID); err == nil && cfg != nil {
 			row["theme"] = cfg["theme"]
+			if v := cfg["sync_with_google_default"]; v != nil {
+				row["sync_with_google_default"] = functions.Coerce[string](v) != "false"
+			} else {
+				row["sync_with_google_default"] = true // unset = the field's own default
+			}
+		} else {
+			row["sync_with_google_default"] = true
 		}
 		return row, nil
 	},
@@ -82,7 +103,17 @@ var Page = &module.PageAbstract{
 		}
 		if theme, ok := data["theme"]; ok {
 			delete(data, "theme")
-			if err := saveUserTheme(db, s.UserID, theme); err != nil {
+			if err := saveUserConfigValue(db, s.UserID, "theme", theme); err != nil {
+				return err
+			}
+		}
+		if sync, ok := data["sync_with_google_default"]; ok {
+			delete(data, "sync_with_google_default")
+			value := "true"
+			if !functions.Truthy(sync) {
+				value = "false"
+			}
+			if err := saveUserConfigValue(db, s.UserID, "sync_with_google_default", value); err != nil {
 				return err
 			}
 		}
@@ -103,16 +134,18 @@ var Page = &module.PageAbstract{
 	},
 }
 
-// saveUserTheme creates or updates the caller's personal theme override (config: scope=user, scope_id=userID).
-func saveUserTheme(db *pgdb.Db, userID int, theme interface{}) error {
+// saveUserConfigValue creates or updates one column of the caller's personal
+// config override row (scope=user, scope_id=userID) — theme and
+// sync_with_google_default both go through this.
+func saveUserConfigValue(db *pgdb.Db, userID int, column string, value interface{}) error {
 	row, err := db.GetOne("SELECT id FROM config WHERE scope = 'user' AND scope_id = $1 LIMIT 1", userID)
 	if err != nil {
 		return err
 	}
 	if row != nil {
-		_, err = db.UpdateRow("config", map[string]interface{}{"theme": theme}, "id", functions.Coerce[int](row["id"]))
+		_, err = db.UpdateRow("config", map[string]interface{}{column: value}, "id", functions.Coerce[int](row["id"]))
 	} else {
-		_, err = db.InsertRow("config", map[string]interface{}{"scope": "user", "scope_id": userID, "theme": theme})
+		_, err = db.InsertRow("config", map[string]interface{}{"scope": "user", "scope_id": userID, column: value})
 	}
 	if err == nil {
 		appconfig.BumpConfigEpoch()

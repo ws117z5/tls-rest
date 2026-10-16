@@ -37,12 +37,27 @@ export interface ModuleFiltersProps {
 // <mode>.tsx, or the <Name> segment of <mode>.<Name>.tsx.
 export type NamedViews = Record<string, React.ComponentType<ModuleViewProps>>;
 
+// Props a TYPE_TABLE field's custom full-replacement component receives — see
+// modules/<module>/table.<fieldName>.tsx below. Unlike the mode-keyed overrides
+// above (which the user picks between via a toggle), this is a single,
+// unconditional substitute for the generic Table Edit/View/List renderer.
+export interface TableFieldViewProps {
+    module: string;
+    field: Record<string, any>;      // this TYPE_TABLE field's own serialized meta (name, tableFieldset, options, ...)
+    value: any;                      // current stored value (JSON string, or whatever shape the field emits)
+    formValues: Record<string, any>; // sibling top-level field values of the record being edited/viewed
+    mode: number;                    // MODES.LIST | VIEW | EDIT | CREATE
+    disabled?: boolean;
+    onChange?: (value: any) => void;
+}
+
 export type ModuleViews = Partial<{
     list: NamedViews;
     view: NamedViews;
     edit: NamedViews;
     create: NamedViews;
     filters: React.ComponentType<ModuleFiltersProps>;
+    tables: Record<string, React.ComponentType<TableFieldViewProps>>; // TYPE_TABLE field name -> its full-replacement component
 }>;
 
 type ViewMode = "list" | "view" | "edit" | "create";
@@ -103,10 +118,57 @@ function loadRegistry(ctx: __WebpackModuleApi.RequireContext) {
 loadRegistry(engineContext);
 loadRegistry(userContext);
 
+// A TYPE_TABLE field's full-replacement component: modules/<module>/table.<fieldName>.tsx.
+// Separate pattern/scan from OVERRIDE_KEY above since it has no mode segment and no
+// optional <Name> suffix — it is one unconditional component per field, not a toggle.
+// Must match the literal regex passed to webpackContext below.
+const TABLE_OVERRIDE_KEY = /^\.\/([^/]+)\/table\.([A-Za-z0-9_-]+)\.tsx$/i;
+
+const tableEngineContext = import.meta.webpackContext("../modules", {
+    recursive: true,
+    mode: "lazy",
+    regExp: /^\.\/[^/]+\/table\.([A-Za-z0-9_-]+)\.tsx$/i,
+});
+
+const tableUserContext = import.meta.webpackContext("../../modules", {
+    recursive: true,
+    mode: "lazy",
+    regExp: /^\.\/[^/]+\/table\.([A-Za-z0-9_-]+)\.tsx$/i,
+});
+
+function loadTableRegistry(ctx: __WebpackModuleApi.RequireContext) {
+    ctx.keys().forEach((key: string) => {
+        const match = TABLE_OVERRIDE_KEY.exec(key);
+        if (!match) return;
+
+        const moduleName = match[1];
+        const fieldName = match[2].toLowerCase();
+        const component = React.lazy(() => ctx(key));
+
+        if (!registry[moduleName]) registry[moduleName] = {};
+        const views = registry[moduleName];
+        if (!views.tables) views.tables = {};
+        views.tables[fieldName] = component as React.ComponentType<TableFieldViewProps>;
+    });
+}
+
+loadTableRegistry(tableEngineContext);
+loadTableRegistry(tableUserContext);
+
 // getModuleViews returns the overrides for a module, tolerating case differences
 // between the backend module name and its directory name.
 export function getModuleViews(module: string): ModuleViews {
     return registry[module] || registry[module.toLowerCase()] || {};
+}
+
+// getTableFieldView returns the custom full-replacement component for one TYPE_TABLE
+// field (by name) of a module, or undefined when that field uses the generic renderer.
+export function getTableFieldView(
+    module: string,
+    fieldName: string
+): React.ComponentType<TableFieldViewProps> | undefined {
+    const views = getModuleViews(module);
+    return views.tables?.[fieldName.toLowerCase()];
 }
 
 export default registry;

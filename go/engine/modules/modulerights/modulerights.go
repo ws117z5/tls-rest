@@ -394,7 +394,120 @@ var UserRightsModule = &ModuleAbstract[interface{}]{
 	Rights:               make(map[int]int),
 }
 
+// roleOptions lists the roles a user_role_rights row may target — the same set
+// as users.go's user_role field.
+func roleOptions() []map[string]interface{} {
+	return []map[string]interface{}{
+		{"value": "user", "name": "User"},
+		{"value": "moderator", "name": "Moderator"},
+		{"value": "group_admin", "name": "Group Admin"},
+	}
+}
+
+// moduleLabel returns a registered module/page's menu label, falling back to
+// its bare id — same label source registeredModuleOptions (fieldset_handler.go)
+// uses, but that function is package-private, so this rebuilds just the map.
+func moduleLabels() map[string]string {
+	labels := map[string]string{}
+	for _, m := range RegisteredModuleMenu() {
+		name := m.Description
+		if name == "" {
+			name = m.Name
+		}
+		if name != "" {
+			labels[m.ID] = name
+		}
+	}
+	for _, p := range RegisteredPageMenu() {
+		if p.Name != "" {
+			labels[p.ID] = p.Name
+		}
+	}
+	return labels
+}
+
+// roleModuleOptions lists only the modules the ceiling's own group_id (a
+// sibling value, not the viewer's) actually has ANY user_group_rights row
+// for — a role can only narrow what the group grants, so a module the group
+// has no rights on at all isn't a meaningful choice here.
+func roleModuleOptions(ctx context.Context, _ string, values map[string]interface{}) []AutoOption {
+	groupID := functions.Int(values["group_id"])
+	if groupID <= 0 {
+		return []AutoOption{}
+	}
+	db, err := pgdb.GetInstanceCtx(ctx)
+	if err != nil {
+		return []AutoOption{}
+	}
+	rows, err := db.GetAll(`SELECT DISTINCT module FROM user_group_rights WHERE group_id = $1 ORDER BY module`, groupID)
+	if err != nil {
+		return []AutoOption{}
+	}
+	labels := moduleLabels()
+	out := make([]AutoOption, 0, len(rows))
+	for _, r := range rows {
+		id := functions.Coerce[string](r["module"])
+		if id == "" {
+			continue
+		}
+		label := labels[id]
+		if label == "" {
+			label = id
+		}
+		out = append(out, AutoOption{Value: id, Label: label})
+	}
+	return out
+}
+
+// RoleRightsModule holds per-role module rights. Unlike user_group_rights
+// (additive OR into effective rights) and user_rights (additive on top of
+// that), a role's rights are applied as a CEILING over group-inherited rights
+// only — a role can narrow what a user's group grants but never exceed it,
+// and never restricts rights an admin granted the user individually via
+// user_rights. See auth.resolveSessionRights.
+var RoleRightsModule = &ModuleAbstract[interface{}]{
+	ID:              "user_role_rights",
+	RightsAffecting: true,
+	Name:            "Role Rights",
+	Icon:            "role-rights",
+	Submenu:         "users",
+	Fields: []Field{
+		// Which group this ceiling applies within — a role's narrowing is
+		// scoped per group, not global: "moderator" can mean something
+		// different in Group A than in Group B. See auth.resolveSessionRights
+		// (the rr CTE filters on the viewer's own group_id too).
+		NewField("group_id", TYPE_INT, true).
+			WithLabel("User Group").
+			WithDescription("Group this role ceiling applies within").
+			WithOption("widget", "select").
+			WithOption("dataSource", "user_groups").
+			WithOption("valueField", "id").
+			WithOption("displayField", "name"),
+		NewField("role", TYPE_SELECT, true).
+			WithLabel("Role").
+			WithDescription("Role this ceiling applies to").
+			WithOptions(roleOptions),
+		// Unlike user_group_rights/user_rights' shared moduleField() (any
+		// registered module), this role ceiling only offers a module the
+		// selected group_id actually has rights on — see roleModuleOptions.
+		NewField("module", TYPE_SELECT, true).
+			WithLabel("Module").
+			WithDescription("Module these rights apply to — only modules the selected group has rights on").
+			WithOption("widget", "select").
+			WithAutocomplete(map[string]interface{}{"function": roleModuleOptions}),
+		modesField(),
+		fieldsField("user_role_rights"),
+		filterFieldsField("user_role_rights"),
+		specialRightsField("user_role_rights"),
+	},
+	// Administration module: no access unless explicitly granted (or admin).
+	DefaultPermission:    PERMISSION_DENY,
+	DefaultPermissionSet: true,
+	Rights:               make(map[int]int),
+}
+
 func init() {
 	app.RegisterModule(GroupRightsModule, "user_group_rights")
 	app.RegisterModule(UserRightsModule, "user_rights")
+	app.RegisterModule(RoleRightsModule, "user_role_rights")
 }

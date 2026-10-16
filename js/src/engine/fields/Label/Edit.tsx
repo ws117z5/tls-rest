@@ -170,8 +170,14 @@ class LabelEdit extends Component<LabelEditProps, LabelEditState> {
                         <input
                             ref={this.inputRef}
                             type="text"
-                            className="border-0 flex-grow-1"
-                            style={{ outline: "none", minWidth: 120, background: "transparent" }}
+                            style={{
+                                border: "none",
+                                outline: "none",
+                                background: "transparent",
+                                flex: "1 1 auto",
+                                minWidth: 120,
+                                width: "100%",
+                            }}
                             value={input}
                             placeholder={placeholder || translate("Type to add a label...")}
                             onChange={this.onInput}

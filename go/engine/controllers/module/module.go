@@ -78,18 +78,24 @@ type ModuleAbstract[T any] struct {
 	Controller            *BaseController
 	Overrides             HandlerOverrides
 	CustomRoutes          []CustomRoute
-	OwnerScoped           bool                         // non-admins only see rows they created
-	BeforeFieldset        Preprocessor                 // runs on the raw request body, before fieldset filtering
-	AfterFieldset         Preprocessor                 // runs on the filtered data, just before the DB write
-	RightsAffecting       bool                         // fires OnRightsChange after a successful write
-	ConfigAffecting       bool                         // fires OnConfigChange after a successful write
-	ListAscending         bool                         // default list order is oldest-first, not newest-first
-	KeyField              string                       // column used to address a record by; defaults to "id"
-	SoftDelete            bool                         // DELETE flags the row (needs a `deleted` column) instead of removing it
-	VisibilityField       string                       // boolean column that also grants visibility past the access-level gate
-	VisibilityUsersField  string                       // jsonb user-id sharing list; with VisibilityGroupsField, replaces the access-level gate
-	VisibilityGroupsField string                       // jsonb group-id sharing list; see VisibilityUsersField
-	CustomViews           map[string]map[string]string // mode -> {viewName: label}; documents frontend <mode>.<viewName>.tsx views (registry.ts discovers the files itself)
+	OwnerScoped           bool         // non-admins only see rows they created
+	BeforeFieldset        Preprocessor // runs on the raw request body, before fieldset filtering
+	AfterFieldset         Preprocessor // runs on the filtered data, just before the DB write
+	RightsAffecting       bool         // fires OnRightsChange after a successful write
+	ConfigAffecting       bool         // fires OnConfigChange after a successful write
+	ListAscending         bool         // default list order is oldest-first, not newest-first
+	KeyField              string       // column used to address a record by; defaults to "id"
+	SoftDelete            bool         // DELETE flags the row (needs a `deleted` column) instead of removing it
+	VisibilityField       string       // boolean column that also grants visibility past the access-level gate
+	VisibilityUsersField  string       // jsonb user-id sharing list; with VisibilityGroupsField, replaces the access-level gate
+	VisibilityGroupsField string       // jsonb group-id sharing list; see VisibilityUsersField
+	// VisibilityExtraWhere is a raw SQL condition OR'd into the sharing-list ACL
+	// (active when VisibilityUsersField/VisibilityGroupsField is set) alongside
+	// created_by/visible_users/visible_groups — e.g. "scope = 'global'" for a
+	// module with a row-level broadcast scope that sharing lists can't express.
+	// Static Go code set by the module, never user input.
+	VisibilityExtraWhere string
+	CustomViews          map[string]map[string]string // mode -> {viewName: label}; documents frontend <mode>.<viewName>.tsx views (registry.ts discovers the files itself)
 }
 
 // OnRightsChange is invoked after a successful write to a RightsAffecting
@@ -443,6 +449,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		VisibilityField:       m.VisibilityField,
 		VisibilityUsersField:  m.VisibilityUsersField,
 		VisibilityGroupsField: m.VisibilityGroupsField,
+		VisibilityExtraWhere:  m.VisibilityExtraWhere,
 		ListAscending:         m.ListAscending,
 		RightsAffecting:       m.RightsAffecting,
 		ConfigAffecting:       m.ConfigAffecting,

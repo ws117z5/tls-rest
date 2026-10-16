@@ -250,11 +250,14 @@ const ModulePage: React.FC<ModulePageProps> = ({
     const options = [...viewNames, "system"];
 
     const isAdmin = Auth.isAdmin();
+    // An admin-configured default (config module's "Default Views" table, resolved global < group < user,
+    // same precedence as theme) stands in for the module's own first-declared view when it names a real option.
+    const serverDefault = AppConfig.moduleView(module, mode);
+    const baseDefault = (serverDefault && options.includes(serverDefault) ? serverDefault : undefined) || viewNames[0] || "system";
     // Only admins may pick a view via the stored preference; a non-admin
-    // always gets the first (default) custom view when one exists, regardless
+    // always gets the (server- or module-declared) default view, regardless
     // of any stale/hand-edited localStorage value.
-    const effectivePref =
-        isAdmin && options.includes(layoutPref) ? layoutPref : viewNames[0] || "system";
+    const effectivePref = isAdmin && options.includes(layoutPref) ? layoutPref : baseDefault;
     const Custom = namedViews[effectivePref] as React.ComponentType<any> | undefined;
     const useCustom = !!Custom;
 

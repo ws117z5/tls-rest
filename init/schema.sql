@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict sRCcHRNj6djbQxUn9H0rnaDvKdN1aFjbXK4YBXxafQxqzNYnCzIAI1Twm8ySZoV
+\restrict CpHDXEfplEPK6qbc3vgdcUYQsYv82kYwSvxh1M8pTiQJiAE95jMUwcHIwhXV0Mk
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -200,6 +200,34 @@ ALTER SEQUENCE public.cart_id_seq OWNED BY public.cart.id;
 
 
 --
+-- Name: claude_notifications_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.claude_notifications_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: claude_notifications; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.claude_notifications (
+    id integer DEFAULT nextval('public.claude_notifications_id_seq'::regclass) NOT NULL,
+    uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    created timestamp with time zone DEFAULT now(),
+    updated timestamp with time zone DEFAULT now(),
+    created_by integer,
+    access integer DEFAULT 0,
+    session character varying(255) NOT NULL,
+    message character varying(255) DEFAULT 'Task done'::character varying
+);
+
+
+--
 -- Name: comments_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -243,6 +271,8 @@ CREATE TABLE public.config (
     access integer DEFAULT 0,
     updated timestamp with time zone DEFAULT now() NOT NULL,
     uuid uuid DEFAULT public.uuid_generate_v4(),
+    module_views jsonb,
+    sync_with_google_default character varying(5),
     CONSTRAINT config_scope_check CHECK ((scope = ANY (ARRAY['global'::text, 'group'::text, 'user'::text])))
 );
 
@@ -332,6 +362,47 @@ CREATE TABLE public.deletion_requests (
     reason character varying(255),
     note text,
     handled boolean DEFAULT false
+);
+
+
+--
+-- Name: events_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.events_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: events; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.events (
+    id integer DEFAULT nextval('public.events_id_seq'::regclass) NOT NULL,
+    uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    created timestamp with time zone DEFAULT now(),
+    updated timestamp with time zone DEFAULT now(),
+    created_by integer,
+    access integer DEFAULT 0,
+    title character varying(255) NOT NULL,
+    description text,
+    scope text DEFAULT 'self'::text NOT NULL,
+    target_group_id integer,
+    target_user_id integer,
+    starts_at timestamp with time zone NOT NULL,
+    duration_minutes integer DEFAULT 60 NOT NULL,
+    notify boolean DEFAULT false,
+    notify_offset_minutes text DEFAULT 10,
+    visible_users jsonb,
+    visible_groups jsonb,
+    notified_at timestamp with time zone,
+    repeat text DEFAULT 'none'::text,
+    sync_with_google boolean DEFAULT true,
+    google_event_id character varying(255)
 );
 
 
@@ -438,6 +509,19 @@ CREATE SEQUENCE public.friends_id_seq
 --
 
 ALTER SEQUENCE public.friends_id_seq OWNED BY public.friends.id;
+
+
+--
+-- Name: google_calendar_accounts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.google_calendar_accounts (
+    user_id integer NOT NULL,
+    access_token text NOT NULL,
+    refresh_token text NOT NULL,
+    token_expiry timestamp with time zone NOT NULL,
+    connected_at timestamp with time zone DEFAULT now() NOT NULL
+);
 
 
 --
@@ -1138,6 +1222,39 @@ ALTER SEQUENCE public.user_rights_id_seq OWNED BY public.user_rights.id;
 
 
 --
+-- Name: user_role_rights_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.user_role_rights_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: user_role_rights; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.user_role_rights (
+    id integer DEFAULT nextval('public.user_role_rights_id_seq'::regclass) NOT NULL,
+    uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    created timestamp with time zone DEFAULT now(),
+    updated timestamp with time zone DEFAULT now(),
+    created_by integer,
+    access integer DEFAULT 0,
+    role text NOT NULL,
+    module text NOT NULL,
+    modes integer DEFAULT 0 NOT NULL,
+    fields jsonb,
+    filter_fields jsonb,
+    special_rights jsonb,
+    group_id integer
+);
+
+
+--
 -- Name: users_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
@@ -1173,7 +1290,8 @@ CREATE TABLE public.users (
     access integer,
     auth_provider character varying(20),
     auth_provider_id character varying(191),
-    groups jsonb DEFAULT '[]'::jsonb NOT NULL
+    groups jsonb DEFAULT '[]'::jsonb NOT NULL,
+    user_role character varying(20) DEFAULT 'user'::character varying NOT NULL
 );
 
 
@@ -1388,6 +1506,14 @@ ALTER TABLE ONLY public.cart
 
 
 --
+-- Name: claude_notifications claude_notifications_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.claude_notifications
+    ADD CONSTRAINT claude_notifications_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: comments comments_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1428,6 +1554,14 @@ ALTER TABLE ONLY public.deletion_requests
 
 
 --
+-- Name: events events_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.events
+    ADD CONSTRAINT events_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: external_config external_config_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1449,6 +1583,14 @@ ALTER TABLE ONLY public.friend_requests
 
 ALTER TABLE ONLY public.friends
     ADD CONSTRAINT friends_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: google_calendar_accounts google_calendar_accounts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.google_calendar_accounts
+    ADD CONSTRAINT google_calendar_accounts_pkey PRIMARY KEY (user_id);
 
 
 --
@@ -1644,6 +1786,14 @@ ALTER TABLE ONLY public.user_rights
 
 
 --
+-- Name: user_role_rights user_role_rights_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.user_role_rights
+    ADD CONSTRAINT user_role_rights_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: users users_id_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1714,6 +1864,13 @@ CREATE INDEX config_lookup_idx ON public.config USING btree (scope, scope_id);
 --
 
 CREATE UNIQUE INDEX idx_cart_user_product ON public.cart USING btree (created_by, product_id);
+
+
+--
+-- Name: idx_claude_notifications_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_claude_notifications_user ON public.claude_notifications USING btree (created_by, created DESC);
 
 
 --
@@ -1900,6 +2057,14 @@ ALTER TABLE ONLY public.cart
 
 
 --
+-- Name: google_calendar_accounts google_calendar_accounts_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.google_calendar_accounts
+    ADD CONSTRAINT google_calendar_accounts_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
+
+
+--
 -- Name: legal legal_html_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1935,7 +2100,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict sRCcHRNj6djbQxUn9H0rnaDvKdN1aFjbXK4YBXxafQxqzNYnCzIAI1Twm8ySZoV
+\unrestrict CpHDXEfplEPK6qbc3vgdcUYQsYv82kYwSvxh1M8pTiQJiAE95jMUwcHIwhXV0Mk
 
 
 -- Durable role/rights seed.
@@ -1943,7 +2108,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict nV0z7PKHAGRUXknbAa3sYNmO001412MAOsIRilinS4xmc1NL4i5cq406rkKk4lA
+\restrict GmqxHJatwf1VJfL92gp0NM8yWavK3Wor45DCzkXmOpFS6wW4EurwqsAWgXx7bIP
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2056,13 +2221,14 @@ INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access,
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (82, '48665079-09fe-4083-a555-8502c4624d41', 2, 'html', 14, 0, '2026-09-24 20:24:11.720602-07', '2026-09-24 20:24:11.720602-07', 1, '{"compiled_html":["view","create","edit"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (84, '301fcccb-802f-45f2-a271-c3ab5b58a79e', 2, 'cart', 31, 0, '2026-09-25 13:03:21.155566-07', '2026-09-25 13:03:21.155566-07', NULL, NULL, NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (42, 'bf7e70b9-1e36-4ea4-8673-466edccce0d9', 0, 'posts', 63, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"access":["list","view","create","edit","delete"],"author":["list","view","create","edit","delete"],"comments_count":["list","view","create","edit","delete"],"compiled_html":["list","view","create","edit","delete"],"content":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"html_id":["list","view","create","edit","delete"],"images":["list","view","create","edit","delete"],"likes_count":["list","view","create","edit","delete"],"slug":["list","view","create","edit","delete"],"tags":["list","view","create","edit","delete"],"title":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"uuid":["list","view","create","edit","delete"],"visible_groups":["list","view","create","edit","delete"],"visible_users":["list","view","create","edit","delete"]}', NULL, '["title","tag","user","user_group","created_from","created_to"]');
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (86, '8d8e39ca-dd4f-4218-91c1-28322cb99ba1', 2, 'claude_notifications', 23, 0, '2026-10-14 12:11:59.618498-07', '2026-10-14 12:11:59.618498-07', NULL, NULL, NULL, NULL);
 
 
 --
 -- Name: user_group_rights_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.user_group_rights_id_seq', 85, true);
+SELECT pg_catalog.setval('public.user_group_rights_id_seq', 86, true);
 
 
 --
@@ -2076,5 +2242,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict nV0z7PKHAGRUXknbAa3sYNmO001412MAOsIRilinS4xmc1NL4i5cq406rkKk4lA
+\unrestrict GmqxHJatwf1VJfL92gp0NM8yWavK3Wor45DCzkXmOpFS6wW4EurwqsAWgXx7bIP
 

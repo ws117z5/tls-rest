@@ -41,6 +41,53 @@ func assignableGroups(ctx context.Context, viewer map[string]interface{}) []map[
 	return out
 }
 
+// roleLabel renders a stored role value for display — the same labels
+// modulerights.go's roleOptions() uses.
+func roleLabel(role string) string {
+	switch role {
+	case "moderator":
+		return "Moderator"
+	case "group_admin":
+		return "Group Admin"
+	default:
+		return "User"
+	}
+}
+
+// roleOptionsForUser lists the roles assignable to the record being edited:
+// "user" (the no-op default) always, plus any other role that has at least
+// one user_role_rights ceiling defined for one of THIS user's own groups —
+// you can't be made a moderator/group_admin until someone has actually
+// defined what that means for your group. Reads the edited record's own id
+// (values["id"]) rather than the viewer's authority, which is why this is a
+// WithAutocomplete function (gets record values) and not WithOptionsCtx
+// (gets only the viewer's).
+func roleOptionsForUser(ctx context.Context, _ string, values map[string]interface{}) []AutoOption {
+	always := []AutoOption{{Value: "user", Label: roleLabel("user")}}
+	id := functions.Int(values["id"])
+	if id <= 0 {
+		return always
+	}
+	db, err := pgdb.GetInstanceCtx(ctx)
+	if err != nil {
+		return always
+	}
+	rows, err := db.GetAll(`
+		SELECT DISTINCT role FROM user_role_rights
+		WHERE group_id IN (SELECT jsonb_array_elements_text(groups)::int FROM users WHERE id = $1)
+	`, id)
+	if err != nil {
+		return always
+	}
+	out := always
+	for _, r := range rows {
+		if role := functions.Coerce[string](r["role"]); role != "" && role != "user" {
+			out = append(out, AutoOption{Value: role, Label: roleLabel(role)})
+		}
+	}
+	return out
+}
+
 // fieldset defines the module's fields (default system fields are added
 // automatically by Initialize()).
 func (u *Users) fieldset() []Field {
@@ -75,6 +122,20 @@ func (u *Users) fieldset() []Field {
 			NonSearchable().
 			WithMode(MODE_VIEW | MODE_EDIT).
 			WithResize(ResizeOptions{Height: 300}),
+
+		// Role within the user's own group(s) — user/moderator/group_admin. A role
+		// only narrows what the group already grants (auth.resolveSessionRights
+		// applies it as a ceiling over group rights, never over individually
+		// granted user_rights); it can never elevate a user above their group.
+		// Only offers moderator/group_admin once someone has actually defined a
+		// user_role_rights ceiling for this user's own group — see
+		// roleOptionsForUser. See modulerights.go's RoleRightsModule.
+		NewField("user_role", TYPE_SELECT, false).
+			WithLabel("Role").
+			WithDescription("Privileges within the user's own group — never above it").
+			WithDefault("user").
+			WithOption("widget", "select").
+			WithAutocomplete(map[string]interface{}{"function": roleOptionsForUser}),
 
 		// Group membership: a jsonb array of user_groups ids stored in the real
 		// users.groups column (created by the engine because this TYPE_TABLE

@@ -68,6 +68,10 @@ type Session struct {
 	UserID    int
 	Username  string
 	IsAdmin   bool
+	// Role is the user's user_role (user/moderator/group_admin) — a ceiling
+	// over group-inherited rights only (see auth.resolveSessionRights), never
+	// a grant of its own. Empty for anonymous sessions.
+	Role string
 
 	// ModuleModes is the resolved per-module allowed-mode bitmask for this user
 	// (module name -> auth.MODE_* bits), OR-ed across their groups. AccessLevel is

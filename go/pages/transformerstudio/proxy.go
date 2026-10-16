@@ -80,9 +80,11 @@ type proxyEnvelope struct {
 // model server's JSON API (a path from allowedCalls only) and mirrors back its status, content type and body —
 // verbatim, whether that's a JSON object or a generated PNG.
 func proxyRequest(w http.ResponseWriter, r *http.Request) {
+	// The envelope's body can itself carry a base64-encoded image (enhance/generate/expression/video), so it needs
+	// the same ceiling as everything else here, not a small "just JSON" guess.
 	var in proxyEnvelope
-	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
-		functions.JSONError(w, http.StatusBadRequest, "invalid request")
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxProxyBody)).Decode(&in); err != nil {
+		functions.JSONError(w, http.StatusBadRequest, "invalid request: "+err.Error())
 		return
 	}
 	base, err := remoteBase(in.Server)

@@ -2,6 +2,7 @@ import React, { Component } from "react";
 import axios from "axios";
 import { TextEdit, FloatEdit, SelectEdit, SelectView, CheckboxEdit } from "../index";
 import { t as translate, subscribe } from "@engine/controllers/i18n";
+import { AutoOption } from "../Autocomplete/shared";
 
 // TableEdit renders a TYPE_TABLE field as a real sub-fieldset: every column is a
 // Field definition (name/type/label/options/readonly) coming from the backend's
@@ -20,6 +21,7 @@ interface ColumnDef {
   description?: string;
   default_value?: any;
   options?: Record<string, any>;
+  autocomplete?: string; // "function" | "sql" | "source" — see Field.WithAutocomplete
 }
 
 interface TableFieldMeta {
@@ -91,6 +93,77 @@ function coerceCell(col: ColumnDef, v: any): any {
   return v;
 }
 
+// CascadingSelectCell renders an autocomplete-backed table column (col.autocomplete) as a real <select>
+// listing every option, not a typeahead — e.g. config module_views' "view" column, whose options depend
+// on that row's own module+mode cells. Re-fetches whenever any OTHER cell in the row changes.
+interface CascadingSelectCellProps {
+  owner: string;
+  field: string;
+  value: any;
+  row: Row;
+  disabled?: boolean;
+  onChange: (v: string) => void;
+}
+
+interface CascadingSelectCellState {
+  options: AutoOption[];
+  loading: boolean;
+}
+
+class CascadingSelectCell extends Component<CascadingSelectCellProps, CascadingSelectCellState> {
+  constructor(props: CascadingSelectCellProps) {
+    super(props);
+    this.state = { options: [], loading: false };
+  }
+
+  componentDidMount() {
+    this.fetchOptions();
+  }
+
+  componentDidUpdate(prev: CascadingSelectCellProps) {
+    if (this.depsSig(prev.row) !== this.depsSig(this.props.row)) this.fetchOptions();
+  }
+
+  // Siblings that should trigger a re-fetch — every row cell except this column's own value, so picking
+  // an option never re-triggers its own fetch.
+  private depsSig(row: Row): string {
+    const { [this.props.field]: _own, ...rest } = row;
+    return JSON.stringify(rest);
+  }
+
+  private fetchOptions() {
+    const { owner, field, row } = this.props;
+    if (!owner || !field) return;
+    this.setState({ loading: true });
+    axios
+      .post(`/api/modules/${owner}/autocomplete/${field}`, { input: "", values: row })
+      .then((res: any) => {
+        const opts: AutoOption[] = (res.data && res.data.options) || [];
+        this.setState({ options: opts, loading: false });
+      })
+      .catch(() => this.setState({ options: [], loading: false }));
+  }
+
+  render() {
+    const { value, disabled, onChange } = this.props;
+    return (
+      <select
+        className="form-control form-control-sm"
+        value={value ?? ""}
+        disabled={disabled || this.state.loading}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        <option value="">—</option>
+        {this.state.options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+}
+
 class TableEdit extends Component<TableEditProps, TableEditState> {
   // The field value only becomes the source of truth once the user edits a cell.
   // Before that it may be absent (table not selected) or a display projection
@@ -100,6 +173,12 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
   private loaded = false;
   private lastMask = 0;
   private remembered: Record<string, string[]> = {};
+  // The JSON this component itself last emitted via onChange — distinguishes
+  // "value changed because we just edited a cell" (ignore, we're already
+  // showing it) from "value changed because something else set it" (e.g. a
+  // sibling control autofilling this table from another record) — the latter
+  // adopts the pushed rows exactly as if the user had just edited them.
+  private lastEmitted: string | null = null;
 
   constructor(props: TableEditProps) {
     super(props);
@@ -123,7 +202,10 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
       this.loadServerRows();
     } else if (this.loaded && this.mask() !== this.lastMask) {
       this.applyMaskChange(this.lastMask, this.mask());
-    } else if (this.touched && prev.value !== this.props.value) {
+    } else if (prev.value !== this.props.value && this.props.value !== this.lastEmitted) {
+      // Not our own echo — someone else set this field's value (a sibling
+      // autofill control, or the value catching up after we were touched).
+      this.touched = true;
       this.setState({ rows: this.computeRows(this.state.serverRows) });
     }
   }
@@ -274,7 +356,9 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
       });
       return o;
     });
-    this.props.onChange(JSON.stringify(out));
+    const json = JSON.stringify(out);
+    this.lastEmitted = json;
+    this.props.onChange(json);
   }
 
   private setCell = (i: number, name: string, value: any) => {
@@ -308,6 +392,18 @@ class TableEdit extends Component<TableEditProps, TableEditState> {
     if (CHECKBOX_TYPES.has(type)) {
       return (
         <CheckboxEdit value={truthy(value)} disabled={disabled} onChange={(v: boolean) => onChange(v)} />
+      );
+    }
+
+    if (col.autocomplete && !disabled) {
+      return (
+        <CascadingSelectCell
+          owner={this.props.module || ""}
+          field={col.name}
+          value={value ?? ""}
+          row={row}
+          onChange={onChange}
+        />
       );
     }
 
