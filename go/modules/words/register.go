@@ -2,6 +2,7 @@ package words
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -78,6 +79,17 @@ func (m *Words) registerResult(w http.ResponseWriter, r *http.Request) {
 		// No such word, or it isn't the caller's.
 		functions.JSONError(w, http.StatusNotFound, "word not found")
 		return
+	}
+
+	// Timestamped history alongside the lifetime counters above — the
+	// counters alone can't answer "practiced today" / streak questions, only
+	// totals. Best-effort: a logging failure shouldn't fail the attempt
+	// itself, which already succeeded (the UPDATE above committed).
+	if _, err := db.Exec(
+		"INSERT INTO word_attempts (word_id, created_by, success) VALUES ($1, $2, $3)",
+		id, s.UserID, success,
+	); err != nil {
+		log.Printf("[words] failed to log attempt for word %d: %v", id, err)
 	}
 
 	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{

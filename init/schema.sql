@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict CpHDXEfplEPK6qbc3vgdcUYQsYv82kYwSvxh1M8pTiQJiAE95jMUwcHIwhXV0Mk
+\restrict 3fcny7LhSLhsCdLZ9xe7qooWjro7Fl9qEcW4NLUghuefC2r2LSrtfe3ScHa5Mpp
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -1296,6 +1296,38 @@ CREATE TABLE public.users (
 
 
 --
+-- Name: word_attempts; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.word_attempts (
+    id bigint NOT NULL,
+    word_id integer NOT NULL,
+    created_by integer NOT NULL,
+    success boolean NOT NULL,
+    created timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: word_attempts_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.word_attempts_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: word_attempts_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.word_attempts_id_seq OWNED BY public.word_attempts.id;
+
+
+--
 -- Name: words; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1310,7 +1342,8 @@ CREATE TABLE public.words (
     created timestamp with time zone DEFAULT now(),
     updated timestamp with time zone DEFAULT now(),
     access integer DEFAULT 0,
-    fail integer DEFAULT 0
+    fail integer DEFAULT 0,
+    language character varying(10)
 );
 
 
@@ -1472,6 +1505,13 @@ ALTER TABLE ONLY public.user_groups ALTER COLUMN id SET DEFAULT nextval('public.
 --
 
 ALTER TABLE ONLY public.user_rights ALTER COLUMN id SET DEFAULT nextval('public.user_rights_id_seq'::regclass);
+
+
+--
+-- Name: word_attempts id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.word_attempts ALTER COLUMN id SET DEFAULT nextval('public.word_attempts_id_seq'::regclass);
 
 
 --
@@ -1810,6 +1850,14 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: word_attempts word_attempts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.word_attempts
+    ADD CONSTRAINT word_attempts_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: words words_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -1993,6 +2041,13 @@ CREATE INDEX idx_ur_user ON public.user_rights USING btree (user_id);
 
 
 --
+-- Name: idx_word_attempts_user_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_word_attempts_user_created ON public.word_attempts USING btree (created_by, created DESC);
+
+
+--
 -- Name: images_hash_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2089,6 +2144,22 @@ ALTER TABLE ONLY public.user_rights
 
 
 --
+-- Name: word_attempts word_attempts_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.word_attempts
+    ADD CONSTRAINT word_attempts_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+
+--
+-- Name: word_attempts word_attempts_word_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.word_attempts
+    ADD CONSTRAINT word_attempts_word_id_fkey FOREIGN KEY (word_id) REFERENCES public.words(id) ON DELETE CASCADE;
+
+
+--
 -- Name: words words_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2100,7 +2171,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict CpHDXEfplEPK6qbc3vgdcUYQsYv82kYwSvxh1M8pTiQJiAE95jMUwcHIwhXV0Mk
+\unrestrict 3fcny7LhSLhsCdLZ9xe7qooWjro7Fl9qEcW4NLUghuefC2r2LSrtfe3ScHa5Mpp
 
 
 -- Durable role/rights seed.
@@ -2108,7 +2179,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict GmqxHJatwf1VJfL92gp0NM8yWavK3Wor45DCzkXmOpFS6wW4EurwqsAWgXx7bIP
+\restrict TSkAfiksr0GBau3srUR54mBKg0Q0FORHqnHf2BzZinlkwUHbdC9vHKOqIhdWro8
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2242,5 +2313,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict GmqxHJatwf1VJfL92gp0NM8yWavK3Wor45DCzkXmOpFS6wW4EurwqsAWgXx7bIP
+\unrestrict TSkAfiksr0GBau3srUR54mBKg0Q0FORHqnHf2BzZinlkwUHbdC9vHKOqIhdWro8
 

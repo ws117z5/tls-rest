@@ -12,6 +12,7 @@ type WordObj struct {
 	ID        int64     `json:"id" db:"id"`
 	UUID      string    `json:"uuid" db:"uuid"`
 	Word      string    `json:"word" db:"word"`
+	Language  string    `json:"language" db:"language"`
 	Tries     int       `json:"tries" db:"tries"`
 	Success   int       `json:"success" db:"success"`
 	Fail      int       `json:"fail" db:"fail"`

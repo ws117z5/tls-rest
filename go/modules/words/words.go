@@ -26,6 +26,15 @@ func (m *Words) fieldset() []Field {
 			WithValidation("minLength", 1).
 			WithValidation("maxLength", 200),
 
+		// Stored, but never server-detected: the Android client runs ML Kit
+		// Language Identification on the word at add time and submits
+		// whatever BCP-47 code (or "und"/empty if it couldn't tell) it got.
+		NewField("language", TYPE_STRING, false).
+			WithLabel("Language").
+			WithDescription("BCP-47 code auto-detected on the client at add time").
+			WithDefault("").
+			WithValidation("maxLength", 10),
+
 		// Calculated, not stored. AsVirtual keeps it out of INSERT/UPDATE; the
 		// value is produced by the WithSQL expression at read time. The default
 		// returns an empty JSON array so the module runs out of the box — replace
@@ -102,9 +111,12 @@ func NewWords() *Words {
 	m.ModuleAbstract.Fields = m.fieldset()
 	m.ModuleAbstract.Filters = m.filters()
 
-	// Item 3 — custom action route: POST /words/{id}/register {result}.
+	// Item 3 — custom action routes. "/stats" is a literal path registered
+	// ahead of the module's generic "/{id}" view route so it wins the match
+	// (same convention papers.go documents for its own literal segments).
 	m.ModuleAbstract.CustomRoutes = []CustomRoute{
 		{Path: "/{id}/register", Methods: []string{"POST"}, Handler: m.registerResult},
+		{Path: "/stats", Methods: []string{"GET"}, Handler: m.statsHandler},
 	}
 
 	return m
