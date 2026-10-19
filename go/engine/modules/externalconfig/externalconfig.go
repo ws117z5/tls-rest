@@ -102,6 +102,11 @@ var Module = &ModuleAbstract[interface{}]{
 			WithOption("displayField", "name").
 			WithValueWidth(300),
 
+		NewField("send_logs", TYPE_CHECKBOX, false).
+			WithLabel("Send Remote Logs").
+			WithDescription("Whether this app's client should submit diagnostic/crash logs to external_logs").
+			WithDefault(true),
+
 		NewField("related_modules", TYPE_TABLE, false).
 			WithLabel("Related Modules").
 			WithDescription("Other modules this app's group needs rights to, besides App Module").

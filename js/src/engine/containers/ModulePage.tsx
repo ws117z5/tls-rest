@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useState } from "react";
+import React, { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import axios from "axios";
 
 import { FieldsetProvider, FieldsetForm, FieldsetList, FieldsetFilters, MODES } from "../fields";
@@ -110,7 +110,16 @@ const ModulePage: React.FC<ModulePageProps> = ({
     const can = (m: string) => modes.indexOf(m) !== -1;
     const heading = t(title || module.charAt(0).toUpperCase() + module.slice(1));
 
+    // Guards against the module-switch race below: `base` changes (and so does
+    // `load`'s identity) a render before the page/filter reset lands, so a
+    // stale request carrying the previous module's page/filters can be fired
+    // just ahead of the correct one. Whichever resolves first no longer
+    // matters — only the result of the most recently *started* request is
+    // ever applied.
+    const requestIdRef = useRef(0);
+
     const load = useCallback(async () => {
+        const requestId = ++requestIdRef.current;
         setLoading(true);
         setError(null);
         try {
@@ -123,6 +132,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
                     if (v !== "" && v !== undefined && v !== null) activeParams[k] = v;
                 });
                 const res = await axios.get(base, { params: activeParams });
+                if (requestIdRef.current !== requestId) return; // superseded
                 setData(res.data?.Data || []);
                 setFiltersMeta(res.data?.Filters || []);
                 // Capture server-reported pagination so FieldsetList can render the pager.
@@ -137,6 +147,7 @@ const ModulePage: React.FC<ModulePageProps> = ({
                 }
             } else if ((mode === "view" || mode === "edit") && id) {
                 const res = await axios.get(`${base}/${id}`);
+                if (requestIdRef.current !== requestId) return; // superseded
                 const d = res.data?.Data;
                 // Single-record endpoints may return {Data:[record]}, {Data:record}, or the record itself.
                 setRecord(Array.isArray(d) ? d[0] : d ?? res.data);
@@ -144,9 +155,10 @@ const ModulePage: React.FC<ModulePageProps> = ({
                 setRecord({}); // create
             }
         } catch (e: any) {
+            if (requestIdRef.current !== requestId) return; // superseded
             setError(e?.message || t("Failed to load"));
         } finally {
-            setLoading(false);
+            if (requestIdRef.current === requestId) setLoading(false);
         }
     }, [base, mode, id, appliedFilters, page]);
 

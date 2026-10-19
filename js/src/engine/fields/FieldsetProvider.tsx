@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import Auth from '@controllers/auth';
 
@@ -127,8 +127,14 @@ export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, mo
   const [loading, setLoading] = useState(!inlineFieldset);
   const [error, setError] = useState<string | null>(null);
 
+  // FieldsetProvider is reused (not remounted) across module switches, so a
+  // fetch for a since-abandoned module can resolve after the current one's —
+  // only the most recently *started* request's result is ever applied.
+  const requestIdRef = useRef(0);
+
   useEffect(() => {
     if (inlineFieldset) {
+      requestIdRef.current++; // abandon any in-flight fetch for a previous module
       setFieldset(inlineFieldset);
       setLoading(false);
       return;
@@ -139,6 +145,8 @@ export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, mo
   }, [module, inlineFieldset]);
 
   const fetchFieldset = async () => {
+    const requestId = ++requestIdRef.current;
+
     // One cached fieldset per module (mode is filtered client-side, not fetched).
     const cacheKey = `fieldset:${module}`;
     let cached: { hash?: string; data?: FieldsetData } | null = null;
@@ -155,10 +163,11 @@ export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, mo
 
       // POST; hash (if any) rides as a query param so the server can answer 304.
       const url = `/api/modules/${module}/fieldset`;
-      const response = await axios.post(url, 
+      const response = await axios.post(url,
         cached?.hash ? { hash: cached.hash } : {}, // POST body
         { validateStatus: (s: number) => s === 304 || (s >= 200 && s < 300), }
       );
+      if (requestIdRef.current !== requestId) return; // superseded
 
       if (response.status === 304) {
         if (cached?.data) {
@@ -167,6 +176,7 @@ export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, mo
           // Cold cache but server said 304 (shouldn't normally happen) — refetch
           // without the hash to get the full fieldset.
           const full = await axios.post(url, null);
+          if (requestIdRef.current !== requestId) return; // superseded
           setFieldset(full.data);
           try {
             localStorage.setItem(cacheKey, JSON.stringify({ hash: full.data?.hash, data: full.data }));
@@ -179,6 +189,7 @@ export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, mo
         } catch {}
       }
     } catch (err: unknown) {
+      if (requestIdRef.current !== requestId) return; // superseded
       if (err instanceof Error) {
         console.error('Failed to fetch fieldset:', err);
         setError(err.message);
@@ -186,7 +197,7 @@ export const FieldsetProvider: React.FC<FieldsetProviderProps> = ({ children, mo
         console.error('An unexpected error occurred:', err);
       }
     } finally {
-      setLoading(false);
+      if (requestIdRef.current === requestId) setLoading(false);
     }
   };
 

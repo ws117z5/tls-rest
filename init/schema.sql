@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 3fcny7LhSLhsCdLZ9xe7qooWjro7Fl9qEcW4NLUghuefC2r2LSrtfe3ScHa5Mpp
+\restrict 5bypswZ9t5L04BXM9f9Ne6KceAn7IYQW4qWeYbbjsZpzPQI24NkArFD6QieT6SP
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -421,7 +421,8 @@ CREATE TABLE public.external_config (
     provider text NOT NULL,
     group_id integer NOT NULL,
     related_modules jsonb,
-    client_id character varying(255)
+    client_id character varying(255),
+    send_logs boolean DEFAULT true NOT NULL
 );
 
 
@@ -442,6 +443,45 @@ CREATE SEQUENCE public.external_config_id_seq
 --
 
 ALTER SEQUENCE public.external_config_id_seq OWNED BY public.external_config.id;
+
+
+--
+-- Name: external_logs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.external_logs (
+    id bigint NOT NULL,
+    uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    app character varying(20) NOT NULL,
+    level character varying(10) NOT NULL,
+    message text NOT NULL,
+    stack_trace text,
+    app_version character varying(20),
+    device_info character varying(200),
+    created_by integer NOT NULL,
+    created timestamp with time zone DEFAULT now() NOT NULL,
+    updated timestamp with time zone DEFAULT now() NOT NULL,
+    access integer DEFAULT 0
+);
+
+
+--
+-- Name: external_logs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.external_logs_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: external_logs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.external_logs_id_seq OWNED BY public.external_logs.id;
 
 
 --
@@ -1410,6 +1450,13 @@ ALTER TABLE ONLY public.external_config ALTER COLUMN id SET DEFAULT nextval('pub
 
 
 --
+-- Name: external_logs id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.external_logs ALTER COLUMN id SET DEFAULT nextval('public.external_logs_id_seq'::regclass);
+
+
+--
 -- Name: friends id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1607,6 +1654,14 @@ ALTER TABLE ONLY public.events
 
 ALTER TABLE ONLY public.external_config
     ADD CONSTRAINT external_config_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: external_logs external_logs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.external_logs
+    ADD CONSTRAINT external_logs_pkey PRIMARY KEY (id);
 
 
 --
@@ -1936,6 +1991,20 @@ CREATE UNIQUE INDEX idx_external_config_provider_client ON public.external_confi
 
 
 --
+-- Name: idx_external_logs_app_level; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_external_logs_app_level ON public.external_logs USING btree (app, level, created DESC);
+
+
+--
+-- Name: idx_external_logs_user_created; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_external_logs_user_created ON public.external_logs USING btree (created_by, created DESC);
+
+
+--
 -- Name: idx_friends_pair; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2112,6 +2181,14 @@ ALTER TABLE ONLY public.cart
 
 
 --
+-- Name: external_logs external_logs_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.external_logs
+    ADD CONSTRAINT external_logs_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+
+--
 -- Name: google_calendar_accounts google_calendar_accounts_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2171,7 +2248,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 3fcny7LhSLhsCdLZ9xe7qooWjro7Fl9qEcW4NLUghuefC2r2LSrtfe3ScHa5Mpp
+\unrestrict 5bypswZ9t5L04BXM9f9Ne6KceAn7IYQW4qWeYbbjsZpzPQI24NkArFD6QieT6SP
 
 
 -- Durable role/rights seed.
@@ -2179,7 +2256,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict TSkAfiksr0GBau3srUR54mBKg0Q0FORHqnHf2BzZinlkwUHbdC9vHKOqIhdWro8
+\restrict Tv6FsWwXtiaZB591ka6gSQdjEad0IaAYlbR3ad4qfQ8dpsYZyb5331uNH2ST8pu
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2293,13 +2370,14 @@ INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access,
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (84, '301fcccb-802f-45f2-a271-c3ab5b58a79e', 2, 'cart', 31, 0, '2026-09-25 13:03:21.155566-07', '2026-09-25 13:03:21.155566-07', NULL, NULL, NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (42, 'bf7e70b9-1e36-4ea4-8673-466edccce0d9', 0, 'posts', 63, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"access":["list","view","create","edit","delete"],"author":["list","view","create","edit","delete"],"comments_count":["list","view","create","edit","delete"],"compiled_html":["list","view","create","edit","delete"],"content":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"html_id":["list","view","create","edit","delete"],"images":["list","view","create","edit","delete"],"likes_count":["list","view","create","edit","delete"],"slug":["list","view","create","edit","delete"],"tags":["list","view","create","edit","delete"],"title":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"uuid":["list","view","create","edit","delete"],"visible_groups":["list","view","create","edit","delete"],"visible_users":["list","view","create","edit","delete"]}', NULL, '["title","tag","user","user_group","created_from","created_to"]');
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (86, '8d8e39ca-dd4f-4218-91c1-28322cb99ba1', 2, 'claude_notifications', 23, 0, '2026-10-14 12:11:59.618498-07', '2026-10-14 12:11:59.618498-07', NULL, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (87, '2869c84f-2fbf-42b2-b260-8525ec16f741', 2, 'external_logs', 7, 0, '2026-10-16 19:54:38.890142-07', '2026-10-16 19:54:38.890142-07', NULL, NULL, NULL, NULL);
 
 
 --
 -- Name: user_group_rights_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.user_group_rights_id_seq', 86, true);
+SELECT pg_catalog.setval('public.user_group_rights_id_seq', 87, true);
 
 
 --
@@ -2313,5 +2391,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict TSkAfiksr0GBau3srUR54mBKg0Q0FORHqnHf2BzZinlkwUHbdC9vHKOqIhdWro8
+\unrestrict Tv6FsWwXtiaZB591ka6gSQdjEad0IaAYlbR3ad4qfQ8dpsYZyb5331uNH2ST8pu
 

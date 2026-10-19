@@ -61,7 +61,11 @@ const NavDropdown: React.FC<NavDropdownProps> = ({ title, icon, items, onNavigat
           onExpand();
         }}
       >
-        {icon && <Icon name={icon} />}
+        {/* Same icon-or-equal-size-spacer rule label() applies to every other
+            nav item — without it, an icon-less top-level dropdown (e.g. the
+            icon-having "ENGINE" next to icon-less "DEV") sits one icon-width
+            narrower and visibly shifts in the flex row. */}
+        {icon ? <Icon name={icon} /> : <span className="menu-icon-spacer" aria-hidden="true" />}
         {title}
       </a>
       <div className={`dropdown-menu${open ? " show" : ""}`}>
