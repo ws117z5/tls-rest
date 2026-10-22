@@ -1,3 +1,5 @@
+name: tls-rest
+
 services:
   app:
     image: tls-rest:latest
