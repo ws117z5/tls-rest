@@ -27,7 +27,7 @@ services:
       - workstation_infra_net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.tls-rest.rule=Host(`workstation.local`)"
+      - "traefik.http.routers.tls-rest.rule=Host(`app.workstation.local`)"
       - "traefik.http.services.tls-rest.loadbalancer.server.port=8443"
       - "traefik.http.services.tls-rest.loadbalancer.server.scheme=https"
 
