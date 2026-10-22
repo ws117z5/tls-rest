@@ -25,6 +25,13 @@ services:
       - /opt/workstation/.env:/app/.private/.env:ro
     networks:
       - workstation_infra_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.tls-rest.rule=Host(`workstation.local`)"
+      - "traefik.http.services.tls-rest.loadbalancer.server.port=8443"
+      - "traefik.http.services.tls-rest.loadbalancer.server.scheme=https"
+      - "traefik.http.serversTransports.tlsrest-transport.insecureSkipVerify=true"
+      - "traefik.http.services.tls-rest.loadbalancer.serverstransport=tlsrest-transport"
 
 networks:
   workstation_infra_net:
