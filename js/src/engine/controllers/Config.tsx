@@ -8,6 +8,7 @@ export interface MenuItem {
     key: string;        // module name or page id
     name: string;       // = key (app.tsx module route reads .name)
     title: string;
+    description?: string; // longer explanatory text; tooltip only, never the nav label
     href: string;       // path segment, no leading slash
     path: string;       // full path, e.g. "/posts" or "/pages/netmapper"
     modes: string[];    // modules only
@@ -81,7 +82,8 @@ export default class Config {
                     kind: "module",
                     key: entry.name,
                     name: entry.name,
-                    title: entry.description || entry.name,
+                    title: entry.label || entry.name,
+                    description: entry.description,
                     href,
                     path: "/" + href,
                     modes: entry.modes || [],

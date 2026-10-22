@@ -16,7 +16,10 @@ import axios from "axios";
 // A module entry from the menu.
 export interface BackendModule {
     name: string;        // module key (rights/routing)
-    description: string; // human label
+    label: string;       // human nav label (ModuleMenuMeta.Name)
+    // Longer explanatory text (ModuleMenuMeta.Description) — never the nav
+    // label itself, only a tooltip / in-module aid.
+    description?: string;
     endpoint: string;    // e.g. "/posts"
     modes: string[];     // subset of ["list","view","create","edit","delete"]
     specialRights?: string[]; // granted module.SpecialRight ids (see modulerights.go)

@@ -74,6 +74,7 @@ const NavDropdown: React.FC<NavDropdownProps> = ({ title, icon, items, onNavigat
             key={key}
             to={item.path}
             className="dropdown-item"
+            title={item.description ? t(item.description) : undefined}
             onClick={() => {
               setOpen(false);
               onNavigate();
@@ -191,6 +192,7 @@ class Menu extends Component<{}, MenuState> {
           <RouterNavLink
             to={item.path}
             className={({ isActive }: { isActive: boolean }) => `nav-link${isActive ? " active" : ""}`}
+            title={item.description ? t(item.description) : undefined}
             onClick={this.close}
           >
             {label(item)}
@@ -385,7 +387,12 @@ class Menu extends Component<{}, MenuState> {
             {this.state.mobileSubmenu &&
               (submenus[this.state.mobileSubmenu] || []).filter(showsInMenu).map((item, key) => (
                 <li key={key}>
-                  <RouterNavLink to={item.path} className="nav-link" onClick={this.close}>
+                  <RouterNavLink
+                    to={item.path}
+                    className="nav-link"
+                    title={item.description ? t(item.description) : undefined}
+                    onClick={this.close}
+                  >
                     {label(item)}
                   </RouterNavLink>
                 </li>

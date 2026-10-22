@@ -228,8 +228,11 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 	// --- Modules: authoritative list from the Go registry (auth.ModuleDefaults),
 	// enriched with description/submenu from the menu registry when available. ---
 	type moduleEntry struct {
-		Name          string   `json:"name"`
-		Description   string   `json:"description"`
+		Name  string `json:"name"`
+		Label string `json:"label"`
+		// Description is the module's longer explanatory text (ModuleMenuMeta.Description)
+		// — never shown as the nav label itself, only as a tooltip/in-module aid.
+		Description   string   `json:"description,omitempty"`
 		Endpoint      string   `json:"endpoint"`
 		Modes         []string `json:"modes"`
 		SpecialRights []string `json:"specialRights,omitempty"`
@@ -258,7 +261,8 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 		if mask == 0 {
 			continue // no access
 		}
-		desc := id
+		label := id
+		description := ""
 		submenu := ""
 		icon := ""
 		readOnly := false
@@ -272,11 +276,13 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 			configAffecting = m.GetConfigAffecting()
 		}
 		if meta, ok := menuByID[id]; ok {
-			if meta.Description != "" {
-				desc = meta.Description
-			} else if meta.Name != "" {
-				desc = meta.Name
+			// The nav label is always Name ("External Logs"), never Description —
+			// Description is longer explanatory text, sent separately for a
+			// tooltip / in-module display, never shown in the menu itself.
+			if meta.Name != "" {
+				label = meta.Name
 			}
+			description = meta.Description
 			submenu = meta.Submenu
 			icon = meta.Icon
 		}
@@ -295,7 +301,8 @@ func ModulesAPI(w http.ResponseWriter, r *http.Request) {
 		}
 		add(submenu, moduleEntry{
 			Name:            id,
-			Description:     desc,
+			Label:           label,
+			Description:     description,
 			Endpoint:        "/" + id,
 			Modes:           modeNames,
 			SpecialRights:   grantedRights,

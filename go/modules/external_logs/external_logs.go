@@ -66,7 +66,7 @@ func NewExternalLogs() *ExternalLogs {
 		ModuleAbstract: &ModuleAbstract[interface{}]{
 			ID:          "external_logs",
 			Name:        "External Logs",
-			Submenu:     "dev",
+			Submenu:     "logs",
 			Description: "Diagnostic/crash logs submitted by the client apps",
 
 			// Each user only sees/creates their own logs; no group has access

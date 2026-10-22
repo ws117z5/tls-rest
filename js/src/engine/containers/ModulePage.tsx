@@ -109,6 +109,9 @@ const ModulePage: React.FC<ModulePageProps> = ({
 
     const can = (m: string) => modes.indexOf(m) !== -1;
     const heading = t(title || module.charAt(0).toUpperCase() + module.slice(1));
+    // Longer explanatory text (ModuleMenuMeta.Description) — shown under the
+    // list heading, never as the nav label itself (see Menu.tsx's tooltip use).
+    const description = Config.getModule(module)?.description;
 
     // Guards against the module-switch race below: `base` changes (and so does
     // `load`'s identity) a render before the page/filter reset lands, so a
@@ -398,7 +401,10 @@ const ModulePage: React.FC<ModulePageProps> = ({
         return (
             <div className="container-fluid module-page pt-4">
                 <div className="module-page-header d-flex justify-content-between align-items-center mb-3">
-                    <h1 className="h4 mb-0">{heading}</h1>
+                    <div>
+                        <h1 className="h4 mb-0">{heading}</h1>
+                        {description && <p className="text-muted small mb-0">{t(description)}</p>}
+                    </div>
                     <div className="d-flex gap-2">
                         {can("create") && (
                             <button className="btn btn-primary" onClick={() => go(`${base}/create`)}>

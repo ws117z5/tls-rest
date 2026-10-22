@@ -43,7 +43,7 @@ func NewClaudeNotify() *ClaudeNotify {
 			ID:      "claude_notifications",
 			Name:    "Claude Notifications",
 			Icon:    "config",
-			Submenu: "dev",
+			Submenu: "External",
 			// Each user sees only their own notifications; they need an explicit
 			// grant since guests have no owner to scope by (see init/sql/2026.10.13.sql).
 			OwnerScoped:          true,
