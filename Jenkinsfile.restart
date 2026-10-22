@@ -1,0 +1,23 @@
+pipeline {
+    agent any
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+        stage('Restart') {
+            steps {
+                // No build, no test — just recreate containers from the current
+                // image + current docker-compose.yml (picks up label/config
+                // changes without rebuilding the app).
+                sh 'docker compose up --force-recreate --no-build --detach'
+            }
+        }
+    }
+    post {
+        failure {
+            sh "docker logs tls-rest --tail 50 || true"
+        }
+    }
+}
