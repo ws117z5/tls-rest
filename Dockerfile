@@ -51,14 +51,21 @@ ARG APP_VERSION=dev
 ENV APP_VERSION=${APP_VERSION}
 
 # Install runtime tools required by your Go app (libpcap for network capture, ca-certificates for TLS, ufw for the
-# accesslog firewall rules, graphviz's `dot` for :::graph blocks — see go/engine/modules/html/graph.go)
+# accesslog firewall rules, graphviz's `dot` for :::graph blocks — see go/engine/modules/html/graph.go, ffmpeg + curl
+# for the Video Tool page — see go/pages/videotool)
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
     ca-certificates \
     libpcap0.8 \
     ufw \
     graphviz \
+    ffmpeg \
+    curl \
  && rm -rf /var/lib/apt/lists/*
+
+# yt-dlp: a standalone self-contained binary (no system Python needed) — see go/pages/videotool.
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux -o /usr/local/bin/yt-dlp \
+ && chmod +x /usr/local/bin/yt-dlp
 
 WORKDIR /app
 

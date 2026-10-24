@@ -52,6 +52,7 @@ import (
 	_ "tls-rest/go/pages/myip"
 	_ "tls-rest/go/pages/netmapper"
 	_ "tls-rest/go/pages/seo"
+	_ "tls-rest/go/pages/videotool"
 
 	// Shared controllers: reusable by any module, not owned by one.
 	_ "tls-rest/go/engine/controllers/turn"

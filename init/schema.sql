@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict WVxUnr8VGpexzrIExApOL6dRnjp4OZYYf9Wyxz4JOYKuDlDGJPvRkpaQg2qUQSG
+\restrict 07bnWFjZ2TBI65dJWGkElx2OeMLZa7jGMDbcGE62khzGwQDtFYzk30XlOqqjLuE
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2248,7 +2248,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict WVxUnr8VGpexzrIExApOL6dRnjp4OZYYf9Wyxz4JOYKuDlDGJPvRkpaQg2qUQSG
+\unrestrict 07bnWFjZ2TBI65dJWGkElx2OeMLZa7jGMDbcGE62khzGwQDtFYzk30XlOqqjLuE
 
 
 -- Durable role/rights seed.
@@ -2256,7 +2256,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict FHDe0ZpkrrRCtgyd7G1YxWlDwJZ4r800rF57sXZLC5ewSUgZoGfcPTSHeONAxWy
+\restrict pyefUUMvuhoMRVrEbjADXLt2Fi07jO7mqJduPiRg3ePCOCD1G6ZlLa6qdK1E2vD
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2371,13 +2371,14 @@ INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access,
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (42, 'bf7e70b9-1e36-4ea4-8673-466edccce0d9', 0, 'posts', 63, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"access":["list","view","create","edit","delete"],"author":["list","view","create","edit","delete"],"comments_count":["list","view","create","edit","delete"],"compiled_html":["list","view","create","edit","delete"],"content":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"html_id":["list","view","create","edit","delete"],"images":["list","view","create","edit","delete"],"likes_count":["list","view","create","edit","delete"],"slug":["list","view","create","edit","delete"],"tags":["list","view","create","edit","delete"],"title":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"uuid":["list","view","create","edit","delete"],"visible_groups":["list","view","create","edit","delete"],"visible_users":["list","view","create","edit","delete"]}', NULL, '["title","tag","user","user_group","created_from","created_to"]');
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (86, '8d8e39ca-dd4f-4218-91c1-28322cb99ba1', 2, 'claude_notifications', 23, 0, '2026-10-14 12:11:59.618498-07', '2026-10-14 12:11:59.618498-07', NULL, NULL, NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (87, '2869c84f-2fbf-42b2-b260-8525ec16f741', 2, 'external_logs', 7, 0, '2026-10-16 19:54:38.890142-07', '2026-10-16 19:54:38.890142-07', NULL, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (88, '3b3002f9-58c3-422a-8201-15b4b76c37d3', 0, 'video-tool', 63, 0, '2026-10-24 09:30:27.179735-07', '2026-10-24 09:30:27.179735-07', 1, NULL, NULL, '[]');
 
 
 --
 -- Name: user_group_rights_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.user_group_rights_id_seq', 87, true);
+SELECT pg_catalog.setval('public.user_group_rights_id_seq', 88, true);
 
 
 --
@@ -2391,5 +2392,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict FHDe0ZpkrrRCtgyd7G1YxWlDwJZ4r800rF57sXZLC5ewSUgZoGfcPTSHeONAxWy
+\unrestrict pyefUUMvuhoMRVrEbjADXLt2Fi07jO7mqJduPiRg3ePCOCD1G6ZlLa6qdK1E2vD
 
