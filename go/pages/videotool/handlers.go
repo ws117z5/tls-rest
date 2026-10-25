@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -17,6 +19,28 @@ import (
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/log"
 )
+
+// validateSourceURL rejects anything that isn't a well-formed http(s) URL resolving to a public address. This is
+// the first of two independent layers against the yt-dlp subprocess loadFromURL feeds url into (the second is the
+// "--" argv guard in ytdlp.go): a value can't be mistaken for a yt-dlp CLI flag if it's required to parse as an
+// absolute http(s) URL, and resolving+checking the host blocks using yt-dlp's generic extractor as an SSRF proxy
+// against internal/link-local targets (e.g. a cloud metadata endpoint).
+func validateSourceURL(raw string) error {
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" {
+		return fmt.Errorf("must be a valid http(s) link")
+	}
+	ips, err := net.LookupIP(u.Hostname())
+	if err != nil || len(ips) == 0 {
+		return fmt.Errorf("could not resolve host")
+	}
+	for _, ip := range ips {
+		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsUnspecified() {
+			return fmt.Errorf("that host isn't allowed")
+		}
+	}
+	return nil
+}
 
 func floatParam(r *http.Request, name string, def float64) float64 {
 	v := r.URL.Query().Get(name)
@@ -84,6 +108,10 @@ func loadFromURL(w http.ResponseWriter, r *http.Request) {
 	}
 	if rawURL == "" {
 		send("error", map[string]string{"message": "url is required"})
+		return
+	}
+	if err := validateSourceURL(rawURL); err != nil {
+		send("error", map[string]string{"message": err.Error()})
 		return
 	}
 

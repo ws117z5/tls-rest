@@ -18,6 +18,7 @@ import (
 	_ "tls-rest/go/engine/modules/logs"
 	_ "tls-rest/go/engine/modules/messages"
 	_ "tls-rest/go/engine/modules/modulerights"
+	_ "tls-rest/go/engine/modules/p2prendezvous"
 	_ "tls-rest/go/engine/modules/publicprofile"
 	_ "tls-rest/go/engine/modules/translations"
 	_ "tls-rest/go/engine/modules/usergroups"

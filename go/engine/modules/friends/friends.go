@@ -5,6 +5,7 @@
 // (which also covers cancelling an outgoing request or declining an incoming
 // one — there is nothing left to distinguish once the row is gone).
 //
+//	GET  /api/friends/list           -> {friends: [{id, userName, image}]} (accepted only)
 //	GET  /api/friends/status/{id}   -> {status: "none"|"pending_sent"|"pending_received"|"friends"}
 //	POST /api/friends/request/{id}  -> send a friend request to user {id}
 //	POST /api/friends/accept/{id}   -> accept an incoming request from user {id}
@@ -16,6 +17,7 @@
 package friends
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -45,6 +47,7 @@ var Module = &module.ModuleAbstract[interface{}]{
 	DefaultPermissionSet: true,
 	Rights:               make(map[int]int),
 	CustomRoutes: []module.CustomRoute{
+		{Path: "/api/friends/list", Methods: []string{"GET"}, Handler: handleList, Absolute: true},
 		{Path: "/api/friends/status/{id}", Methods: []string{"GET"}, Handler: handleStatus, Absolute: true},
 		{Path: "/api/friends/request/{id}", Methods: []string{"POST"}, Handler: handleRequest, Absolute: true},
 		{Path: "/api/friends/accept/{id}", Methods: []string{"POST"}, Handler: handleAccept, Absolute: true},
@@ -68,6 +71,86 @@ func requireSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 func targetID(r *http.Request) (int, bool) {
 	id, err := strconv.Atoi(mux.Vars(r)["id"])
 	return id, err == nil && id > 0
+}
+
+// AreFriends reports whether the two users have an accepted friend
+// relationship. Exported for other modules that need to gate something on
+// friendship without duplicating this query — see p2prendezvous.
+func AreFriends(ctx context.Context, userA, userB int) (bool, error) {
+	db, err := pgdb.GetInstanceCtx(ctx)
+	if err != nil {
+		return false, err
+	}
+	row, err := db.GetOne(`
+		SELECT 1 FROM friends
+		WHERE status = 'accepted' AND ((requester_id = $1 AND recipient_id = $2) OR (requester_id = $2 AND recipient_id = $1))`,
+		userA, userB)
+	if err != nil {
+		return false, err
+	}
+	return row != nil, nil
+}
+
+// ListFriendIDs returns the user ids of every accepted friend of userID.
+// Exported for modules that only need the ids (e.g. p2prendezvous's presence
+// snapshot), without the join/HTTP overhead of the full handleList response.
+func ListFriendIDs(ctx context.Context, userID int) ([]int, error) {
+	db, err := pgdb.GetInstanceCtx(ctx)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := db.GetAll(`
+		SELECT CASE WHEN requester_id = $1 THEN recipient_id ELSE requester_id END AS other_id
+		FROM friends
+		WHERE status = 'accepted' AND (requester_id = $1 OR recipient_id = $1)`, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]int, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, functions.Int(row["other_id"]))
+	}
+	return out, nil
+}
+
+// handleList returns every accepted friend of the caller.
+func handleList(w http.ResponseWriter, r *http.Request) {
+	s := requireSession(w, r)
+	if s == nil {
+		return
+	}
+
+	db, err := pgdb.GetInstanceCtx(r.Context())
+	if err != nil {
+		http.Error(w, "db unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	rows, err := db.GetAll(`
+		SELECT u.id, u.user_name, u.image
+		FROM friends f
+		JOIN users u ON u.id = CASE WHEN f.requester_id = $1 THEN f.recipient_id ELSE f.requester_id END
+		WHERE f.status = 'accepted' AND (f.requester_id = $1 OR f.recipient_id = $1)
+		ORDER BY u.user_name`, s.UserID)
+	if err != nil {
+		http.Error(w, "query failed", http.StatusInternalServerError)
+		return
+	}
+
+	type friendRow struct {
+		ID       int64  `json:"id"`
+		UserName string `json:"userName"`
+		Image    string `json:"image"`
+	}
+	out := make([]friendRow, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, friendRow{
+			ID:       functions.Coerce[int64](row["id"]),
+			UserName: functions.Coerce[string](row["user_name"]),
+			Image:    functions.ImageFieldURL(row["image"]),
+		})
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"friends": out})
 }
 
 // handleStatus reports the caller's relationship with {id}.

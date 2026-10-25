@@ -20,6 +20,7 @@ type ConfigType struct {
 	Modules []ModuleParams `json:"modules"`
 	Log     LogParams      `json:"log"`
 	Turn    TurnParams     `json:"turn"`
+	P2P     P2PParams      `json:"p2p"`
 }
 
 // LogParams configures the structured event logger (go/lib/log), mirroring the
@@ -39,6 +40,24 @@ type TurnParams struct {
 	CredentialsURL   string   `json:"credentialsUrl"`   // "{keyID}" is replaced with CF_TURN_TOKEN_ID
 	TTLSeconds       int      `json:"ttlSeconds"`       // requested credential lifetime
 	FallbackStunURLs []string `json:"fallbackStunUrls"` // used when TURN is unconfigured/over cap
+}
+
+// P2PParams configures the UDP rendezvous listener for the P2P messaging
+// app's NAT traversal (see go/engine/modules/p2prendezvous). This is a raw
+// UDP port, not an HTTP route — it must be opened directly on the host
+// running the Go binary, outside Traefik's HTTP(S) reverse-proxy scope.
+type P2PParams struct {
+	UDPPort int `json:"udpPort"`
+}
+
+const defaultP2PUDPPort = 34567
+
+// UDPPort is go.config.json's "p2p.udpPort", falling back to a default when unset.
+func (obj *ConfigType) UDPPort() int {
+	if obj.P2P.UDPPort > 0 {
+		return obj.P2P.UDPPort
+	}
+	return defaultP2PUDPPort
 }
 
 // AdditionalRights self explanitory

@@ -19,11 +19,14 @@ type sourceInfo struct {
 }
 
 // probeSource fetches metadata only (no download) so the duration cap can be enforced before downloading anything.
+// The "--" before url (here and in downloadSource) is load-bearing: without it, a url value crafted to look like a
+// yt-dlp flag (e.g. "--config-location=...") would be parsed as one instead of as the positional URL argument —
+// handlers.go's validateSourceURL rejects such values too, but this is the second, independent layer.
 func probeSource(ctx context.Context, url string) (*sourceInfo, error) {
 	cmd := exec.CommandContext(ctx, "yt-dlp",
 		"--no-warnings", "--skip-download",
 		"--print", "%(duration)s|%(title)s",
-		url,
+		"--", url,
 	)
 	out, err := cmd.Output()
 	if err != nil {
@@ -53,7 +56,7 @@ func downloadSource(ctx context.Context, url, destDir string, onProgress func(pc
 		"--max-filesize", maxFilesize,
 		"-f", "bv*+ba/b",
 		"-o", outTemplate,
-		url,
+		"--", url,
 	)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
