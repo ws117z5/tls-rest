@@ -841,7 +841,7 @@ func TestPosts_QueryParamsRespectRights(t *testing.T) {
 
 // --- custom bolt-on endpoints: session required, not module rights ---------
 
-// likes/messages/friends/publicprofile are NOT generic CRUD modules — they're
+// likes/messages/chats/publicprofile are NOT generic CRUD modules — they're
 // small custom handlers under /api/, which authorizeAPIRequest's generic
 // "/api/*" branch passes through unconditionally (see middleware.go). Their
 // OWN handlers are what enforce "must be signed in", returning 401 directly
@@ -861,7 +861,7 @@ func TestCustomEndpoints_RequireSession(t *testing.T) {
 		{"likes read is public", http.MethodGet, "/api/likes/posts/999999", nil, http.StatusOK, http.StatusOK},
 		{"likes react requires session", http.MethodPost, "/api/likes/posts/999999", map[string]interface{}{"value": 1}, http.StatusUnauthorized, http.StatusOK},
 		{"messages inbox requires session", http.MethodGet, "/api/messages/inbox", nil, http.StatusUnauthorized, http.StatusOK},
-		{"friends status requires session", http.MethodGet, "/api/friends/status/" + itoa(fixtures.adminID), nil, http.StatusUnauthorized, http.StatusOK},
+		{"chats list requires session", http.MethodGet, "/api/chats", nil, http.StatusUnauthorized, http.StatusOK},
 		{"public profile requires session", http.MethodGet, "/api/users/" + itoa(fixtures.adminID) + "/public", nil, http.StatusUnauthorized, http.StatusOK},
 	}
 
