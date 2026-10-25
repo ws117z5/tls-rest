@@ -46,6 +46,23 @@ var Page = &module.PageAbstract{
 			WithLabel("Avatar URL").
 			WithMode(field.MODE_LIST|field.MODE_VIEW|field.MODE_EDIT).
 			WithOption("folderTemplate", "profile"),
+		// Read-only: lets a client show "what am I" (e.g. an account screen's
+		// rights info) without a second request — handlePut already drops any
+		// field with ReadOnly set, so this can never be used to self-elevate.
+		field.NewField("user_role", field.TYPE_STRING, false).
+			WithLabel("Role").
+			WithMode(field.MODE_LIST | field.MODE_VIEW).
+			AsReadOnly(),
+		// Gates /api/users/search's name-matching branch (go/engine/modules/chats/search.go) — off by
+		// default, since a username is already how people find you deliberately.
+		field.NewField("allow_search_by_name", field.TYPE_CHECKBOX, false).
+			WithLabel("Let others find me by first/last name").
+			WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
+		// Gates whether a non-friend can add this user to a group chat at all
+		// (go/engine/modules/chats' group-add gating) — a friend always can.
+		field.NewField("allow_chats_from_non_friends", field.TYPE_CHECKBOX, false).
+			WithLabel("Let non-friends add me to group chats").
+			WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
 		field.NewField("theme", field.TYPE_SELECT, false).
 			WithLabel("Theme").
 			WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT).
@@ -71,7 +88,9 @@ var Page = &module.PageAbstract{
 			return nil, err
 		}
 		row, err := db.GetOne(
-			`SELECT id, user_name, first_name, last_name, email, image FROM users WHERE id = $1`,
+			`SELECT id, user_name, first_name, last_name, email, image, user_role,
+			        allow_search_by_name, allow_chats_from_non_friends
+			 FROM users WHERE id = $1`,
 			s.UserID,
 		)
 		if err != nil {

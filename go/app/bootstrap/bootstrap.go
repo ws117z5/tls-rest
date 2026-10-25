@@ -6,12 +6,12 @@ import (
 	// Engine modules
 	_ "tls-rest/go/engine/modules/accesslog"
 	_ "tls-rest/go/engine/modules/accessrules"
+	_ "tls-rest/go/engine/modules/chats"
 	_ "tls-rest/go/engine/modules/comments"
 	_ "tls-rest/go/engine/modules/contact"
 	_ "tls-rest/go/engine/modules/deletion"
 	_ "tls-rest/go/engine/modules/events"
 	_ "tls-rest/go/engine/modules/externalconfig"
-	_ "tls-rest/go/engine/modules/friends"
 	_ "tls-rest/go/engine/modules/html"
 	_ "tls-rest/go/engine/modules/images"
 	_ "tls-rest/go/engine/modules/likes"
