@@ -72,16 +72,28 @@ func loadChat(db *pgdb.Db, chatID int64, callerID int) (*chatOut, error) {
 	return out, nil
 }
 
-// deleteIfAbandoned removes a chat once it has at most one member left —
-// nobody to message, so it's cleaned up rather than left behind forever.
-// Covers both "the only other side of a direct chat declined" and "an
-// admin-less, member-less group" alike.
-func deleteIfAbandoned(db *pgdb.Db, chatID int64) error {
-	row, err := db.GetOne(`SELECT COUNT(*) AS n FROM chat_members WHERE chat_id = $1`, chatID)
+// deleteIfAbandoned removes a chat once its count of "active" (pending or
+// accepted — i.e. excluding 'left'/'unfriended') members drops to
+// maxActiveMembers or below. The threshold differs by caller on purpose:
+//   - handleDecline passes 1: a direct chat whose invitee just declined has
+//     only the original inviter left (never a real two-sided chat), and a
+//     group invite that gets declined before anyone else joined is equally
+//     pointless — either way, "only the creator, nobody else ever joined"
+//     is abandoned.
+//   - handleRemoveMember (group leave/kick) passes 0: a group should persist
+//     for its last remaining member, not vanish out from under them the
+//     moment the second-to-last person leaves — only true emptiness cleans
+//     it up.
+//
+// unfriending/blocking a direct chat never calls this at all — that path
+// deliberately keeps the chat row (see handleUnfriend).
+func deleteIfAbandoned(db *pgdb.Db, chatID int64, maxActiveMembers int) error {
+	row, err := db.GetOne(
+		`SELECT COUNT(*) AS n FROM chat_members WHERE chat_id = $1 AND status IN ('pending', 'accepted')`, chatID)
 	if err != nil {
 		return err
 	}
-	if row != nil && functions.Int(row["n"]) <= 1 {
+	if row != nil && functions.Int(row["n"]) <= maxActiveMembers {
 		_, err = db.Exec(`DELETE FROM chats WHERE id = $1`, chatID)
 	}
 	return err
@@ -106,9 +118,12 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// A 'left' group chat is hidden from the leaver's own list (the chat
+	// continues for everyone else); an 'unfriended' direct chat stays visible
+	// to both sides — see the status comment on chat_members in the migration.
 	rows, err := db.GetAll(`
 		SELECT c.id FROM chats c
-		JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $1
+		JOIN chat_members cm ON cm.chat_id = c.id AND cm.user_id = $1 AND cm.status <> 'left'
 		ORDER BY c.id DESC`, s.UserID)
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, "query failed")
@@ -156,8 +171,19 @@ func handleCreateDirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	blocked, err := isBlocked(r.Context(), s.UserID, int(targetID))
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	if blocked {
+		functions.JSONError(w, http.StatusForbidden, "blocked")
+		return
+	}
+
 	existing, err := db.GetOne(`
-		SELECT c.id FROM chats c
+		SELECT c.id, m1.status AS caller_status, m2.status AS target_status
+		FROM chats c
 		JOIN chat_members m1 ON m1.chat_id = c.id AND m1.user_id = $1
 		JOIN chat_members m2 ON m2.chat_id = c.id AND m2.user_id = $2
 		WHERE c.type = 'direct'
@@ -170,15 +196,38 @@ func handleCreateDirect(w http.ResponseWriter, r *http.Request) {
 	var chatID int64
 	if existing != nil {
 		chatID = functions.Coerce[int64](existing["id"])
-		// "Adding" someone who already has a pending request open toward the
-		// caller is the crossing-in-the-mail case: accept it on the spot
-		// rather than leaving two one-sided pending rows.
-		if _, err := db.Exec(`
-			UPDATE chat_members SET status = 'accepted' WHERE chat_id = $1 AND user_id = $2 AND status = 'pending'`,
-			chatID, s.UserID); err != nil {
-			functions.JSONError(w, http.StatusInternalServerError, "update failed")
-			return
+		callerStatus := functions.Coerce[string](existing["caller_status"])
+		targetStatus := functions.Coerce[string](existing["target_status"])
+		switch {
+		case callerStatus == "pending":
+			// Crossing in the mail: {userId} already had a pending invite open
+			// toward the caller — accept it on the spot rather than leaving two
+			// one-sided pending rows. Both sides are accepted now: friends.
+			if _, err := db.Exec(`UPDATE chat_members SET status = 'accepted' WHERE chat_id = $1 AND user_id = $2`,
+				chatID, s.UserID); err != nil {
+				functions.JSONError(w, http.StatusInternalServerError, "update failed")
+				return
+			}
+			if err := setFriends(db, s.UserID, int(targetID), true); err != nil {
+				functions.JSONError(w, http.StatusInternalServerError, "update failed")
+				return
+			}
+		case callerStatus == "unfriended" || targetStatus == "unfriended":
+			// Re-friending after an explicit unfriend: a fresh request cycle,
+			// reusing the same chat row rather than creating a new one.
+			if _, err := db.Exec(`UPDATE chat_members SET status = 'accepted' WHERE chat_id = $1 AND user_id = $2`,
+				chatID, s.UserID); err != nil {
+				functions.JSONError(w, http.StatusInternalServerError, "update failed")
+				return
+			}
+			if _, err := db.Exec(`UPDATE chat_members SET status = 'pending' WHERE chat_id = $1 AND user_id = $2`,
+				chatID, targetID); err != nil {
+				functions.JSONError(w, http.StatusInternalServerError, "update failed")
+				return
+			}
 		}
+		// Otherwise: already accepted, or caller already has a pending invite
+		// open toward {userId} — nothing to do, just return current state.
 	} else {
 		id, err := db.InsertRow("chats", map[string]interface{}{"type": "direct", "admin_id": s.UserID})
 		if err != nil {
@@ -284,10 +333,14 @@ func handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"chat": chat, "rejected": rejected})
 }
 
-// memberJoinStatus decides how a prospective member joins: accepted if
-// they're already a direct-chat friend of the inviter, pending if they've
-// opted into allow_chats_from_non_friends, or "" (rejected) otherwise.
+// memberJoinStatus decides how a prospective member joins: rejected outright
+// if either side has blocked the other, accepted if they're already a
+// direct-chat friend of the inviter, pending if they've opted into
+// allow_chats_from_non_friends, or "" (rejected) otherwise.
 func memberJoinStatus(ctx context.Context, inviterID, memberID int) (status, rejectReason string) {
+	if blocked, err := isBlocked(ctx, inviterID, memberID); err == nil && blocked {
+		return "", "blocked"
+	}
 	friend, err := isDirectFriend(ctx, inviterID, memberID)
 	if err == nil && friend {
 		return "accepted", ""
@@ -325,6 +378,29 @@ func handleAccept(w http.ResponseWriter, r *http.Request) {
 		functions.JSONError(w, http.StatusNotFound, "no pending invite")
 		return
 	}
+
+	// For a DIRECT chat, the inviter's own row is always already 'accepted'
+	// (set at creation/re-add) — the invitee accepting here is the moment
+	// both sides are accepted, i.e. the moment they become friends.
+	chatRow, err := db.GetOne(`SELECT type FROM chats WHERE id = $1`, chatID)
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	if chatRow != nil && functions.Coerce[string](chatRow["type"]) == "direct" {
+		other, err := db.GetOne(`SELECT user_id FROM chat_members WHERE chat_id = $1 AND user_id <> $2`, chatID, s.UserID)
+		if err != nil {
+			functions.JSONError(w, http.StatusInternalServerError, "query failed")
+			return
+		}
+		if other != nil {
+			if err := setFriends(db, s.UserID, functions.Int(other["user_id"]), true); err != nil {
+				functions.JSONError(w, http.StatusInternalServerError, "update failed")
+				return
+			}
+		}
+	}
+
 	chat, err := loadChat(db, chatID, s.UserID)
 	if err != nil || chat == nil {
 		functions.JSONError(w, http.StatusInternalServerError, "could not load chat")
@@ -353,7 +429,7 @@ func handleDecline(w http.ResponseWriter, r *http.Request) {
 		functions.JSONError(w, http.StatusInternalServerError, "delete failed")
 		return
 	}
-	if err := deleteIfAbandoned(db, chatID); err != nil {
+	if err := deleteIfAbandoned(db, chatID, 1); err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, "cleanup failed")
 		return
 	}
@@ -419,8 +495,10 @@ func handleAddMember(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, chat)
 }
 
-// handleRemoveMember: the admin can remove anyone; anyone can remove
-// themselves (leave).
+// handleRemoveMember: GROUP chats only — the admin can remove anyone; anyone
+// can remove themselves (leave). For a direct (1:1) chat, see handleUnfriend
+// instead: "leave" and "unfriend" are deliberately two separate actions, not
+// one reused for both (a 1:1 chat has no group to keep existing for).
 func handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 	s := requireSession(w, r)
 	if s == nil {
@@ -439,18 +517,93 @@ func handleRemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chatRow, err := db.GetOne(`SELECT type FROM chats WHERE id = $1`, chatID)
+	if err != nil || chatRow == nil {
+		functions.JSONError(w, http.StatusNotFound, "chat not found")
+		return
+	}
+	if functions.Coerce[string](chatRow["type"]) != "group" {
+		functions.JSONError(w, http.StatusBadRequest, "use /unfriend for a direct chat")
+		return
+	}
+
 	if int(targetID) != s.UserID && !requireAdmin(w, db, chatID, s.UserID) {
 		return
 	}
-	if _, err := db.Exec(`DELETE FROM chat_members WHERE chat_id = $1 AND user_id = $2`, chatID, targetID); err != nil {
-		functions.JSONError(w, http.StatusInternalServerError, "delete failed")
+	if _, err := db.Exec(`UPDATE chat_members SET status = 'left' WHERE chat_id = $1 AND user_id = $2`,
+		chatID, targetID); err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "update failed")
 		return
 	}
-	if err := deleteIfAbandoned(db, chatID); err != nil {
+	if err := deleteIfAbandoned(db, chatID, 0); err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, "cleanup failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
+// handleUnfriend ends a direct (1:1) chat's friend relationship WITHOUT
+// deleting the chat — both members flip to 'unfriended' (see the status
+// comment on chat_members in the migration). The chat stays visible to both
+// sides; re-adding (POST /api/chats/direct/{userId}) starts a fresh request
+// cycle reusing the same chat row.
+func handleUnfriend(w http.ResponseWriter, r *http.Request) {
+	s := requireSession(w, r)
+	if s == nil {
+		return
+	}
+	chatID, ok := pathID(r, "id")
+	if !ok {
+		functions.JSONError(w, http.StatusBadRequest, "bad chat")
+		return
+	}
+
+	db, err := pgdb.GetInstanceCtx(r.Context())
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "db unavailable")
+		return
+	}
+
+	chatRow, err := db.GetOne(`SELECT type FROM chats WHERE id = $1`, chatID)
+	if err != nil || chatRow == nil {
+		functions.JSONError(w, http.StatusNotFound, "chat not found")
+		return
+	}
+	if functions.Coerce[string](chatRow["type"]) != "direct" {
+		functions.JSONError(w, http.StatusBadRequest, "unfriend only applies to a direct chat")
+		return
+	}
+	isMember, err := IsAcceptedMember(r.Context(), chatID, s.UserID)
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	if !isMember {
+		functions.JSONError(w, http.StatusForbidden, "not a member of that chat")
+		return
+	}
+
+	other, err := db.GetOne(`SELECT user_id FROM chat_members WHERE chat_id = $1 AND user_id <> $2`, chatID, s.UserID)
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	if _, err := db.Exec(`UPDATE chat_members SET status = 'unfriended' WHERE chat_id = $1`, chatID); err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "update failed")
+		return
+	}
+	if other != nil {
+		if err := setFriends(db, s.UserID, functions.Int(other["user_id"]), false); err != nil {
+			functions.JSONError(w, http.StatusInternalServerError, "update failed")
+			return
+		}
+	}
+	chat, err := loadChat(db, chatID, s.UserID)
+	if err != nil || chat == nil {
+		functions.JSONError(w, http.StatusInternalServerError, "could not load chat")
+		return
+	}
+	writeJSON(w, http.StatusOK, chat)
 }
 
 // handleUpdateChat: admin-only rename/re-avatar. The avatar value is

@@ -16,7 +16,8 @@ type searchResult struct {
 
 // handleSearch matches username always; first/last name only for users who
 // opted into allow_search_by_name (see profile.go) — never email, never
-// anything else about the matched users.
+// anything else about the matched users. Excludes anyone blocked in either
+// direction, so a blocked person can't find their way back via search.
 func handleSearch(w http.ResponseWriter, r *http.Request) {
 	s := requireSession(w, r)
 	if s == nil {
@@ -39,6 +40,9 @@ func handleSearch(w http.ResponseWriter, r *http.Request) {
 		WHERE id <> $1 AND (
 			user_name ILIKE '%' || $2 || '%'
 			OR (allow_search_by_name = true AND (first_name ILIKE '%' || $2 || '%' OR last_name ILIKE '%' || $2 || '%'))
+		) AND NOT EXISTS (
+			SELECT 1 FROM blocks
+			WHERE (blocker_id = $1 AND blocked_id = users.id) OR (blocker_id = users.id AND blocked_id = $1)
 		)
 		ORDER BY user_name
 		LIMIT 25`, s.UserID, q)

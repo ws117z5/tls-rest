@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict 0EJRFBslD8eIn7mwyLw8cAqn61tWmlzgJU2Gc0iuTz7aNtOfgjlaB5HNNleFiAq
+\restrict h1eYzNoDdmvnBd328UjTrS4vaIf2iHOBefLeEJSSxZPAfbyLkXxBuztfCWhnb6l
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -164,6 +164,37 @@ ALTER SEQUENCE public.access_rule_id_seq OWNED BY public.access_rule.id;
 
 
 --
+-- Name: blocks; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.blocks (
+    id bigint NOT NULL,
+    blocker_id integer NOT NULL,
+    blocked_id integer NOT NULL,
+    created timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: blocks_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.blocks_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: blocks_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.blocks_id_seq OWNED BY public.blocks.id;
+
+
+--
 -- Name: cart; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -197,6 +228,71 @@ CREATE SEQUENCE public.cart_id_seq
 --
 
 ALTER SEQUENCE public.cart_id_seq OWNED BY public.cart.id;
+
+
+--
+-- Name: chat_members; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.chat_members (
+    id bigint NOT NULL,
+    chat_id integer NOT NULL,
+    user_id integer NOT NULL,
+    status character varying(10) DEFAULT 'pending'::character varying NOT NULL,
+    joined timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: chat_members_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.chat_members_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: chat_members_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.chat_members_id_seq OWNED BY public.chat_members.id;
+
+
+--
+-- Name: chats; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.chats (
+    id bigint NOT NULL,
+    type character varying(10) DEFAULT 'direct'::character varying NOT NULL,
+    name character varying(200),
+    avatar character varying(255),
+    admin_id integer,
+    created timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: chats_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.chats_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: chats_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.chats_id_seq OWNED BY public.chats.id;
 
 
 --
@@ -519,16 +615,10 @@ CREATE TABLE public.friend_requests (
 
 CREATE TABLE public.friends (
     id bigint NOT NULL,
-    uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
-    requester_id integer NOT NULL,
-    recipient_id integer NOT NULL,
-    status character varying(20) DEFAULT 'pending'::character varying NOT NULL,
-    created_by integer,
+    user_a integer NOT NULL,
+    user_b integer NOT NULL,
     created timestamp with time zone DEFAULT now() NOT NULL,
-    updated timestamp with time zone DEFAULT now() NOT NULL,
-    access integer DEFAULT 0 NOT NULL,
-    CONSTRAINT friends_not_self CHECK ((requester_id <> recipient_id)),
-    CONSTRAINT friends_status_check CHECK (((status)::text = ANY ((ARRAY['pending'::character varying, 'accepted'::character varying])::text[])))
+    CONSTRAINT friends_check CHECK ((user_a < user_b))
 );
 
 
@@ -1331,7 +1421,9 @@ CREATE TABLE public.users (
     auth_provider character varying(20),
     auth_provider_id character varying(191),
     groups jsonb DEFAULT '[]'::jsonb NOT NULL,
-    user_role character varying(20) DEFAULT 'user'::character varying NOT NULL
+    user_role character varying(20) DEFAULT 'user'::character varying NOT NULL,
+    allow_search_by_name boolean DEFAULT false NOT NULL,
+    allow_chats_from_non_friends boolean DEFAULT false NOT NULL
 );
 
 
@@ -1422,10 +1514,31 @@ ALTER TABLE ONLY public.access_rule ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
+-- Name: blocks id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blocks ALTER COLUMN id SET DEFAULT nextval('public.blocks_id_seq'::regclass);
+
+
+--
 -- Name: cart id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.cart ALTER COLUMN id SET DEFAULT nextval('public.cart_id_seq'::regclass);
+
+
+--
+-- Name: chat_members id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_members ALTER COLUMN id SET DEFAULT nextval('public.chat_members_id_seq'::regclass);
+
+
+--
+-- Name: chats id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chats ALTER COLUMN id SET DEFAULT nextval('public.chats_id_seq'::regclass);
 
 
 --
@@ -1585,11 +1698,51 @@ ALTER TABLE ONLY public.access_rule
 
 
 --
+-- Name: blocks blocks_blocker_id_blocked_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blocks
+    ADD CONSTRAINT blocks_blocker_id_blocked_id_key UNIQUE (blocker_id, blocked_id);
+
+
+--
+-- Name: blocks blocks_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blocks
+    ADD CONSTRAINT blocks_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: cart cart_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.cart
     ADD CONSTRAINT cart_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: chat_members chat_members_chat_id_user_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_members
+    ADD CONSTRAINT chat_members_chat_id_user_id_key UNIQUE (chat_id, user_id);
+
+
+--
+-- Name: chat_members chat_members_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_members
+    ADD CONSTRAINT chat_members_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: chats chats_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chats
+    ADD CONSTRAINT chats_pkey PRIMARY KEY (id);
 
 
 --
@@ -1678,6 +1831,14 @@ ALTER TABLE ONLY public.friend_requests
 
 ALTER TABLE ONLY public.friends
     ADD CONSTRAINT friends_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: friends friends_user_a_user_b_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friends
+    ADD CONSTRAINT friends_user_a_user_b_key UNIQUE (user_a, user_b);
 
 
 --
@@ -1963,10 +2124,24 @@ CREATE INDEX config_lookup_idx ON public.config USING btree (scope, scope_id);
 
 
 --
+-- Name: idx_blocks_blocked; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_blocks_blocked ON public.blocks USING btree (blocked_id);
+
+
+--
 -- Name: idx_cart_user_product; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE UNIQUE INDEX idx_cart_user_product ON public.cart USING btree (created_by, product_id);
+
+
+--
+-- Name: idx_chat_members_user; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_chat_members_user ON public.chat_members USING btree (user_id);
 
 
 --
@@ -2005,17 +2180,17 @@ CREATE INDEX idx_external_logs_user_created ON public.external_logs USING btree 
 
 
 --
--- Name: idx_friends_pair; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_friends_user_a; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_friends_pair ON public.friends USING btree (LEAST(requester_id, recipient_id), GREATEST(requester_id, recipient_id));
+CREATE INDEX idx_friends_user_a ON public.friends USING btree (user_a);
 
 
 --
--- Name: idx_friends_recipient; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_friends_user_b; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX idx_friends_recipient ON public.friends USING btree (recipient_id, status);
+CREATE INDEX idx_friends_user_b ON public.friends USING btree (user_b);
 
 
 --
@@ -2173,6 +2348,22 @@ CREATE TRIGGER trg_set_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXE
 
 
 --
+-- Name: blocks blocks_blocked_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blocks
+    ADD CONSTRAINT blocks_blocked_id_fkey FOREIGN KEY (blocked_id) REFERENCES public.users(id);
+
+
+--
+-- Name: blocks blocks_blocker_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.blocks
+    ADD CONSTRAINT blocks_blocker_id_fkey FOREIGN KEY (blocker_id) REFERENCES public.users(id);
+
+
+--
 -- Name: cart cart_product_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2181,11 +2372,51 @@ ALTER TABLE ONLY public.cart
 
 
 --
+-- Name: chat_members chat_members_chat_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_members
+    ADD CONSTRAINT chat_members_chat_id_fkey FOREIGN KEY (chat_id) REFERENCES public.chats(id) ON DELETE CASCADE;
+
+
+--
+-- Name: chat_members chat_members_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chat_members
+    ADD CONSTRAINT chat_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
+-- Name: chats chats_admin_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.chats
+    ADD CONSTRAINT chats_admin_id_fkey FOREIGN KEY (admin_id) REFERENCES public.users(id);
+
+
+--
 -- Name: external_logs external_logs_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.external_logs
     ADD CONSTRAINT external_logs_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.users(id);
+
+
+--
+-- Name: friends friends_user_a_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friends
+    ADD CONSTRAINT friends_user_a_fkey FOREIGN KEY (user_a) REFERENCES public.users(id);
+
+
+--
+-- Name: friends friends_user_b_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.friends
+    ADD CONSTRAINT friends_user_b_fkey FOREIGN KEY (user_b) REFERENCES public.users(id);
 
 
 --
@@ -2248,7 +2479,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 0EJRFBslD8eIn7mwyLw8cAqn61tWmlzgJU2Gc0iuTz7aNtOfgjlaB5HNNleFiAq
+\unrestrict h1eYzNoDdmvnBd328UjTrS4vaIf2iHOBefLeEJSSxZPAfbyLkXxBuztfCWhnb6l
 
 
 -- Durable role/rights seed.
@@ -2256,7 +2487,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict WcOPwCXFG7oQNSak8AIN5vqFPKQwgsO78jAuuoTFkqAFrH6eev7VVi4dAC1izpT
+\restrict g8fV8oY2s1zmdHYjw23jULAi0iNkdQtyFdHAqDHZytLfaRQ2DCbC2WljkVTLVqv
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2392,5 +2623,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict WcOPwCXFG7oQNSak8AIN5vqFPKQwgsO78jAuuoTFkqAFrH6eev7VVi4dAC1izpT
+\unrestrict g8fV8oY2s1zmdHYjw23jULAi0iNkdQtyFdHAqDHZytLfaRQ2DCbC2WljkVTLVqv
 
