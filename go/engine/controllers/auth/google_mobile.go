@@ -19,8 +19,9 @@ import (
 // Google sign-in for external apps (the Android app). The app signs in with Credential Manager / Google Sign-In using the WEB
 // client id (GOOGLE_ID) as its server client id, gets an ID token, and posts it to /api/auth/oauth as {provider:"google", id_token}.
 // The token is verified with Google's tokeninfo endpoint and must have been issued for this server (aud). Its authorized party
-// (azp, the app's own client id) is matched against the External Apps module (external_config.client_id), whose row also
-// decides the user group the sign-in joins.
+// (azp, the app's own client id) is matched against the External Apps module (external_config.client_ids — a list, since one
+// app can have more than one registered client id, e.g. separate debug/release Android client ids), whose row also decides
+// the user group the sign-in joins.
 
 const googleTokenInfo = "https://oauth2.googleapis.com/tokeninfo"
 
@@ -39,13 +40,18 @@ type googleTokenClaims struct {
 	Expires         string `json:"exp"`
 }
 
-// externalClientIDs are the Google OAuth client ids registered on external_config rows (the external apps allowed to sign users in).
+// externalClientIDs are the Google OAuth client ids registered on external_config rows (the external apps allowed to sign
+// users in) — flattened across every row's client_ids list, since a row can register more than one.
 func externalClientIDs(ctx context.Context) []string {
 	db, err := pgdb.GetInstanceCtx(ctx)
 	if err != nil {
 		return nil
 	}
-	rows, err := db.GetAll(`SELECT client_id FROM external_config WHERE provider = 'google' AND COALESCE(client_id, '') <> ''`)
+	rows, err := db.GetAll(`
+		SELECT jsonb_array_elements_text(client_ids) AS client_id
+		FROM external_config
+		WHERE provider = 'google' AND jsonb_array_length(COALESCE(client_ids, '[]'::jsonb)) > 0
+	`)
 	if err != nil {
 		return nil
 	}

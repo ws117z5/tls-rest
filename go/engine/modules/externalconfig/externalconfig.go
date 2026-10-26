@@ -88,10 +88,43 @@ var Module = &ModuleAbstract[interface{}]{
 			WithOptions(providerOptions).
 			WithValueWidth(300),
 
-		NewField("client_id", TYPE_STRING, false).
-			WithLabel("OAuth Client ID").
-			WithDescription("The app's own client id (e.g. the Android client id from Google Cloud). Sign-ins issued to it join the group below, existing users included and its rights apply; leave empty for a rule covering every sign-in of the provider (new users only)").
-			WithValueWidth(300),
+		NewField("client_ids", TYPE_TABLE, false).
+			WithLabel("OAuth Client IDs").
+			WithDescription("This app's own client ids (e.g. separate debug/release Android client ids from Google Cloud for the same app). Sign-ins issued to any of them join the group below, existing users included and its rights apply; leave empty for a rule covering every sign-in of the provider (new users only)").
+			WithOption("width", "400px").
+			InModes(MODE_VIEW | MODE_CREATE | MODE_EDIT | MODE_SUBMIT).
+			TableFieldset([]Field{
+				NewField("client_id", TYPE_STRING, true).
+					WithLabel("Client ID").
+					WithOption("width", "350px"),
+			}).
+			TableRowsAddable("client_id").
+			TableData(func(ctx context.Context, data map[string]interface{}) []map[string]interface{} {
+				id := functions.Int(data["id"])
+				if id <= 0 {
+					return nil
+				}
+				db, err := pgdb.GetInstanceCtx(ctx)
+				if err != nil {
+					return nil
+				}
+				rows, err := db.GetAll(
+					`SELECT jsonb_array_elements_text(client_ids) AS "client_id" FROM external_config WHERE id = $1`,
+					id)
+				if err != nil {
+					return nil
+				}
+				return rows
+			}).
+			TableOnSubmit(func(rows []map[string]interface{}) interface{} {
+				ids := []interface{}{}
+				for _, row := range rows {
+					if id, _ := row["client_id"].(string); id != "" {
+						ids = append(ids, id)
+					}
+				}
+				return ids
+			}),
 
 		NewField("group_id", TYPE_INT, true).
 			WithLabel("User Group").

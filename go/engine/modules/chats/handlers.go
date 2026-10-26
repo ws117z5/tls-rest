@@ -606,6 +606,67 @@ func handleUnfriend(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, chat)
 }
 
+// handleDeleteChat is "delete for us": a DIRECT chat only, stronger than
+// unfriend — the chat row itself is removed (chat_members cascades via its
+// FK), not just marked 'unfriended', so it's gone from both sides entirely
+// rather than staying visible. "Delete for me" (the other half of what the
+// client calls these two actions) never reaches the server at all — it's
+// purely local, hiding the chat on one device without touching anyone else's
+// copy or the friendship.
+func handleDeleteChat(w http.ResponseWriter, r *http.Request) {
+	s := requireSession(w, r)
+	if s == nil {
+		return
+	}
+	chatID, ok := pathID(r, "id")
+	if !ok {
+		functions.JSONError(w, http.StatusBadRequest, "bad chat")
+		return
+	}
+
+	db, err := pgdb.GetInstanceCtx(r.Context())
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "db unavailable")
+		return
+	}
+
+	chatRow, err := db.GetOne(`SELECT type FROM chats WHERE id = $1`, chatID)
+	if err != nil || chatRow == nil {
+		functions.JSONError(w, http.StatusNotFound, "chat not found")
+		return
+	}
+	if functions.Coerce[string](chatRow["type"]) != "direct" {
+		functions.JSONError(w, http.StatusBadRequest, "delete-for-us only applies to a direct chat")
+		return
+	}
+	isMember, err := IsAcceptedMember(r.Context(), chatID, s.UserID)
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	if !isMember {
+		functions.JSONError(w, http.StatusForbidden, "not a member of that chat")
+		return
+	}
+
+	other, err := db.GetOne(`SELECT user_id FROM chat_members WHERE chat_id = $1 AND user_id <> $2`, chatID, s.UserID)
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	if _, err := db.Exec(`DELETE FROM chats WHERE id = $1`, chatID); err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "delete failed")
+		return
+	}
+	if other != nil {
+		if err := setFriends(db, s.UserID, functions.Int(other["user_id"]), false); err != nil {
+			functions.JSONError(w, http.StatusInternalServerError, "update failed")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"ok": true})
+}
+
 // handleUpdateChat: admin-only rename/re-avatar. The avatar value is
 // whatever go/engine/controllers/functions.ImageFieldURL already knows how
 // to resolve (a bare hash, or a JSON ref array) — the client uploads through

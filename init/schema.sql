@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict e2svcCKQgDAIZn2DJtgJyRXfO05IVzJUDkje7wluPuoKY0GnNLKdi7bISkkCD3A
+\restrict rAeDFJOzUNxNuPn9F39iGC4WdcAMu5tjqknRmNt8070sSnhk7dbUbnFr5kIENKo
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -517,8 +517,8 @@ CREATE TABLE public.external_config (
     provider text NOT NULL,
     group_id integer NOT NULL,
     related_modules jsonb,
-    client_id character varying(255),
-    send_logs boolean DEFAULT true NOT NULL
+    send_logs boolean DEFAULT true NOT NULL,
+    client_ids jsonb DEFAULT '[]'::jsonb NOT NULL
 );
 
 
@@ -2159,10 +2159,10 @@ CREATE INDEX idx_comments_target ON public.comments USING btree (module_id, row_
 
 
 --
--- Name: idx_external_config_provider_client; Type: INDEX; Schema: public; Owner: -
+-- Name: idx_external_config_client_ids; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX idx_external_config_provider_client ON public.external_config USING btree (provider, COALESCE(client_id, ''::character varying));
+CREATE INDEX idx_external_config_client_ids ON public.external_config USING gin (client_ids);
 
 
 --
@@ -2479,7 +2479,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict e2svcCKQgDAIZn2DJtgJyRXfO05IVzJUDkje7wluPuoKY0GnNLKdi7bISkkCD3A
+\unrestrict rAeDFJOzUNxNuPn9F39iGC4WdcAMu5tjqknRmNt8070sSnhk7dbUbnFr5kIENKo
 
 
 -- Durable role/rights seed.
@@ -2487,7 +2487,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict EUi0PIWgBjh8DgfzwnvL9R2jmiGP78r6DHBYuSlUtbNgYTcmaVJbru79u4LuNvO
+\restrict JDwmCUG6gYGdyRpf1jqaLZdsvZqCPfW0D21byxZQaphReuyaRTR7SpN0bv8xGvu
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2623,5 +2623,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict EUi0PIWgBjh8DgfzwnvL9R2jmiGP78r6DHBYuSlUtbNgYTcmaVJbru79u4LuNvO
+\unrestrict JDwmCUG6gYGdyRpf1jqaLZdsvZqCPfW0D21byxZQaphReuyaRTR7SpN0bv8xGvu
 

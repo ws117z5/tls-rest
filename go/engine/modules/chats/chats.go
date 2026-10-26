@@ -14,6 +14,7 @@
 //	POST   /api/chats/{id}/members          -> admin-only: add one more member (group only)
 //	DELETE /api/chats/{id}/members/{userId} -> GROUP only: admin removes anyone, or leave (self)
 //	POST   /api/chats/{id}/unfriend         -> DIRECT only: end the friendship, chat stays visible
+//	DELETE /api/chats/{id}                  -> DIRECT only: "delete for us" — chat gone for both sides
 //	PUT    /api/chats/{id}                  -> admin-only: rename / re-avatar
 //	GET    /api/users/search?q=             -> see search.go
 //	GET    /api/blocks                      -> who the caller has blocked
@@ -115,6 +116,7 @@ func init() {
 		router.HandleFunc("/api/chats/{id}/members", handleAddMember).Methods("POST")
 		router.HandleFunc("/api/chats/{id}/members/{userId}", handleRemoveMember).Methods("DELETE")
 		router.HandleFunc("/api/chats/{id}/unfriend", handleUnfriend).Methods("POST")
+		router.HandleFunc("/api/chats/{id}", handleDeleteChat).Methods("DELETE")
 		router.HandleFunc("/api/chats/{id}", handleUpdateChat).Methods("PUT")
 		router.HandleFunc("/api/users/search", handleSearch).Methods("GET")
 		router.HandleFunc("/api/blocks", handleListBlocks).Methods("GET")
