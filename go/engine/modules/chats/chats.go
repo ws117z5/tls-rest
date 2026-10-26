@@ -5,6 +5,7 @@
 // tracks membership/name/avatar/admin; go/engine/modules/p2prendezvous reads
 // it to decide who a client may UDP-rendezvous with.
 //
+//	GET    /api/friends                     -> read straight from the `friends` table — see friends_list.go
 //	GET    /api/chats                       -> the caller's chats (any status)
 //	POST   /api/chats/direct/{userId}       -> create-or-get a 1:1 chat (send/re-send a friend request)
 //	POST   /api/chats/{id}/accept           -> accept caller's own pending membership
@@ -105,6 +106,7 @@ func writeJSON(w http.ResponseWriter, status int, v interface{}) {
 
 func init() {
 	module.AddRouteRegistrar(func(router *mux.Router) {
+		router.HandleFunc("/api/friends", handleListFriends).Methods("GET")
 		router.HandleFunc("/api/chats", handleList).Methods("GET")
 		router.HandleFunc("/api/chats/direct/{userId}", handleCreateDirect).Methods("POST")
 		router.HandleFunc("/api/chats/group", handleCreateGroup).Methods("POST")
