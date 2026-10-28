@@ -220,6 +220,8 @@ export const Field: React.FC<BaseFieldProps> = (props) => {
   const effectiveType =
     field.options && field.options.widget === "select" && componentsForType(FIELD_TYPES.SELECT)
       ? FIELD_TYPES.SELECT
+      : field.options && field.options.widget === "status" && componentsForType('Status')
+      ? 'Status'
       : field.type;
   const fieldComponents = componentsForType(effectiveType);
 

@@ -28,7 +28,7 @@ func (m *MsgUsers) fieldset() []Field {
 		NewField("last_name", TYPE_STRING, false).WithLabel("Last name").AsReadOnly(),
 		NewField("email", TYPE_STRING, false).WithLabel("Email").AsReadOnly(),
 		NewField("last_seen", TYPE_DATE_TIME, false).WithLabel("Last seen").AsReadOnly(),
-		NewField("online", TYPE_CHECKBOX, false).WithLabel("Online").AsReadOnly(),
+		NewField("online", TYPE_CHECKBOX, false).WithLabel("Status").AsReadOnly().WithOption("widget", "status"),
 	}
 }
 
