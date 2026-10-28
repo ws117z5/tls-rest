@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict rAeDFJOzUNxNuPn9F39iGC4WdcAMu5tjqknRmNt8070sSnhk7dbUbnFr5kIENKo
+\restrict r78IxcCDika4bbp8BvimzPCXnwwVMs4mYpICI7HJCPRbhuOObPe9vxUvK4lpqcw
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -239,7 +239,9 @@ CREATE TABLE public.chat_members (
     chat_id integer NOT NULL,
     user_id integer NOT NULL,
     status character varying(10) DEFAULT 'pending'::character varying NOT NULL,
-    joined timestamp with time zone DEFAULT now() NOT NULL
+    joined timestamp with time zone DEFAULT now() NOT NULL,
+    show_read_receipts boolean DEFAULT true NOT NULL,
+    show_online_status boolean
 );
 
 
@@ -1099,7 +1101,11 @@ CREATE TABLE public.posts (
     visible_groups jsonb,
     html_id integer,
     tags jsonb DEFAULT '[]'::jsonb NOT NULL,
-    slug character varying(255)
+    slug character varying(255),
+    visible_anyone boolean,
+    visible_friends boolean,
+    visible_to_blocked boolean,
+    hide_users jsonb
 );
 
 
@@ -1423,7 +1429,9 @@ CREATE TABLE public.users (
     groups jsonb DEFAULT '[]'::jsonb NOT NULL,
     user_role character varying(20) DEFAULT 'user'::character varying NOT NULL,
     allow_search_by_name boolean DEFAULT false NOT NULL,
-    allow_chats_from_non_friends boolean DEFAULT false NOT NULL
+    allow_chats_from_non_friends boolean DEFAULT false NOT NULL,
+    show_online_status boolean DEFAULT true NOT NULL,
+    last_seen timestamp with time zone
 );
 
 
@@ -2479,7 +2487,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict rAeDFJOzUNxNuPn9F39iGC4WdcAMu5tjqknRmNt8070sSnhk7dbUbnFr5kIENKo
+\unrestrict r78IxcCDika4bbp8BvimzPCXnwwVMs4mYpICI7HJCPRbhuOObPe9vxUvK4lpqcw
 
 
 -- Durable role/rights seed.
@@ -2487,7 +2495,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict JDwmCUG6gYGdyRpf1jqaLZdsvZqCPfW0D21byxZQaphReuyaRTR7SpN0bv8xGvu
+\restrict Ng1rRAcHUyfcBvfIzgpE5VGXkWunF7tsdDaS9kMnKzf4pJHYZNYT0kpAChoeKy1
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2555,7 +2563,6 @@ INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access,
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (39, '8c8b9c53-dca7-4056-9551-e6cfe2a9f601', 2, 'config', 0, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (40, '07aadd3e-3346-41c2-bbca-a11de8b57bc2', 2, 'papers', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"deleted":["list","view","create","edit","delete"],"has_password":["list","view","create","edit","delete"],"hash":["list","view","create","edit","delete"],"name":["list","view","create","edit","delete"],"password":["list","view","create","edit","delete"],"timer":["list","view","create","edit","delete"],"users":["list","view","create","edit","delete"],"wrong_answers":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (41, '4ce53982-e8ee-4a96-920e-1688310e3a0a', 0, 'users', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"email":["list","view","create","edit","delete"],"first_name":["list","view","create","edit","delete"],"group":["list","view","create","edit","delete"],"groups":["list","view","create","edit","delete"],"image":["list","view","create","edit","delete"],"last_name":["list","view","create","edit","delete"],"user_name":["list","view","create","edit","delete"]}', NULL, NULL);
-INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (43, 'caf92bf8-3f09-4de3-bc5f-d905be945234', 0, 'words', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"fail":["list","view","create","edit","delete"],"success":["list","view","create","edit","delete"],"translations":["list","view","create","edit","delete"],"tries":["list","view","create","edit","delete"],"win_rate":["list","view","create","edit","delete"],"word":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (44, 'cd021529-2c8d-4bcf-9ea8-0a35837da0f5', 0, 'user_groups', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"active":["list","view","create","edit","delete"],"description":["list","view","create","edit","delete"],"is_admin":["list","view","create","edit","delete"],"name":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (45, 'e8398de2-c858-4b03-85de-0d475f8f6df8', 0, 'user_group_rights', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"group_id":["list","view","create","edit","delete"],"module":["list","view","create","edit","delete"],"modes":["list","view","create","edit","delete"],"fields":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (46, '9bda5cff-3e55-4f36-8778-d090e822fdcb', 0, 'user_rights', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"user_id":["list","view","create","edit","delete"],"module":["list","view","create","edit","delete"],"modes":["list","view","create","edit","delete"],"fields":["list","view","create","edit","delete"]}', NULL, NULL);
@@ -2566,6 +2573,7 @@ INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access,
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (31, '918441fa-1169-4c22-af9b-4bffa6d3b106', 2, 'images', 3, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"field":["list","view"],"filename":["list","view"],"folder":["list","view"],"mime_type":["list","view"],"module":["list","view"],"preview":["list","view"],"record_id":["list","view"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (83, '1014a5a3-d23d-4187-9e50-9df912ef0be2', 1, 'html', 2, 0, '2026-09-24 20:24:38.944956-07', '2026-09-24 20:24:38.944956-07', 1, '{"compiled_html":["view"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (85, '1e84ded0-a409-4f85-8725-ea25255d8bc8', 2, 'payments', 3, 0, '2026-09-25 13:03:21.155566-07', '2026-09-25 13:03:21.155566-07', NULL, NULL, NULL, NULL);
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (43, 'caf92bf8-3f09-4de3-bc5f-d905be945234', 0, 'words', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"access":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"fail":["list","view","create","edit","delete"],"language":["list","view","create","edit","delete"],"success":["list","view","create","edit","delete"],"translations":["list","view","create","edit","delete"],"tries":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"uuid":["list","view","create","edit","delete"],"win_rate":["list","view","create","edit","delete"],"word":["list","view","create","edit","delete"]}', NULL, '["word","created_by"]');
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (51, '0bb0f7c0-7a97-4a56-b7d1-97607c187337', 0, 'message_log', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"body":["list","view","create","edit","delete"],"recipient_id":["list","view","create","edit","delete"],"sender_id":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (52, '2fa86210-b2a2-42f5-9f03-160a630c94cb', 0, 'friend_requests', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"recipient_id":["list","view","create","edit","delete"],"requester_id":["list","view","create","edit","delete"],"status":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (53, '7a43123f-b8a2-4568-9c24-e5c03c0f1b37', 0, 'contact_messages', 31, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"uuid":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"access":["list","view","create","edit","delete"],"email":["list","view","create","edit","delete"],"handled":["list","view","create","edit","delete"],"message":["list","view","create","edit","delete"],"name":["list","view","create","edit","delete"],"subject":["list","view","create","edit","delete"]}', NULL, NULL);
@@ -2599,17 +2607,18 @@ INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access,
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (81, '1dcb4532-0e18-4c82-8c4f-c2be960c2f7b', 0, 'html', 63, 0, '2026-09-24 20:23:16.494778-07', '2026-09-24 20:23:16.494778-07', 1, '{"access":["list","view","create","edit","delete"],"compiled_html":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"uuid":["list","view","create","edit","delete"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (82, '48665079-09fe-4083-a555-8502c4624d41', 2, 'html', 14, 0, '2026-09-24 20:24:11.720602-07', '2026-09-24 20:24:11.720602-07', 1, '{"compiled_html":["view","create","edit"]}', NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (84, '301fcccb-802f-45f2-a271-c3ab5b58a79e', 2, 'cart', 31, 0, '2026-09-25 13:03:21.155566-07', '2026-09-25 13:03:21.155566-07', NULL, NULL, NULL, NULL);
-INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (42, 'bf7e70b9-1e36-4ea4-8673-466edccce0d9', 0, 'posts', 63, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"access":["list","view","create","edit","delete"],"author":["list","view","create","edit","delete"],"comments_count":["list","view","create","edit","delete"],"compiled_html":["list","view","create","edit","delete"],"content":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"html_id":["list","view","create","edit","delete"],"images":["list","view","create","edit","delete"],"likes_count":["list","view","create","edit","delete"],"slug":["list","view","create","edit","delete"],"tags":["list","view","create","edit","delete"],"title":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"uuid":["list","view","create","edit","delete"],"visible_groups":["list","view","create","edit","delete"],"visible_users":["list","view","create","edit","delete"]}', NULL, '["title","tag","user","user_group","created_from","created_to"]');
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (86, '8d8e39ca-dd4f-4218-91c1-28322cb99ba1', 2, 'claude_notifications', 23, 0, '2026-10-14 12:11:59.618498-07', '2026-10-14 12:11:59.618498-07', NULL, NULL, NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (87, '2869c84f-2fbf-42b2-b260-8525ec16f741', 2, 'external_logs', 7, 0, '2026-10-16 19:54:38.890142-07', '2026-10-16 19:54:38.890142-07', NULL, NULL, NULL, NULL);
 INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (88, '3b3002f9-58c3-422a-8201-15b4b76c37d3', 0, 'video-tool', 63, 0, '2026-10-24 09:30:27.179735-07', '2026-10-24 09:30:27.179735-07', 1, NULL, NULL, '[]');
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (42, 'bf7e70b9-1e36-4ea4-8673-466edccce0d9', 0, 'posts', 63, 0, '2026-09-14 21:15:25.118066-07', '2026-09-14 21:15:25.118066-07', NULL, '{"access":["list","view","create","edit","delete"],"author":["list","view","create","edit","delete"],"comments_count":["list","view","create","edit","delete"],"compiled_html":["list","view","create","edit","delete"],"content":["list","view","create","edit","delete"],"created":["list","view","create","edit","delete"],"created_by":["list","view","create","edit","delete"],"hide_users":["list","view","create","edit","delete"],"html_id":["list","view","create","edit","delete"],"images":["list","view","create","edit","delete"],"likes_count":["list","view","create","edit","delete"],"slug":["list","view","create","edit","delete"],"tags":["list","view","create","edit","delete"],"title":["list","view","create","edit","delete"],"updated":["list","view","create","edit","delete"],"uuid":["list","view","create","edit","delete"],"visible_anyone":["list","view","create","edit","delete"],"visible_friends":["list","view","create","edit","delete"],"visible_groups":["list","view","create","edit","delete"],"visible_to_blocked":["list","view","create","edit","delete"],"visible_users":["list","view","create","edit","delete"]}', NULL, '["title","tag","user","user_group","created_from","created_to"]');
+INSERT INTO public.user_group_rights (id, uuid, group_id, module, modes, access, created, updated, created_by, fields, special_rights, filter_fields) VALUES (89, '73638baa-b61f-4099-9429-4bc912910d06', 0, 'msgusers', 63, 0, '2026-10-28 00:07:40.022485-07', '2026-10-28 00:07:40.022485-07', 1, '{"email":["list","view","create","edit","delete"],"first_name":["list","view","create","edit","delete"],"last_name":["list","view","create","edit","delete"],"last_seen":["list","view","create","edit","delete"],"online":["list","view","create","edit","delete"],"user_name":["list","view","create","edit","delete"]}', NULL, '["name","email","friends","online"]');
 
 
 --
 -- Name: user_group_rights_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
-SELECT pg_catalog.setval('public.user_group_rights_id_seq', 88, true);
+SELECT pg_catalog.setval('public.user_group_rights_id_seq', 89, true);
 
 
 --
@@ -2623,5 +2632,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict JDwmCUG6gYGdyRpf1jqaLZdsvZqCPfW0D21byxZQaphReuyaRTR7SpN0bv8xGvu
+\unrestrict Ng1rRAcHUyfcBvfIzgpE5VGXkWunF7tsdDaS9kMnKzf4pJHYZNYT0kpAChoeKy1
 

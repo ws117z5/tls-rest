@@ -256,7 +256,11 @@ func (fe *FieldsetEngine) buildScopeConditions(params *QueryParams, v viewer, ar
 		conds = append(conds, cond)
 	}
 
-	if fe.Module != nil && fe.Module.OwnerScoped && !v.isAdmin && v.userID > 0 && fe.hasField("created_by") {
+	// An admin sees every row by default (OwnerScoped only restricts
+	// non-admins) — ?own=true lets an admin explicitly narrow to their own,
+	// the same restriction a non-admin always has.
+	ownRequested := fe.Request != nil && request.From(fe.Request).String("own") == "true"
+	if fe.Module != nil && fe.Module.OwnerScoped && v.userID > 0 && fe.hasField("created_by") && (!v.isAdmin || ownRequested) {
 		conds = append(conds, fmt.Sprintf("created_by = $%d", *argIndex))
 		*args = append(*args, v.userID)
 		*argIndex++
@@ -277,7 +281,8 @@ func (fe *FieldsetEngine) buildVisibilityCondition(v viewer, argIndex *int, args
 		return ""
 	}
 
-	aclMode := fe.Module != nil && (fe.Module.VisibilityUsersField != "" || fe.Module.VisibilityGroupsField != "")
+	aclMode := fe.Module != nil && (fe.Module.VisibilityUsersField != "" || fe.Module.VisibilityGroupsField != "" ||
+		fe.Module.VisibilityAnyoneField != "" || fe.Module.VisibilityFriendsField != "")
 
 	if aclMode {
 		var alt []string
@@ -313,17 +318,52 @@ func (fe *FieldsetEngine) buildVisibilityCondition(v viewer, argIndex *int, args
 				*argIndex++
 			}
 		}
+		if f := fe.Module.VisibilityAnyoneField; f != "" && fe.hasField(f) {
+			alt = append(alt, f)
+		}
+		if f := fe.Module.VisibilityFriendsField; f != "" && v.userID > 0 && fe.hasField(f) && fe.hasField("created_by") {
+			alt = append(alt, fmt.Sprintf(
+				`(%s AND EXISTS (SELECT 1 FROM friends WHERE user_a = LEAST($%d, created_by) AND user_b = GREATEST($%d, created_by)))`,
+				f, *argIndex, *argIndex,
+			))
+			*args = append(*args, v.userID)
+			*argIndex++
+		}
 		if fe.Module.VisibilityExtraWhere != "" {
 			alt = append(alt, fe.Module.VisibilityExtraWhere)
 		}
 
-		if len(alt) == 0 {
-			return "FALSE"
+		var result string
+		switch {
+		case len(alt) == 0:
+			result = "FALSE"
+		case len(alt) == 1:
+			result = alt[0]
+		default:
+			result = "(" + strings.Join(alt, " OR ") + ")"
 		}
-		if len(alt) == 1 {
-			return alt[0]
+
+		// Both wraps below apply only to non-admins (this whole function
+		// already returned "" for an admin, above) and only when the module
+		// opts in — empty field name = no-op, unchanged behavior.
+		if f := fe.Module.VisibilityBlockedOverrideField; f != "" && v.userID > 0 && fe.hasField(f) && fe.hasField("created_by") {
+			result = fmt.Sprintf(
+				"(%s) AND (%s OR NOT EXISTS (SELECT 1 FROM blocks WHERE blocker_id = created_by AND blocked_id = $%d))",
+				result, f, *argIndex,
+			)
+			*args = append(*args, v.userID)
+			*argIndex++
 		}
-		return "(" + strings.Join(alt, " OR ") + ")"
+		if f := fe.Module.HideUsersField; f != "" && v.userID > 0 && fe.hasField(f) {
+			result = fmt.Sprintf(
+				"(%s) AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements_text(%s) AS hu WHERE hu::int = $%d)",
+				result, f, *argIndex,
+			)
+			*args = append(*args, v.userID)
+			*argIndex++
+		}
+
+		return result
 	}
 
 	alt := []string{fmt.Sprintf("access <= $%d", *argIndex)}
@@ -373,6 +413,10 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 		return nil, err
 	}
 
+	if fe.Module != nil && fe.Module.DataFetch != nil {
+		return fe.executeDataFetch(params, mode)
+	}
+
 	ctx := fe.Context
 	if ctx == nil {
 		ctx = context.Background()
@@ -404,6 +448,61 @@ func (fe *FieldsetEngine) ExecuteQuery(mode int) (*QueryResult, error) {
 
 	return &QueryResult{
 		Data:       results,
+		Total:      total,
+		Page:       params.Page,
+		Limit:      params.Limit,
+		TotalPages: totalPages,
+	}, nil
+}
+
+// executeDataFetch pages/filters-by-visibility the module's own rows, same as the SQL path does for buildSelectQuery.
+func (fe *FieldsetEngine) executeDataFetch(params *QueryParams, mode int) (*QueryResult, error) {
+	ctx := fe.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	rows, err := fe.Module.DataFetch(ctx, fe.Request, mode)
+	if err != nil {
+		return nil, err
+	}
+
+	v := viewerForModule(fe.Request, fe.Module.ID)
+	allowed := map[string]bool{}
+	for _, field := range fe.Fields {
+		if fe.shouldIncludeField(field, mode) && v.fieldReadableInData(field) {
+			allowed[field.Name] = true
+		}
+	}
+
+	filtered := make([]map[string]interface{}, len(rows))
+	for i, row := range rows {
+		out := make(map[string]interface{}, len(row))
+		for k, val := range row {
+			if allowed[k] {
+				out[k] = val
+			}
+		}
+		filtered[i] = out
+	}
+
+	total := len(filtered)
+	offset := (params.Page - 1) * params.Limit
+	if offset > total {
+		offset = total
+	}
+	end := offset + params.Limit
+	if end > total {
+		end = total
+	}
+
+	totalPages := 0
+	if params.Limit > 0 {
+		totalPages = (total + params.Limit - 1) / params.Limit
+	}
+
+	return &QueryResult{
+		Data:       filtered[offset:end],
 		Total:      total,
 		Page:       params.Page,
 		Limit:      params.Limit,

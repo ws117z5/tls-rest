@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gorilla/mux"
 
@@ -18,30 +19,46 @@ type memberOut struct {
 	UserName string `json:"userName"`
 	Image    string `json:"image"`
 	Status   string `json:"status"`
+	// FirstName/LastName are blank unless the caller is allowed to see them:
+	// always for a direct friend, otherwise only if the member has opted into
+	// allow_search_by_name (see profile.go) — same rule as /api/users/search's
+	// name-matching, extended to cover display inside a shared chat too.
+	FirstName string `json:"firstName,omitempty"`
+	LastName  string `json:"lastName,omitempty"`
+	// LastSeen (RFC3339) is set only when this member's effective
+	// show_online_status (their chat_members override, else their account-wide
+	// default — see profile.go/the migration) is true. Omitted entirely otherwise.
+	LastSeen string `json:"lastSeen,omitempty"`
 }
 
 type chatOut struct {
-	ID       int64       `json:"id"`
-	Type     string      `json:"type"`
-	Name     string      `json:"name"`
-	Avatar   string      `json:"avatar"`
-	AdminID  int64       `json:"adminId"`
-	MyStatus string      `json:"myStatus"`
-	Members  []memberOut `json:"members"`
+	ID       int64  `json:"id"`
+	Type     string `json:"type"`
+	Name     string `json:"name"`
+	Avatar   string `json:"avatar"`
+	AdminID  int64  `json:"adminId"`
+	MyStatus string `json:"myStatus"`
+	// The caller's own per-chat overrides (go/engine/modules/chats' PUT
+	// .../settings) — never another member's, those are private to them.
+	MyShowReadReceipts bool        `json:"myShowReadReceipts"`
+	MyShowOnlineStatus string      `json:"myShowOnlineStatus"` // "true" | "false" | "inherit"
+	Members            []memberOut `json:"members"`
 }
 
 // loadChat assembles one chat's full output, including its member list. Two
 // queries (chat row, then members) rather than one join — simplest thing
 // that works for a personal messaging app's chat counts, matching how every
 // other module this session reads its own small tables.
-func loadChat(db *pgdb.Db, chatID int64, callerID int) (*chatOut, error) {
+func loadChat(ctx context.Context, db *pgdb.Db, chatID int64, callerID int) (*chatOut, error) {
 	row, err := db.GetOne(`SELECT id, type, name, avatar, admin_id FROM chats WHERE id = $1`, chatID)
 	if err != nil || row == nil {
 		return nil, err
 	}
 
 	members, err := db.GetAll(`
-		SELECT cm.user_id, cm.status, u.user_name, u.image
+		SELECT cm.user_id, cm.status, cm.show_read_receipts, cm.show_online_status AS chat_show_online,
+		       u.user_name, u.image, u.first_name, u.last_name, u.allow_search_by_name,
+		       u.show_online_status AS account_show_online, u.last_seen
 		FROM chat_members cm JOIN users u ON u.id = cm.user_id
 		WHERE cm.chat_id = $1
 		ORDER BY cm.joined`, chatID)
@@ -59,15 +76,47 @@ func loadChat(db *pgdb.Db, chatID int64, callerID int) (*chatOut, error) {
 	for _, m := range members {
 		uid := functions.Coerce[int64](m["user_id"])
 		status := functions.Coerce[string](m["status"])
-		if int(uid) == callerID {
+		isCaller := int(uid) == callerID
+		if isCaller {
 			out.MyStatus = status
+			out.MyShowReadReceipts = functions.Truthy(m["show_read_receipts"])
+			out.MyShowOnlineStatus = "inherit"
+			if m["chat_show_online"] != nil {
+				out.MyShowOnlineStatus = strconv.FormatBool(functions.Truthy(m["chat_show_online"]))
+			}
 		}
-		out.Members = append(out.Members, memberOut{
+
+		member := memberOut{
 			UserID:   uid,
 			UserName: functions.Coerce[string](m["user_name"]),
 			Image:    functions.ImageFieldURL(m["image"]),
 			Status:   status,
-		})
+		}
+
+		canSeeName := isCaller
+		if !canSeeName {
+			if friend, _ := isDirectFriend(ctx, callerID, int(uid)); friend {
+				canSeeName = true
+			} else {
+				canSeeName = functions.Truthy(m["allow_search_by_name"])
+			}
+		}
+		if canSeeName {
+			member.FirstName = functions.Coerce[string](m["first_name"])
+			member.LastName = functions.Coerce[string](m["last_name"])
+		}
+
+		showOnline := functions.Truthy(m["account_show_online"])
+		if m["chat_show_online"] != nil {
+			showOnline = functions.Truthy(m["chat_show_online"])
+		}
+		if showOnline {
+			if ls, ok := m["last_seen"].(time.Time); ok {
+				member.LastSeen = ls.UTC().Format(time.RFC3339)
+			}
+		}
+
+		out.Members = append(out.Members, member)
 	}
 	return out, nil
 }
@@ -132,7 +181,7 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 
 	out := make([]*chatOut, 0, len(rows))
 	for _, row := range rows {
-		chat, err := loadChat(db, functions.Coerce[int64](row["id"]), s.UserID)
+		chat, err := loadChat(r.Context(), db, functions.Coerce[int64](row["id"]), s.UserID)
 		if err != nil || chat == nil {
 			continue
 		}
@@ -249,7 +298,7 @@ func handleCreateDirect(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	chat, err := loadChat(db, chatID, s.UserID)
+	chat, err := loadChat(r.Context(), db, chatID, s.UserID)
 	if err != nil || chat == nil {
 		functions.JSONError(w, http.StatusInternalServerError, "could not load chat")
 		return
@@ -325,7 +374,7 @@ func handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	chat, err := loadChat(db, chatID, s.UserID)
+	chat, err := loadChat(r.Context(), db, chatID, s.UserID)
 	if err != nil || chat == nil {
 		functions.JSONError(w, http.StatusInternalServerError, "could not load chat")
 		return
@@ -401,7 +450,7 @@ func handleAccept(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	chat, err := loadChat(db, chatID, s.UserID)
+	chat, err := loadChat(r.Context(), db, chatID, s.UserID)
 	if err != nil || chat == nil {
 		functions.JSONError(w, http.StatusInternalServerError, "could not load chat")
 		return
@@ -487,7 +536,7 @@ func handleAddMember(w http.ResponseWriter, r *http.Request) {
 		functions.JSONError(w, http.StatusConflict, "already a member")
 		return
 	}
-	chat, err := loadChat(db, chatID, s.UserID)
+	chat, err := loadChat(r.Context(), db, chatID, s.UserID)
 	if err != nil || chat == nil {
 		functions.JSONError(w, http.StatusInternalServerError, "could not load chat")
 		return
@@ -598,7 +647,7 @@ func handleUnfriend(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	chat, err := loadChat(db, chatID, s.UserID)
+	chat, err := loadChat(r.Context(), db, chatID, s.UserID)
 	if err != nil || chat == nil {
 		functions.JSONError(w, http.StatusInternalServerError, "could not load chat")
 		return
@@ -715,7 +764,83 @@ func handleUpdateChat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	chat, err := loadChat(db, chatID, s.UserID)
+	chat, err := loadChat(r.Context(), db, chatID, s.UserID)
+	if err != nil || chat == nil {
+		functions.JSONError(w, http.StatusInternalServerError, "could not load chat")
+		return
+	}
+	writeJSON(w, http.StatusOK, chat)
+}
+
+// handleUpdateMySettings: self-only (never the admin, never another member) —
+// each member's own privacy knobs for this one chat. show_read_receipts is a
+// plain bool; show_online_status is a tri-state string ("true" | "false" |
+// "inherit") rather than bool-or-null, so the request body never needs an
+// actual JSON null to mean "clear the override" (Gson on the Android side
+// omits null map values by default, which would make that otherwise
+// indistinguishable from "don't touch this field").
+func handleUpdateMySettings(w http.ResponseWriter, r *http.Request) {
+	s := requireSession(w, r)
+	if s == nil {
+		return
+	}
+	chatID, ok := pathID(r, "id")
+	if !ok {
+		functions.JSONError(w, http.StatusBadRequest, "bad chat")
+		return
+	}
+
+	var body map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		functions.JSONError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+
+	db, err := pgdb.GetInstanceCtx(r.Context())
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "db unavailable")
+		return
+	}
+
+	isMember, err := IsAcceptedMember(r.Context(), chatID, s.UserID)
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	if !isMember {
+		functions.JSONError(w, http.StatusForbidden, "not a member of that chat")
+		return
+	}
+
+	if v, present := body["show_read_receipts"]; present {
+		if _, err := db.Exec(`UPDATE chat_members SET show_read_receipts = $1 WHERE chat_id = $2 AND user_id = $3`,
+			functions.Truthy(v), chatID, s.UserID); err != nil {
+			functions.JSONError(w, http.StatusInternalServerError, "update failed")
+			return
+		}
+	}
+	if v, present := body["show_online_status"]; present {
+		str, _ := v.(string)
+		var value interface{}
+		switch str {
+		case "true":
+			value = true
+		case "false":
+			value = false
+		case "inherit", "":
+			value = nil
+		default:
+			functions.JSONError(w, http.StatusBadRequest, `show_online_status must be "true", "false", or "inherit"`)
+			return
+		}
+		if _, err := db.Exec(`UPDATE chat_members SET show_online_status = $1 WHERE chat_id = $2 AND user_id = $3`,
+			value, chatID, s.UserID); err != nil {
+			functions.JSONError(w, http.StatusInternalServerError, "update failed")
+			return
+		}
+	}
+
+	chat, err := loadChat(r.Context(), db, chatID, s.UserID)
 	if err != nil || chat == nil {
 		functions.JSONError(w, http.StatusInternalServerError, "could not load chat")
 		return

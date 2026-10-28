@@ -236,6 +236,64 @@ func (p *Posts) fieldset() []Field {
 				}
 				return ids
 			}),
+
+		// Additional visibility toggles, on top of the sharing lists above —
+		// see VisibilityAnyoneField/VisibilityFriendsField/
+		// VisibilityBlockedOverrideField's own doc (module.go) for exactly how
+		// each is combined.
+		NewField("visible_anyone", TYPE_CHECKBOX, false).
+			WithLabel("Visible To Anyone").
+			WithDescription("Make this post public, besides the specific sharing above"),
+		NewField("visible_friends", TYPE_CHECKBOX, false).
+			WithLabel("Visible To Friends").
+			WithDescription("Let your friends see this post, besides the specific sharing above"),
+		NewField("visible_to_blocked", TYPE_CHECKBOX, false).
+			WithLabel("Visible To Blocked Users").
+			WithDescription("Let users you've blocked see this post anyway (by default they're excluded even if otherwise visible to them)"),
+
+		// Hide list: the inverse of visible_users — specific users this post
+		// is hidden from no matter what (even "Visible To Anyone"). Same
+		// TableData/TableOnSubmit shape as visible_users above, just reading
+		// from/writing to hide_users instead.
+		NewField("hide_users", TYPE_TABLE, false).
+			WithLabel("Hide From (Users)").
+			WithDescription("Specific users who may never view this post, even if it's otherwise visible to them").
+			WithOption("width", "500px").
+			InModes(MODE_VIEW | MODE_EDIT | MODE_SUBMIT).
+			TableFieldset([]Field{
+				NewField("user", TYPE_INT, true).
+					WithLabel("User").
+					WithOption("widget", "select").
+					WithOption("width", "300px").
+					WithOptionsCtx(shareableUsers),
+			}).
+			TableRowsAddable("user").
+			TableData(func(ctx context.Context, data map[string]interface{}) []map[string]interface{} {
+				pid := functions.Int(data["id"])
+				if pid <= 0 {
+					return nil
+				}
+				db, err := pgdb.GetInstanceCtx(ctx)
+				if err != nil {
+					return nil
+				}
+				rows, err := db.GetAll(
+					`SELECT jsonb_array_elements_text(hide_users)::int AS "user" FROM posts WHERE id = $1`,
+					pid)
+				if err != nil {
+					return nil
+				}
+				return rows
+			}).
+			TableOnSubmit(func(rows []map[string]interface{}) interface{} {
+				ids := []interface{}{}
+				for _, r := range rows {
+					if id := functions.Int(r["user"]); id != -1 {
+						ids = append(ids, id)
+					}
+				}
+				return ids
+			}),
 	}
 }
 
@@ -257,6 +315,12 @@ func NewPosts() *Posts {
 			// for this module entirely (see buildVisibilityCondition).
 			VisibilityUsersField:  "visible_users",
 			VisibilityGroupsField: "visible_groups",
+			// See module.go's own doc on each of these for exactly how they
+			// combine with the sharing lists above.
+			VisibilityAnyoneField:          "visible_anyone",
+			VisibilityFriendsField:         "visible_friends",
+			VisibilityBlockedOverrideField: "visible_to_blocked",
+			HideUsersField:                 "hide_users",
 			// GET /posts/<ref>: a numeric ref is the id, same as always; anything else is looked up as a slug
 			// and rewritten to its id (see viewByRef in routes.go) before the normal, rights-checked View runs.
 			// Registered ahead of the engine's own GET /{id}, so it replaces that route entirely for posts.

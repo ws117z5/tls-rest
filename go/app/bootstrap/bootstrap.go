@@ -28,6 +28,7 @@ import (
 	_ "tls-rest/go/modules/cart"
 	_ "tls-rest/go/modules/claudenotify"
 	_ "tls-rest/go/modules/external_logs"
+	_ "tls-rest/go/modules/msgusers"
 	_ "tls-rest/go/modules/paymentplatforms"
 	_ "tls-rest/go/modules/payments"
 	_ "tls-rest/go/modules/posts"

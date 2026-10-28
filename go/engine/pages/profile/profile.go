@@ -63,6 +63,9 @@ var Page = &module.PageAbstract{
 		field.NewField("allow_chats_from_non_friends", field.TYPE_CHECKBOX, false).
 			WithLabel("Let non-friends add me to group chats").
 			WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
+		field.NewField("show_online_status", field.TYPE_CHECKBOX, false).
+			WithLabel("Show my online status to others").
+			WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT),
 		field.NewField("theme", field.TYPE_SELECT, false).
 			WithLabel("Theme").
 			WithMode(field.MODE_LIST | field.MODE_VIEW | field.MODE_EDIT).
@@ -89,7 +92,7 @@ var Page = &module.PageAbstract{
 		}
 		row, err := db.GetOne(
 			`SELECT id, user_name, first_name, last_name, email, image, user_role,
-			        allow_search_by_name, allow_chats_from_non_friends
+			        allow_search_by_name, allow_chats_from_non_friends, show_online_status
 			 FROM users WHERE id = $1`,
 			s.UserID,
 		)

@@ -16,6 +16,7 @@
 //	POST   /api/chats/{id}/unfriend         -> DIRECT only: end the friendship, chat stays visible
 //	DELETE /api/chats/{id}                  -> DIRECT only: "delete for us" — chat gone for both sides
 //	PUT    /api/chats/{id}                  -> admin-only: rename / re-avatar
+//	PUT    /api/chats/{id}/settings          -> self-only: show_read_receipts, show_online_status overrides
 //	GET    /api/users/search?q=             -> see search.go
 //	GET    /api/blocks                      -> who the caller has blocked
 //	POST   /api/blocks/{userId}             -> block {userId}: see blocks.go
@@ -118,6 +119,7 @@ func init() {
 		router.HandleFunc("/api/chats/{id}/unfriend", handleUnfriend).Methods("POST")
 		router.HandleFunc("/api/chats/{id}", handleDeleteChat).Methods("DELETE")
 		router.HandleFunc("/api/chats/{id}", handleUpdateChat).Methods("PUT")
+		router.HandleFunc("/api/chats/{id}/settings", handleUpdateMySettings).Methods("PUT")
 		router.HandleFunc("/api/users/search", handleSearch).Methods("GET")
 		router.HandleFunc("/api/blocks", handleListBlocks).Methods("GET")
 		router.HandleFunc("/api/blocks/{userId}", handleBlock).Methods("POST")

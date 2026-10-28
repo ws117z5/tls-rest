@@ -95,7 +95,30 @@ type ModuleAbstract[T any] struct {
 	// module with a row-level broadcast scope that sharing lists can't express.
 	// Static Go code set by the module, never user input.
 	VisibilityExtraWhere string
-	CustomViews          map[string]map[string]string // mode -> {viewName: label}; documents frontend <mode>.<viewName>.tsx views (registry.ts discovers the files itself)
+	// VisibilityAnyoneField: boolean column that, when true, makes the row
+	// visible to every non-admin viewer (an OR'd alternative, same level as
+	// VisibilityUsersField/VisibilityGroupsField).
+	VisibilityAnyoneField string
+	// VisibilityFriendsField: boolean column that, when true, makes the row
+	// visible to every accepted friend (go/engine/modules/chats' `friends`
+	// table) of created_by — another OR'd alternative.
+	VisibilityFriendsField string
+	// VisibilityBlockedOverrideField: boolean column that, when true, lets a
+	// viewer the row's author has blocked (the `blocks` table) see it anyway.
+	// Applied as an AND on top of the OR'd alternatives above — the default
+	// (field false/unset) is to exclude a blocked viewer even from a row
+	// they'd otherwise see via VisibilityAnyoneField etc.
+	VisibilityBlockedOverrideField string
+	// HideUsersField: jsonb user-id list — a row is hidden from any of these
+	// viewers specifically, regardless of every other visibility rule above
+	// (including VisibilityAnyoneField). Applied as a final AND NOT.
+	HideUsersField string
+	CustomViews    map[string]map[string]string // mode -> {viewName: label}; documents frontend <mode>.<viewName>.tsx views (registry.ts discovers the files itself)
+
+	// DataFetch, when set, replaces the generic SQL WHERE/SELECT for List/View with its own rows (see executeDataFetch).
+	DataFetch func(ctx context.Context, r *http.Request, mode int) ([]map[string]interface{}, error)
+	// NoTable: module owns no table; skips EnsureTableExists. Pair with Overrides denying Create/Edit/Delete.
+	NoTable bool
 }
 
 // OnRightsChange is invoked after a successful write to a RightsAffecting
@@ -441,19 +464,25 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		Rights:  m.Rights,
 		// Behaviour the BaseController / FieldsetEngine read off bc.Module /
 		// fe.Module must be carried onto the wrapper or it is silently inert.
-		BeforeFieldset:        m.BeforeFieldset,
-		AfterFieldset:         m.AfterFieldset,
-		KeyField:              m.KeyField,
-		OwnerScoped:           m.OwnerScoped,
-		SoftDelete:            m.SoftDelete,
-		VisibilityField:       m.VisibilityField,
-		VisibilityUsersField:  m.VisibilityUsersField,
-		VisibilityGroupsField: m.VisibilityGroupsField,
-		VisibilityExtraWhere:  m.VisibilityExtraWhere,
-		ListAscending:         m.ListAscending,
-		RightsAffecting:       m.RightsAffecting,
-		ConfigAffecting:       m.ConfigAffecting,
-		OmitSystemFields:      m.OmitSystemFields,
+		BeforeFieldset:                 m.BeforeFieldset,
+		AfterFieldset:                  m.AfterFieldset,
+		KeyField:                       m.KeyField,
+		OwnerScoped:                    m.OwnerScoped,
+		SoftDelete:                     m.SoftDelete,
+		VisibilityField:                m.VisibilityField,
+		VisibilityUsersField:           m.VisibilityUsersField,
+		VisibilityGroupsField:          m.VisibilityGroupsField,
+		VisibilityExtraWhere:           m.VisibilityExtraWhere,
+		VisibilityAnyoneField:          m.VisibilityAnyoneField,
+		VisibilityFriendsField:         m.VisibilityFriendsField,
+		VisibilityBlockedOverrideField: m.VisibilityBlockedOverrideField,
+		HideUsersField:                 m.HideUsersField,
+		ListAscending:                  m.ListAscending,
+		RightsAffecting:                m.RightsAffecting,
+		ConfigAffecting:                m.ConfigAffecting,
+		OmitSystemFields:               m.OmitSystemFields,
+		DataFetch:                      m.DataFetch,
+		NoTable:                        m.NoTable,
 	}
 
 	ModuleLog.Debugf("Creating base controller for module: %s", m.ID)
@@ -778,6 +807,10 @@ func (m *ModuleAbstract[T]) fieldTypeToSQL(field Field) string {
 
 // EnsureTableExists creates the table if it doesn't exist based on module fieldset
 func (m *ModuleAbstract[T]) EnsureTableExists() error {
+	if m.NoTable {
+		return nil
+	}
+
 	startTime := time.Now()
 
 	event := ModuleEvent{
@@ -811,6 +844,15 @@ func (m *ModuleAbstract[T]) EnsureTableExists() error {
 		// rights modules' "fields" column that activates field-level rights.
 		if err := m.addMissingColumns(db); err != nil {
 			ModuleLog.Warnf("reconcile columns for %s: %v", m.ID, err)
+		} else {
+			// This runs in a background goroutine (see fieldset_handler.go's
+			// RegisterModule), so a request can race it and prime
+			// tableColumnsCached's entry for this table with the
+			// pre-reconciliation column set; that cache has no TTL, so a
+			// newly added column would otherwise stay invisible to every
+			// SELECT buildSelectQuery builds for the rest of the process's
+			// life. Force the next read to recompute from information_schema.
+			tableColsCache.Delete(m.ID)
 		}
 		event.Details = "Table already exists"
 		return nil
