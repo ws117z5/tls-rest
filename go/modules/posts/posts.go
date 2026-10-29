@@ -93,6 +93,11 @@ func (p *Posts) fieldset() []Field {
 			WithSQL("(SELECT CONCAT(first_name, ' ', last_name) FROM users WHERE users.id = posts.created_by LIMIT 1)").
 			AsVirtual(),
 
+		NewField("author_image", TYPE_STRING, false).
+			WithLabel("Author Avatar").
+			WithSQL("(SELECT image FROM users WHERE users.id = posts.created_by LIMIT 1)").
+			AsVirtual(),
+
 		// Optional, unique; when set the post is also reachable at /posts/<slug> (see viewByRef in routes.go).
 		NewField("slug", TYPE_STRING, false).
 			WithLabel("Slug").

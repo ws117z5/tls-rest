@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	config "tls-rest/go/app/constants"
 	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
 )
@@ -109,9 +110,11 @@ func findOrCreateOAuthUser(ctx context.Context, a *OAuthAccount) (int64, string,
 		"auth_provider":    emptyToNil(a.Provider),
 		"auth_provider_id": emptyToNil(a.ProviderID),
 	}
+	groups := []interface{}{config.UsersGroupID}
 	if groupID, _, ok := externalRule(db, a.Provider, a.ClientID); ok {
-		row["groups"] = []interface{}{groupID}
+		groups = append(groups, groupID)
 	}
+	row["groups"] = groups
 
 	id, err := db.InsertRow("users", row)
 	if err != nil {

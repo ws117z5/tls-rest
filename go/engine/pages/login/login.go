@@ -199,6 +199,7 @@ func Register(w http.ResponseWriter, r *http.Request) {
 		"last_name":     c.LastName,
 		"email":         c.Email,
 		"password_hash": string(hash),
+		"groups":        []interface{}{auth.UsersGroupID},
 	})
 	if err != nil {
 		functions.JSONError(w, http.StatusInternalServerError, err.Error())
