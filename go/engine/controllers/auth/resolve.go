@@ -286,7 +286,12 @@ func resolveSessionRights(ctx context.Context, userID int) (modes ModuleModeRigh
 	unrestricted := map[string]bool{}
 	filterAcc := map[string]map[string]bool{}
 	filterUnrestricted := map[string]bool{}
-	applyRights := func(list interface{}) {
+	// replace: group rights accumulate (several groups can each add fields/
+	// filters), but a user_rights row is the most specific grant there is, so
+	// its own fields/filter_fields entirely replace whatever group+role just
+	// produced for that module rather than adding to it — modes and
+	// special_rights stay additive either way (those are plain extra grants).
+	applyRights := func(list interface{}, replace bool) {
 		items, _ := list.([]interface{})
 		for _, item := range items {
 			entry, _ := item.(map[string]interface{})
@@ -302,8 +307,14 @@ func resolveSessionRights(ctx context.Context, userID int) (modes ModuleModeRigh
 			perField, empty := fieldRightsFromValue(entry["fields"])
 			if empty || len(perField) == 0 {
 				unrestricted[m] = true
+				if replace {
+					acc[m] = nil
+				}
 			} else {
-				if acc[m] == nil {
+				if replace {
+					unrestricted[m] = false
+					acc[m] = map[string]int{}
+				} else if acc[m] == nil {
 					acc[m] = map[string]int{}
 				}
 				for field, mask := range perField {
@@ -315,8 +326,14 @@ func resolveSessionRights(ctx context.Context, userID int) (modes ModuleModeRigh
 			if functions.Int(entry["modes"])&MODE_FILTERS != 0 {
 				if filtersEmpty || len(allowedFilters) == 0 {
 					filterUnrestricted[m] = true
+					if replace {
+						filterAcc[m] = nil
+					}
 				} else {
-					if filterAcc[m] == nil {
+					if replace {
+						filterUnrestricted[m] = false
+						filterAcc[m] = map[string]bool{}
+					} else if filterAcc[m] == nil {
 						filterAcc[m] = map[string]bool{}
 					}
 					for name := range allowedFilters {
@@ -334,15 +351,16 @@ func resolveSessionRights(ctx context.Context, userID int) (modes ModuleModeRigh
 		}
 	}
 	// Group rights (+ module default already seeded above).
-	applyRights(row["group_rights"])
+	applyRights(row["group_rights"], false)
 
 	// Role ceiling: narrows what the group just granted, per module the role
 	// declares a restriction for — never elevates, and runs before user rights
 	// so an admin's explicit per-user grant (below) stays exempt from it.
 	applyRoleCeiling(row["role_rights"], modes, acc, unrestricted, filterAcc, filterUnrestricted, specialRights)
 
-	// User rights: additive on top of the (group, role-ceiling'd) result.
-	applyRights(row["user_rights"])
+	// User rights: the most specific grant there is, so its fields/filter_fields
+	// replace (not add to) the group/role-ceiling'd result for that module.
+	applyRights(row["user_rights"], true)
 
 	for m, names := range filterAcc {
 		if !filterUnrestricted[m] {
