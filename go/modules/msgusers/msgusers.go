@@ -29,6 +29,7 @@ func (m *MsgUsers) fieldset() []Field {
 		NewField("email", TYPE_STRING, false).WithLabel("Email").AsReadOnly(),
 		NewField("last_seen", TYPE_DATE_TIME, false).WithLabel("Last seen").AsReadOnly(),
 		NewField("online", TYPE_CHECKBOX, false).WithLabel("Status").AsReadOnly().WithOption("widget", "status"),
+		NewField("ip", TYPE_STRING, false).WithLabel("IP").AsReadOnly(),
 	}
 }
 
@@ -110,11 +111,12 @@ func fetchRows(ctx context.Context, r *http.Request, mode int) ([]map[string]int
 	onlineOnly := rq.String("online") == "true"
 	out := make([]map[string]interface{}, 0, len(rows))
 	for _, row := range rows {
-		online := p2prendezvous.IsOnline(functions.Coerce[int](row["id"]))
+		ip, online := p2prendezvous.Addr(functions.Coerce[int](row["id"]))
 		if onlineOnly && !online {
 			continue
 		}
 		row["online"] = online
+		row["ip"] = ip
 		out = append(out, row)
 	}
 	return out, nil

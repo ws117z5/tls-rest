@@ -72,3 +72,14 @@ func IsOnline(userID int) bool {
 	_, ok := lookup(userID)
 	return ok
 }
+
+// Addr returns userID's last-heartbeat public IP (no port) — exported for
+// go/modules/msgusers' admin "IP" column, e.g. to spot two users sharing one
+// NAT (same home network, no hairpin, hence no direct P2P between them).
+func Addr(userID int) (string, bool) {
+	addr, ok := lookup(userID)
+	if !ok {
+		return "", false
+	}
+	return addr.IP.String(), true
+}
