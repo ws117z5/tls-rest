@@ -18,6 +18,12 @@ const onlineWindow = 30 * time.Second
 type presenceEntry struct {
 	addr     *net.UDPAddr
 	lastSeen time.Time
+	// tcpAddr is this user's externally-observed address on the TCP registration
+	// listener (tcp.go) — a separate NAT mapping from addr/lastSeen above (different
+	// protocol, different local port on the client), tracked with its own staleness
+	// window since a client can be UDP-online without ever having registered one yet.
+	tcpAddr     *net.TCPAddr
+	tcpLastSeen time.Time
 }
 
 // presence is the in-memory "who's online, and where" registry this whole
@@ -63,6 +69,34 @@ func lookup(userID int) (*net.UDPAddr, bool) {
 		return nil, false
 	}
 	return e.addr, true
+}
+
+// setTCPAddr records userID's most recently observed TCP registration source address (tcp.go)
+// — a NAT mapping the real P2P TCP connection can actually use, unlike the UDP one above, which
+// reflects a different local port/protocol and has no relationship to a TCP flow's own mapping.
+func setTCPAddr(userID int, addr *net.TCPAddr) {
+	presence.mu.Lock()
+	defer presence.mu.Unlock()
+	e, ok := presence.byUser[userID]
+	if !ok {
+		e = &presenceEntry{}
+		presence.byUser[userID] = e
+	}
+	e.tcpAddr = addr
+	e.tcpLastSeen = time.Now()
+}
+
+// lookupTCP returns userID's current TCP registration address, only if one was ever recorded
+// and it's still within onlineWindow — a user who's UDP-online but never registered over TCP
+// (or whose registration went stale) has none.
+func lookupTCP(userID int) (*net.TCPAddr, bool) {
+	presence.mu.Lock()
+	defer presence.mu.Unlock()
+	e, ok := presence.byUser[userID]
+	if !ok || e.tcpAddr == nil || time.Since(e.tcpLastSeen) > onlineWindow {
+		return nil, false
+	}
+	return e.tcpAddr, true
 }
 
 // IsOnline is lookup without the address — exported for go/modules/msgusers'

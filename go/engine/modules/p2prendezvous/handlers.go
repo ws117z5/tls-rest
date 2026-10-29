@@ -96,10 +96,12 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	callerAddr, callerOnline := lookup(s.UserID)
+	callerTCPAddr, callerHasTCP := lookupTCP(s.UserID)
 
 	type onlineMember struct {
-		UserID int    `json:"id"`
-		Addr   string `json:"addr"`
+		UserID  int    `json:"id"`
+		Addr    string `json:"addr"`
+		TCPAddr string `json:"tcpAddr,omitempty"`
 	}
 	online := make([]onlineMember, 0, len(memberIDs))
 	for _, memberID := range memberIDs {
@@ -107,10 +109,18 @@ func handleConnect(w http.ResponseWriter, r *http.Request) {
 		if !isOnline {
 			continue
 		}
-		online = append(online, onlineMember{UserID: memberID, Addr: addr.String()})
+		member := onlineMember{UserID: memberID, Addr: addr.String()}
+		if tcpAddr, hasTCP := lookupTCP(memberID); hasTCP {
+			member.TCPAddr = tcpAddr.String()
+		}
+		online = append(online, member)
 
 		if callerOnline {
-			payload, _ := json.Marshal(map[string]interface{}{"userId": s.UserID, "addr": callerAddr.String()})
+			signalPayload := map[string]interface{}{"userId": s.UserID, "addr": callerAddr.String()}
+			if callerHasTCP {
+				signalPayload["tcpAddr"] = callerTCPAddr.String()
+			}
+			payload, _ := json.Marshal(signalPayload)
 			mesh.QueueSignal(signalChatPrefix+strconv.FormatInt(chatID, 10), strconv.Itoa(memberID), strconv.Itoa(s.UserID), payload)
 			hub.notify(memberID)
 		}
@@ -195,4 +205,5 @@ func init() {
 		router.HandleFunc("/api/p2p/stream", handleStream).Methods("GET")
 	})
 	go startUDPListener()
+	go startTCPListener()
 }

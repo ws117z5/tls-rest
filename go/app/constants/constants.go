@@ -42,15 +42,18 @@ type TurnParams struct {
 	FallbackStunURLs []string `json:"fallbackStunUrls"` // used when TURN is unconfigured/over cap
 }
 
-// P2PParams configures the UDP rendezvous listener for the P2P messaging
-// app's NAT traversal (see go/engine/modules/p2prendezvous). This is a raw
-// UDP port, not an HTTP route — it must be opened directly on the host
-// running the Go binary, outside Traefik's HTTP(S) reverse-proxy scope.
+// P2PParams configures the UDP rendezvous listener (NAT traversal address
+// discovery) and the TCP registration listener (same idea, for the actual
+// message transport — see go/engine/modules/p2prendezvous). Both are raw
+// sockets, not HTTP routes — opened directly on the host running the Go
+// binary, outside Traefik's HTTP(S) reverse-proxy scope.
 type P2PParams struct {
 	UDPPort int `json:"udpPort"`
+	TCPPort int `json:"tcpPort"`
 }
 
 const defaultP2PUDPPort = 34567
+const defaultP2PTCPPort = 34568
 
 // UDPPort is go.config.json's "p2p.udpPort", falling back to a default when unset.
 func (obj *ConfigType) UDPPort() int {
@@ -58,6 +61,14 @@ func (obj *ConfigType) UDPPort() int {
 		return obj.P2P.UDPPort
 	}
 	return defaultP2PUDPPort
+}
+
+// TCPPort is go.config.json's "p2p.tcpPort", falling back to a default when unset.
+func (obj *ConfigType) TCPPort() int {
+	if obj.P2P.TCPPort > 0 {
+		return obj.P2P.TCPPort
+	}
+	return defaultP2PTCPPort
 }
 
 // AdditionalRights self explanitory
