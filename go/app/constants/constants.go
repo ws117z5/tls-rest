@@ -42,18 +42,15 @@ type TurnParams struct {
 	FallbackStunURLs []string `json:"fallbackStunUrls"` // used when TURN is unconfigured/over cap
 }
 
-// P2PParams configures the UDP rendezvous listener (NAT traversal address
-// discovery) and the TCP registration listener (same idea, for the actual
-// message transport — see go/engine/modules/p2prendezvous). Both are raw
-// sockets, not HTTP routes — opened directly on the host running the Go
-// binary, outside Traefik's HTTP(S) reverse-proxy scope.
+// P2PParams configures the UDP rendezvous listener (presence/NAT traversal
+// address discovery — see go/engine/modules/p2prendezvous). A raw socket, not
+// an HTTP route — opened directly on the host running the Go binary, outside
+// Traefik's HTTP(S) reverse-proxy scope.
 type P2PParams struct {
 	UDPPort int `json:"udpPort"`
-	TCPPort int `json:"tcpPort"`
 }
 
 const defaultP2PUDPPort = 34567
-const defaultP2PTCPPort = 34568
 
 // UDPPort is go.config.json's "p2p.udpPort", falling back to a default when unset.
 func (obj *ConfigType) UDPPort() int {
@@ -61,14 +58,6 @@ func (obj *ConfigType) UDPPort() int {
 		return obj.P2P.UDPPort
 	}
 	return defaultP2PUDPPort
-}
-
-// TCPPort is go.config.json's "p2p.tcpPort", falling back to a default when unset.
-func (obj *ConfigType) TCPPort() int {
-	if obj.P2P.TCPPort > 0 {
-		return obj.P2P.TCPPort
-	}
-	return defaultP2PTCPPort
 }
 
 // AdditionalRights self explanitory
@@ -164,6 +153,12 @@ var (
 	CFAccountID      = Env("CF_ACCOUNT_ID", "")
 	CFAnalyticsToken = Env("CF_ANALYTICS_TOKEN", "")
 	TurnMonthlyCapMB = EnvInt("TURN_MONTHLY_CAP_MB", 0)
+
+	// Self-hosted coturn (p2pmsg + papers, preferred over Cloudflare above when
+	// set). Must match coturn.conf's static-auth-secret. Empty falls back to
+	// the Cloudflare/public-STUN chain.
+	TurnSharedSecret = Env("TURN_SHARED_SECRET", "")
+	TurnHost         = Env("TURN_HOST", "koroteev.duckdns.org")
 
 	// GoogleURLBlank is the OOB (out-of-band) sentinel — not a host, so it is
 	// not host-dependent and stays a constant.

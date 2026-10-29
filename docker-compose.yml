@@ -18,7 +18,6 @@ services:
     ports:
       - "8443:8443"
       - "34567:34567/udp"
-      - "34568:34568/tcp"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:

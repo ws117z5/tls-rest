@@ -3,6 +3,9 @@
 package turn
 
 import (
+	"crypto/hmac"
+	"crypto/sha1"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -16,6 +19,35 @@ import (
 
 	"github.com/gorilla/mux"
 )
+
+// coturnCredentialTTL is how long a minted coturn username/password pair
+// stays valid (embedded in the username itself, per the TURN REST API
+// convention coturn's use-auth-secret implements).
+const coturnCredentialTTL = 2 * time.Hour
+
+// MintCoturnCredentials mints a time-limited TURN REST API credential pair
+// against the self-hosted coturn instance for the given calling module
+// (e.g. "papers", "p2pmsg") and user — coturn has one shared realm/secret, so
+// the module tag travels in the username itself for later log filtering.
+func MintCoturnCredentials(callingModule string, userID int) map[string]any {
+	expires := time.Now().Add(coturnCredentialTTL).Unix()
+	username := fmt.Sprintf("%d:%s:%d", expires, callingModule, userID)
+	mac := hmac.New(sha1.New, []byte(config.TurnSharedSecret))
+	mac.Write([]byte(username))
+	password := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+
+	host := config.TurnHost
+	return map[string]any{
+		"urls": []string{
+			"stun:" + host + ":3478",
+			"turn:" + host + ":3478?transport=udp",
+			"turn:" + host + ":3478?transport=tcp",
+			"turns:" + host + ":5349?transport=tcp",
+		},
+		"username":   username,
+		"credential": password,
+	}
+}
 
 // Fallbacks when go.config.json's "turn" section is unset.
 const (
@@ -61,11 +93,24 @@ type cfTurnCredentialsResponse struct {
 }
 
 // GetIceServers returns the ICE server list for an authenticated session's
-// RTCPeerConnection. Served at GET /api/config/ice.
+// RTCPeerConnection. Served at GET /api/config/ice. The optional "module"
+// query param (e.g. "papers", "p2pmsg") is only used by the coturn path, to
+// tag the minted credential's username for later log filtering.
 func GetIceServers(w http.ResponseWriter, r *http.Request) {
 	s := cache.SessionFromContext(r.Context())
 	if s == nil || s.UserID <= 0 {
 		functions.JSONError(w, http.StatusUnauthorized, "no session")
+		return
+	}
+
+	if config.TurnSharedSecret != "" {
+		callingModule := r.URL.Query().Get("module")
+		if callingModule == "" {
+			callingModule = "unknown"
+		}
+		functions.WriteJSON(w, http.StatusOK, map[string]any{
+			"iceServers": []map[string]any{MintCoturnCredentials(callingModule, s.UserID)},
+		})
 		return
 	}
 
