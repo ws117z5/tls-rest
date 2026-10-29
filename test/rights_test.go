@@ -1010,22 +1010,6 @@ func candidateFieldRightsModules(rights auth.ModuleModeRights) map[string][]stri
 	return out
 }
 
-// fieldsAlreadyOpen reports whether existing (a module's group-level field
-// rights, nil meaning no restriction was recorded at all) already grants
-// every field in names some mode, leaving no room for a personal grant to
-// narrow anything.
-func fieldsAlreadyOpen(existing map[string]int, names []string) bool {
-	if existing == nil {
-		return true
-	}
-	for _, n := range names {
-		if existing[n] == 0 {
-			return false
-		}
-	}
-	return true
-}
-
 // randomFieldGrants builds a random {"field": ["mode",...]} map — the shape
 // user_rights.fields stores — granting a random non-empty subset of fields
 // and, per granted field, a random non-empty subset of modes.
@@ -1077,7 +1061,10 @@ func fieldsetVisibleNames(t *testing.T, token, moduleID string) map[string]bool 
 // TestFieldRights_RandomPerUser creates a throwaway user and, per module,
 // inserts a random user_rights.fields row, mints a token (session FieldRights
 // are cached at issuance, so it must postdate the row), and checks
-// POST /api/modules/{id}/fieldset shows exactly the granted fields.
+// POST /api/modules/{id}/fieldset shows exactly the granted fields — a
+// user_rights row is the most specific grant there is, so it replaces
+// whatever the group granted for that module rather than adding to it (see
+// resolveSessionRights's applyRights).
 func TestFieldRights_RandomPerUser(t *testing.T) {
 	db, err := pgdb.GetInstance()
 	if err != nil {
@@ -1104,19 +1091,6 @@ func TestFieldRights_RandomPerUser(t *testing.T) {
 		tested++
 		modID, names := modID, names
 		t.Run(modID, func(t *testing.T) {
-			// Checked before inserting our own row, against the group-only
-			// state: rights are additive, so a personal grant can only ever
-			// add visibility, never take it away. If the group already
-			// grants every candidate field some mode (nil counts as "every
-			// field" — no restriction recorded at all), no personal subset
-			// could ever narrow what's visible, and the assertion below would
-			// fail regardless of what we grant.
-			existing := auth.ResolveModuleFieldRights(tempID)[modID]
-			if fieldsAlreadyOpen(existing, names) {
-				t.Skipf("module %s's group rights already grant every candidate field, so a personal "+
-					"grant can't narrow it further (additive rights)", modID)
-			}
-
 			grants := randomFieldGrants(rng, names)
 
 			rightsID, err := db.InsertRow("user_rights", map[string]interface{}{
@@ -1136,15 +1110,14 @@ func TestFieldRights_RandomPerUser(t *testing.T) {
 
 			visible := fieldsetVisibleNames(t, tok, modID)
 			for _, name := range names {
-				// Additive rights: a field the group already opened stays visible
-				// regardless of whether this personal grant repeats it (see
-				// fieldsAlreadyOpen above, applied per-field here rather than
-				// requiring every candidate field to already be open).
+				// Override rights: our user_rights row above replaces the group's
+				// field rights for this module entirely, so visibility now depends
+				// only on whether this grant names the field — whatever the group
+				// separately grants no longer matters.
 				_, granted := grants[name]
-				granted = granted || existing[name] != 0
 				if visible[name] != granted {
-					t.Errorf("module %s field %q: granted=%v, visible=%v (grants=%v, existing=%v)",
-						modID, name, granted, visible[name], grants, existing)
+					t.Errorf("module %s field %q: granted=%v, visible=%v (grants=%v)",
+						modID, name, granted, visible[name], grants)
 				}
 			}
 		})

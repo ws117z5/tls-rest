@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict YEMLJvdekQCf6bGxdIPDMMXBd1bcOrPY7wMUFnplmMzMgJjXLYlvc1Y7ajn3vWB
+\restrict YOJ33fh4bxx44fVBCIQlBb0rfqpo2QCvFFYleOe7m1mnzKLpKNgchbIyriPJtuU
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2487,7 +2487,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict YEMLJvdekQCf6bGxdIPDMMXBd1bcOrPY7wMUFnplmMzMgJjXLYlvc1Y7ajn3vWB
+\unrestrict YOJ33fh4bxx44fVBCIQlBb0rfqpo2QCvFFYleOe7m1mnzKLpKNgchbIyriPJtuU
 
 
 -- Durable role/rights seed.
@@ -2495,7 +2495,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict 5oZmA1L21M9j5f9vASMNKtrr1hspAVcIhK5gadR4Uf4udk9deSe5TdnwrEdPwhR
+\restrict fN1dRgirHH3PmAYC2HaujjTD1MoGl27TzHqqjnbYig6xslRnDYOCPtPtDLTaCFA
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2632,5 +2632,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict 5oZmA1L21M9j5f9vASMNKtrr1hspAVcIhK5gadR4Uf4udk9deSe5TdnwrEdPwhR
+\unrestrict fN1dRgirHH3PmAYC2HaujjTD1MoGl27TzHqqjnbYig6xslRnDYOCPtPtDLTaCFA
 
