@@ -15,6 +15,31 @@ function excerpt(body: string, max = 180): string {
   return text.length > max ? text.slice(0, max).trimEnd() + "…" : text;
 }
 
+// Port of go/engine/controllers/functions.ImageFieldURL — author_image (sourced
+// from users.image) comes back as whichever raw shape that column happens to hold,
+// not pre-resolved by the generic fieldset response.
+function avatarUrl(raw: unknown): string {
+  if (typeof raw !== "string") return "";
+  const s = raw.trim();
+  if (!s) return "";
+  try {
+    const refs = JSON.parse(s);
+    if (Array.isArray(refs) && refs.length > 0) {
+      if (refs[0]?.url) return refs[0].url;
+      if (refs[0]?.hash) return `/image/${refs[0].hash}`;
+      return "";
+    }
+  } catch {
+    // not JSON — a plain hash/path, handled below
+  }
+  return s.startsWith("/image/") ? s : `/image/${s}`;
+}
+
+function initial(name: string): string {
+  const trimmed = (name || "").trim();
+  return trimmed ? trimmed[0].toUpperCase() : "?";
+}
+
 // Custom LIST view for the "posts" module: title, author and a body excerpt per
 // post. Clicking a card opens its view.
 const PostsList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
@@ -25,28 +50,50 @@ const PostsList: React.FC<ModuleViewProps> = ({ data, navigate, module }) => {
   }
   return (
     <div className="d-flex flex-column gap-2">
-      {rows.map((row: any) => (
-        <div
-          key={row.id}
-          className="card"
-          style={{ cursor: "pointer" }}
-          onClick={() => navigate(`/${module}/${row.slug || row.id}`)}
-        >
-          <div className="card-body py-2">
-            <h5 className="card-title mb-1">{row.title || `#${row.id}`}</h5>
-            <div className="text-muted small mb-2">{t("By")} {row.author || "—"}</div>
-            <div className="text-secondary small mb-2">{excerpt(row.content)}</div>
-            <div className="d-flex align-items-center gap-3 text-muted small">
-              <span>
-                <Icon name="like" /> {row.likes_count || 0}
-              </span>
-              <span>
-                <Icon name="comments" /> {row.comments_count || 0}
-              </span>
+      {rows.map((row: any) => {
+        const avatar = avatarUrl(row.author_image);
+        return (
+          <div
+            key={row.id}
+            className="card"
+            style={{ cursor: "pointer" }}
+            onClick={() => navigate(`/${module}/${row.slug || row.id}`)}
+          >
+            <div className="card-body py-2">
+              <div className="d-flex align-items-center gap-2 mb-2">
+                {avatar ? (
+                  <img
+                    src={avatar}
+                    alt=""
+                    className="rounded-circle"
+                    style={{ width: 40, height: 40, objectFit: "cover", flexShrink: 0 }}
+                  />
+                ) : (
+                  <span
+                    className="rounded-circle d-flex align-items-center justify-content-center bg-secondary text-white"
+                    style={{ width: 40, height: 40, flexShrink: 0, fontSize: "1rem" }}
+                  >
+                    {initial(row.author)}
+                  </span>
+                )}
+                <div className="flex-grow-1 min-width-0">
+                  <h5 className="card-title mb-0">{row.title || `#${row.id}`}</h5>
+                  <div className="text-muted small">{t("By")} {row.author || "—"}</div>
+                </div>
+              </div>
+              <div className="text-secondary small mb-2">{excerpt(row.content)}</div>
+              <div className="d-flex align-items-center gap-3 text-muted small">
+                <span>
+                  <Icon name="like" /> {row.likes_count || 0}
+                </span>
+                <span>
+                  <Icon name="comments" /> {row.comments_count || 0}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };

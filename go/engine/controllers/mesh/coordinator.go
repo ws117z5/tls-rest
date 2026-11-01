@@ -3,6 +3,7 @@
 package mesh
 
 import (
+	"math"
 	"sort"
 	"sync"
 
@@ -21,7 +22,17 @@ type Report struct {
 	Up    float64    `json:"up"`   // this peer's uplink capacity (Mbit/s)
 	Down  float64    `json:"down"` // this peer's downlink capacity (Mbit/s)
 	Stats []LinkStat `json:"stats"`
+	// Platform tags the client type ("web", "android", "ios"); empty/"web" keeps
+	// the historical unlimited relay cap, anything else gets mobileRelayCapMbps
+	// (see BuildPlanFor) — relaying is real decode+re-encode CPU/battery cost on
+	// a phone, not packet forwarding, which an unlimited cap doesn't account for.
+	Platform string `json:"platform"`
 }
+
+// mobileRelayCapMbps is a conservative placeholder for a phone's sustained relay
+// (decode+re-encode) throughput budget — not benchmarked, meant to be tuned from
+// real telemetry once this is live on mobile.
+const mobileRelayCapMbps = 4.0
 
 // PlanEnvelope is what clients pull from GET /papers/{room}/plan: the peer order
 // (so tree indices map back to peer ids) and the optimizer plan.
@@ -168,10 +179,20 @@ func BuildPlanFor(order []string, reports map[string]*Report) (*PlanEnvelope, []
 	}
 
 	in := blankInput(n)
+	// RelayCap is left nil by blankInput (optimizer.Input.Normalize fills it with
+	// unlimited later) — pre-fill it here so a mobile platform's entry below has
+	// somewhere to land; everyone else keeps the historical unlimited default.
+	in.RelayCap = make([]float64, n)
+	for i := range in.RelayCap {
+		in.RelayCap[i] = math.Inf(1)
+	}
 	for i, id := range order {
 		rep := reports[id]
 		in.Up[i] = orDefault(rep.Up, 10)
 		in.Down[i] = orDefault(rep.Down, 50)
+		if rep.Platform != "" && rep.Platform != "web" {
+			in.RelayCap[i] = mobileRelayCapMbps
+		}
 		for _, s := range rep.Stats {
 			j, ok := idx[s.Peer]
 			if !ok || j == i {

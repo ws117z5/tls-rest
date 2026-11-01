@@ -18,6 +18,9 @@
 //
 // Actual messages travel over a WebRTC DataChannel once ICE connects the
 // peers — this package is never in that path.
+//
+// Group calls (calls.go) reuse this same stream under a distinct "call-signal"
+// event and their own "call:"+chatID room key — see that file's own doc.
 package p2prendezvous
 
 import (
@@ -197,22 +200,26 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
+	drainRoom := func(room, event string, chatID int64) {
+		for _, msg := range mesh.DrainSignal(room, strconv.Itoa(s.UserID)) {
+			var data map[string]interface{}
+			if err := json.Unmarshal(msg.Data, &data); err != nil {
+				continue
+			}
+			data["chatId"] = chatID
+			data["fromUserId"] = msg.From
+			send(event, data)
+		}
+	}
+
 	drainSignals := func() {
 		chatIDs, err := chats.ChatIDsForUser(r.Context(), s.UserID)
 		if err != nil {
 			return
 		}
 		for _, chatID := range chatIDs {
-			room := signalChatPrefix + strconv.FormatInt(chatID, 10)
-			for _, msg := range mesh.DrainSignal(room, strconv.Itoa(s.UserID)) {
-				var data map[string]interface{}
-				if err := json.Unmarshal(msg.Data, &data); err != nil {
-					continue
-				}
-				data["chatId"] = chatID
-				data["fromUserId"] = msg.From
-				send("chat-event", data)
-			}
+			drainRoom(signalChatPrefix+strconv.FormatInt(chatID, 10), "chat-event", chatID)
+			drainRoom(callChatPrefix+strconv.FormatInt(chatID, 10), "call-signal", chatID)
 		}
 	}
 

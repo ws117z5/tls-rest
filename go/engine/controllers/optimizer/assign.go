@@ -33,31 +33,37 @@ func pathKey(edges []int) string {
 	return fmt.Sprint(edges)
 }
 
-// Result is what the optimizer hands back.
+// Result is what the optimizer hands back. Every field needs an explicit json
+// tag — without one, Go's default (the exported Go name, e.g. "MeanLatency")
+// silently didn't match any client's camelCase ("meanLatency"), so these
+// aggregate metrics were always undefined/zero on every consumer (web, and
+// the Kotlin CallPlanner added this session) even though the struct looked
+// fine in Go; Tree/Plan's own fields were already correctly tagged.
 type Result struct {
-	Routes     []Route   // one entry per (s,d) with positive demand
-	EdgeLoad   []float64 // final flow on every graph edge (indexed like graph.e)
-	Iterations int
-	Gap        float64 // final relative Frank-Wolfe gap
+	Routes     []Route   `json:"routes"`   // one entry per (s,d) with positive demand
+	EdgeLoad   []float64 `json:"edgeLoad"` // final flow on every graph edge (indexed like graph.e)
+	Iterations int       `json:"iterations"`
+	Gap        float64   `json:"gap"` // final relative Frank-Wolfe gap
 	// Aggregate quality metrics.
-	MeanLatency       float64 // demand-weighted delivery latency (ms)
-	MaxRelayUtil      float64 // most loaded relay forwarding budget (fraction)
-	MaxUpUtil         float64 // most loaded uplink pipe (fraction)
-	MaxDownUtil       float64 // most loaded downlink pipe (fraction)
-	DirectMeanLatency float64 // same metric if everyone went direct (baseline)
+	MeanLatency       float64 `json:"meanLatency"`       // demand-weighted delivery latency (ms)
+	MaxRelayUtil      float64 `json:"maxRelayUtil"`      // most loaded relay forwarding budget (fraction)
+	MaxUpUtil         float64 `json:"maxUpUtil"`         // most loaded uplink pipe (fraction)
+	MaxDownUtil       float64 `json:"maxDownUtil"`       // most loaded downlink pipe (fraction)
+	DirectMeanLatency float64 `json:"directMeanLatency"` // same metric if everyone went direct (baseline)
 }
 
 // Route is the recommended (possibly multi-path) routing for one flow.
 type Route struct {
-	Src, Dst int
-	Paths    []PathShare
+	Src   int         `json:"src"`
+	Dst   int         `json:"dst"`
+	Paths []PathShare `json:"paths"`
 }
 
 // PathShare is one path carrying a fraction of a flow.
 type PathShare struct {
-	Hops     []int   // node ids: [src, ...relays..., dst]
-	Fraction float64 // share of this flow's demand (0..1)
-	Latency  float64 // free-flow latency of this path (ms)
+	Hops     []int   `json:"hops"`     // node ids: [src, ...relays..., dst]
+	Fraction float64 `json:"fraction"` // share of this flow's demand (0..1)
+	Latency  float64 `json:"latency"`  // free-flow latency of this path (ms)
 }
 
 // solve runs Frank-Wolfe to convergence and returns the converged graph plus

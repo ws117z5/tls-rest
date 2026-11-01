@@ -11,6 +11,13 @@ import (
 
 var coordinator = NewCoordinator()
 
+// DefaultCoordinator exposes the shared singleton for other packages (e.g.
+// p2prendezvous's call endpoints) that want their own auth-wrapped handlers
+// on top of the same relay/video-tier planner, instead of reusing
+// ReportLink/GetPlan's HTTP handlers directly (which trust a client-asserted
+// Peer field unsuited to an authenticated caller).
+func DefaultCoordinator() *Coordinator { return coordinator }
+
 // ReportRequest is the body a peer POSTs to /{module}/{roomId}/report.
 type ReportRequest struct {
 	Peer  string     `json:"peer"`

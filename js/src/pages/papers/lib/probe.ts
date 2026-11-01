@@ -2,7 +2,11 @@ import { MeshManager } from "./mesh";
 import type { Control, PeerStat } from "./types";
 
 const PINGS = 12;
-const THR_BYTES = 2 << 20; // 2 MiB burst per link
+// 512 KiB, not 2 MiB — probeAll() runs this sequentially per peer (see below),
+// so room-wide probe traffic is O(N); keeping each burst small matters once N
+// gets into the 10+ range, where the old 2 MiB figure meant tens of MB of pure
+// measurement overhead competing with the uplink it's trying to protect.
+const THR_BYTES = 512 << 10;
 const CHUNK = 16 << 10;
 const HIGH_WATER = 1 << 20;
 
@@ -80,22 +84,32 @@ export class Prober {
   }
 
   async probeAll(peerIds: string[]): Promise<Report> {
+    // Latency: tiny ping/pong frames, safe to run concurrently across every
+    // peer — unlike a throughput burst this doesn't meaningfully self-congest,
+    // so there's no accuracy cost to parallelizing it (was the dominant part of
+    // this function's old O(N) *sequential* wall-clock cost, now O(1)).
+    const latencies = await Promise.all(
+      peerIds.map(async (peer) => {
+        let best = Infinity;
+        for (let i = 0; i < PINGS; i++) {
+          const rtt = await this.measureLatency(peer);
+          if (!Number.isNaN(rtt)) best = Math.min(best, rtt);
+          await sleep(10);
+        }
+        return Number.isFinite(best) ? best / 2 : 500;
+      }),
+    );
+
+    // Throughput stays sequential, one peer at a time — bursts running in
+    // parallel would each compete for the same physical uplink and understate
+    // every peer's real capacity.
     const stats: PeerStat[] = [];
-    for (const peer of peerIds) {
-      let best = Infinity;
-      for (let i = 0; i < PINGS; i++) {
-        const rtt = await this.measureLatency(peer);
-        if (!Number.isNaN(rtt)) best = Math.min(best, rtt);
-        await sleep(10);
-      }
-      const up = await this.measureUpload(peer);
-      stats.push({
-        peer,
-        latencyMs: Number.isFinite(best) ? best / 2 : 500,
-        upMbps: up,
-        downMbps: this.downMbps.get(peer) ?? 0,
-      });
+    for (let i = 0; i < peerIds.length; i++) {
+      const peer = peerIds[i];
+      const upMbps = await this.measureUpload(peer);
+      stats.push({ peer, latencyMs: latencies[i], upMbps, downMbps: this.downMbps.get(peer) ?? 0 });
     }
+
     const up = Math.max(0, ...stats.map((s) => s.upMbps));
     const down = Math.max(0, ...stats.map((s) => s.downMbps));
     return { stats, up: up || 10, down: down || 50 };

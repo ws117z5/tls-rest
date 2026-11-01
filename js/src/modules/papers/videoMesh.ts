@@ -122,6 +122,7 @@ export class RoomMesh {
         peer: this.mesh.selfId,
         up: report.up,
         down: report.down,
+        platform: "web",
         stats: report.stats.map((s) => ({
           peer: s.peer,
           latencyMs: s.latencyMs,
