@@ -57,3 +57,15 @@ func DrainSignals(w http.ResponseWriter, r *http.Request) {
 
 	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{"messages": out})
 }
+
+func init() {
+	// Wakes this room's SSE subscribers when the server's own relay peer
+	// (relaynode) queues a signal in-process — SendSignal above already
+	// calls hub.notify itself for the human-to-human path, so this only
+	// matters for signals the server originates. hub.notify(room) on a room
+	// with no subscribers is a safe no-op, so no filtering is needed here
+	// the way p2prendezvous's own hook filters by room prefix.
+	mesh.RegisterSignalQueuedHook(func(room, to string) {
+		hub.notify(room)
+	})
+}

@@ -282,7 +282,7 @@ func (fe *FieldsetEngine) buildVisibilityCondition(v viewer, argIndex *int, args
 	}
 
 	aclMode := fe.Module != nil && (fe.Module.VisibilityUsersField != "" || fe.Module.VisibilityGroupsField != "" ||
-		fe.Module.VisibilityAnyoneField != "" || fe.Module.VisibilityFriendsField != "")
+		fe.Module.VisibilityAnyoneField != "" || fe.Module.VisibilityFriendsField != "" || fe.Module.VisibilitySubscribersField != "")
 
 	if aclMode {
 		var alt []string
@@ -325,6 +325,14 @@ func (fe *FieldsetEngine) buildVisibilityCondition(v viewer, argIndex *int, args
 			alt = append(alt, fmt.Sprintf(
 				`(%s AND EXISTS (SELECT 1 FROM friends WHERE user_a = LEAST($%d, created_by) AND user_b = GREATEST($%d, created_by)))`,
 				f, *argIndex, *argIndex,
+			))
+			*args = append(*args, v.userID)
+			*argIndex++
+		}
+		if f := fe.Module.VisibilitySubscribersField; f != "" && v.userID > 0 && fe.hasField(f) && fe.hasField("created_by") {
+			alt = append(alt, fmt.Sprintf(
+				`(%s AND EXISTS (SELECT 1 FROM subscriptions WHERE subscriber_id = $%d AND subscribed_to_id = created_by))`,
+				f, *argIndex,
 			))
 			*args = append(*args, v.userID)
 			*argIndex++

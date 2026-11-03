@@ -28,11 +28,13 @@ import (
 	_ "tls-rest/go/modules/cart"
 	_ "tls-rest/go/modules/claudenotify"
 	_ "tls-rest/go/modules/external_logs"
+	_ "tls-rest/go/modules/meshsessions"
 	_ "tls-rest/go/modules/msgusers"
 	_ "tls-rest/go/modules/paymentplatforms"
 	_ "tls-rest/go/modules/payments"
 	_ "tls-rest/go/modules/posts"
 	_ "tls-rest/go/modules/products"
+	_ "tls-rest/go/modules/reports"
 	_ "tls-rest/go/modules/words"
 
 	// Engine pages
@@ -40,6 +42,7 @@ import (
 	_ "tls-rest/go/engine/pages/actions"
 	_ "tls-rest/go/engine/pages/actions/jobs"
 	_ "tls-rest/go/engine/pages/console"
+	_ "tls-rest/go/engine/pages/friendrequests"
 	_ "tls-rest/go/engine/pages/login"
 	_ "tls-rest/go/engine/pages/profile"
 	_ "tls-rest/go/engine/pages/statistics"

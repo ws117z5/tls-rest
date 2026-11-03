@@ -427,3 +427,12 @@ html[data-theme="dark"] .cx-select-option:focus {
   zoom: calc(0.06 * var(--icon-scale, 1));
   margin-right: 3px;
 }
+
+.collapsible-caret {
+  display: inline-block;
+  transition: transform 0.15s ease;
+}
+
+.collapsible-caret-open {
+  transform: rotate(90deg);
+}

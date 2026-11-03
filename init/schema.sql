@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict kPjhVfT08rj9DDmgkOHgM6TCAGJ0Zml052ohHZ2QEa0xU73eKd319dsDqDZlOXv
+\restrict JZuZrGKKQaEPSjVBIJEmMASYFOhg9ROVCCTy5DEB7axmgNWc5lVrVTIgwyLtDwh
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -241,7 +241,8 @@ CREATE TABLE public.chat_members (
     status character varying(10) DEFAULT 'pending'::character varying NOT NULL,
     joined timestamp with time zone DEFAULT now() NOT NULL,
     show_read_receipts boolean DEFAULT true NOT NULL,
-    show_online_status boolean
+    show_online_status boolean,
+    message text
 );
 
 
@@ -1105,7 +1106,8 @@ CREATE TABLE public.posts (
     visible_anyone boolean,
     visible_friends boolean,
     visible_to_blocked boolean,
-    hide_users jsonb
+    hide_users jsonb,
+    visible_subscribers boolean
 );
 
 
@@ -1185,6 +1187,67 @@ CREATE SEQUENCE public.prooms_id_seq
 --
 
 ALTER SEQUENCE public.prooms_id_seq OWNED BY public.papers.id;
+
+
+--
+-- Name: reports_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.reports_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: reports; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.reports (
+    id integer DEFAULT nextval('public.reports_id_seq'::regclass) NOT NULL,
+    uuid uuid DEFAULT public.uuid_generate_v4() NOT NULL,
+    created timestamp with time zone DEFAULT now(),
+    updated timestamp with time zone DEFAULT now(),
+    created_by integer,
+    access integer DEFAULT 0,
+    reporter_id integer NOT NULL,
+    reported_id integer NOT NULL,
+    message text,
+    status text DEFAULT 'open'::text NOT NULL
+);
+
+
+--
+-- Name: subscriptions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.subscriptions (
+    id bigint NOT NULL,
+    subscriber_id integer NOT NULL,
+    subscribed_to_id integer NOT NULL,
+    created timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: subscriptions_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.subscriptions_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: subscriptions_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.subscriptions_id_seq OWNED BY public.subscriptions.id;
 
 
 --
@@ -1655,6 +1718,13 @@ ALTER TABLE ONLY public.products ALTER COLUMN id SET DEFAULT nextval('public.pro
 
 
 --
+-- Name: subscriptions id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.subscriptions ALTER COLUMN id SET DEFAULT nextval('public.subscriptions_id_seq'::regclass);
+
+
+--
 -- Name: user_group_rights id; Type: DEFAULT; Schema: public; Owner: -
 --
 
@@ -1994,6 +2064,30 @@ ALTER TABLE ONLY public.papers
 
 
 --
+-- Name: reports reports_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.reports
+    ADD CONSTRAINT reports_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: subscriptions subscriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.subscriptions
+    ADD CONSTRAINT subscriptions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: subscriptions subscriptions_subscriber_id_subscribed_to_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.subscriptions
+    ADD CONSTRAINT subscriptions_subscriber_id_subscribed_to_id_key UNIQUE (subscriber_id, subscribed_to_id);
+
+
+--
 -- Name: test_table test_table_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2272,6 +2366,27 @@ CREATE INDEX idx_posts_tags ON public.posts USING gin (tags);
 
 
 --
+-- Name: idx_reports_reported_open; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_reports_reported_open ON public.reports USING btree (reported_id) WHERE (status = 'open'::text);
+
+
+--
+-- Name: idx_subscriptions_subscribed_to; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_subscriptions_subscribed_to ON public.subscriptions USING btree (subscribed_to_id);
+
+
+--
+-- Name: idx_subscriptions_subscriber; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_subscriptions_subscriber ON public.subscriptions USING btree (subscriber_id);
+
+
+--
 -- Name: idx_translations_key_locale; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2444,6 +2559,22 @@ ALTER TABLE ONLY public.legal
 
 
 --
+-- Name: subscriptions subscriptions_subscribed_to_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.subscriptions
+    ADD CONSTRAINT subscriptions_subscribed_to_id_fkey FOREIGN KEY (subscribed_to_id) REFERENCES public.users(id);
+
+
+--
+-- Name: subscriptions subscriptions_subscriber_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.subscriptions
+    ADD CONSTRAINT subscriptions_subscriber_id_fkey FOREIGN KEY (subscriber_id) REFERENCES public.users(id);
+
+
+--
 -- Name: user_group_rights user_group_rights_group_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2487,7 +2618,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict kPjhVfT08rj9DDmgkOHgM6TCAGJ0Zml052ohHZ2QEa0xU73eKd319dsDqDZlOXv
+\unrestrict JZuZrGKKQaEPSjVBIJEmMASYFOhg9ROVCCTy5DEB7axmgNWc5lVrVTIgwyLtDwh
 
 
 -- Durable role/rights seed.
@@ -2495,7 +2626,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict gGCwE51u2niQVrBPtQ1NXG9UrNhl1mjNht3gewxY9zOszuSaWDw8Xy7J71wXea7
+\restrict R7p0uEfwOcljJay8vRIH6of9TrkdhPT8DgVtaK1ipjbsULhsbYcfEOPRi5m0lau
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2632,5 +2763,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict gGCwE51u2niQVrBPtQ1NXG9UrNhl1mjNht3gewxY9zOszuSaWDw8Xy7J71wXea7
+\unrestrict R7p0uEfwOcljJay8vRIH6of9TrkdhPT8DgVtaK1ipjbsULhsbYcfEOPRi5m0lau
 

@@ -23,6 +23,10 @@ interface FieldsetFormProps {
   className?: string;
   disabled?: boolean;
   showRequiredIndicator?: boolean;
+  // Lets a per-module edit.tsx override (see registry.ts) control field
+  // order/grouping without reimplementing form state/validation/submit —
+  // default field order (fields.map(renderField)) when omitted.
+  fieldRenderer?: (fields: any[], renderField: (field: any) => React.ReactNode) => React.ReactNode;
 }
 
 interface FieldsetFormState {
@@ -390,7 +394,9 @@ class FieldsetFormClass extends Component<FieldsetFormClassProps, FieldsetFormSt
           </div>
         )}
 
-        {fields.map((field: any) => this.renderField(field, layout))}
+        {this.props.fieldRenderer
+          ? this.props.fieldRenderer(fields, (field: any) => this.renderField(field, layout))
+          : fields.map((field: any) => this.renderField(field, layout))}
 
         {isEditMode && this.props.onSubmit && (
           <div className="form-actions mt-4">

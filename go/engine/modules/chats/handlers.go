@@ -29,6 +29,10 @@ type memberOut struct {
 	// show_online_status (their chat_members override, else their account-wide
 	// default — see profile.go/the migration) is true. Omitted entirely otherwise.
 	LastSeen string `json:"lastSeen,omitempty"`
+	// The message this member attached when the request that created this
+	// row was sent (see handleCreateDirect) — blank once they've accepted,
+	// since it's only shown while deciding how to respond.
+	Message string `json:"message,omitempty"`
 }
 
 type chatOut struct {
@@ -56,7 +60,7 @@ func loadChat(ctx context.Context, db *pgdb.Db, chatID int64, callerID int) (*ch
 	}
 
 	members, err := db.GetAll(`
-		SELECT cm.user_id, cm.status, cm.show_read_receipts, cm.show_online_status AS chat_show_online,
+		SELECT cm.user_id, cm.status, cm.message, cm.show_read_receipts, cm.show_online_status AS chat_show_online,
 		       u.user_name, u.image, u.first_name, u.last_name, u.allow_search_by_name,
 		       u.show_online_status AS account_show_online, u.last_seen
 		FROM chat_members cm JOIN users u ON u.id = cm.user_id
@@ -91,6 +95,9 @@ func loadChat(ctx context.Context, db *pgdb.Db, chatID int64, callerID int) (*ch
 			UserName: functions.Coerce[string](m["user_name"]),
 			Image:    functions.ImageFieldURL(m["image"]),
 			Status:   status,
+		}
+		if status == "pending" {
+			member.Message = functions.Coerce[string](m["message"])
 		}
 
 		canSeeName := isCaller
@@ -190,9 +197,12 @@ func handleList(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"chats": out})
 }
 
-// handleCreateDirect creates-or-gets a 1:1 chat with {userId}. No
+// handleCreateDirect creates-or-gets a 1:1 chat with {userId}, optionally
+// carrying a {message} the recipient sees while deciding how to respond. No
 // friendship/opt-in gate at all — starting a direct chat (i.e. sending a
-// friend request) is always allowed; the TARGET decides via accept/decline.
+// friend request) is always allowed as long as the caller isn't currently
+// reported (see hasOpenReport); the TARGET decides via the three response
+// options (accept / block / block+report — see blocks.go).
 func handleCreateDirect(w http.ResponseWriter, r *http.Request) {
 	s := requireSession(w, r)
 	if s == nil {
@@ -203,6 +213,11 @@ func handleCreateDirect(w http.ResponseWriter, r *http.Request) {
 		functions.JSONError(w, http.StatusBadRequest, "bad user")
 		return
 	}
+	var body struct {
+		Message string `json:"message"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body) // optional body — a missing/empty one is fine
+	body.Message = strings.TrimSpace(body.Message)
 
 	db, err := pgdb.GetInstanceCtx(r.Context())
 	if err != nil {
@@ -227,6 +242,16 @@ func handleCreateDirect(w http.ResponseWriter, r *http.Request) {
 	}
 	if blocked {
 		functions.JSONError(w, http.StatusForbidden, "blocked")
+		return
+	}
+
+	reported, err := hasOpenReport(r.Context(), s.UserID)
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	if reported {
+		functions.JSONError(w, http.StatusForbidden, "your account has an open report against it — an admin needs to clear it before you can send new friend requests")
 		return
 	}
 
@@ -261,6 +286,10 @@ func handleCreateDirect(w http.ResponseWriter, r *http.Request) {
 				functions.JSONError(w, http.StatusInternalServerError, "update failed")
 				return
 			}
+			if err := setSubscribed(db, s.UserID, int(targetID), true); err != nil {
+				functions.JSONError(w, http.StatusInternalServerError, "update failed")
+				return
+			}
 		case callerStatus == "unfriended" || targetStatus == "unfriended":
 			// Re-friending after an explicit unfriend: a fresh request cycle,
 			// reusing the same chat row rather than creating a new one.
@@ -269,8 +298,12 @@ func handleCreateDirect(w http.ResponseWriter, r *http.Request) {
 				functions.JSONError(w, http.StatusInternalServerError, "update failed")
 				return
 			}
-			if _, err := db.Exec(`UPDATE chat_members SET status = 'pending' WHERE chat_id = $1 AND user_id = $2`,
-				chatID, targetID); err != nil {
+			if _, err := db.Exec(`UPDATE chat_members SET status = 'pending', message = $3 WHERE chat_id = $1 AND user_id = $2`,
+				chatID, targetID, body.Message); err != nil {
+				functions.JSONError(w, http.StatusInternalServerError, "update failed")
+				return
+			}
+			if err := setSubscribed(db, s.UserID, int(targetID), true); err != nil {
 				functions.JSONError(w, http.StatusInternalServerError, "update failed")
 				return
 			}
@@ -291,9 +324,13 @@ func handleCreateDirect(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if _, err := db.InsertRow("chat_members", map[string]interface{}{
-			"chat_id": chatID, "user_id": targetID, "status": "pending",
+			"chat_id": chatID, "user_id": targetID, "status": "pending", "message": body.Message,
 		}); err != nil {
 			functions.JSONError(w, http.StatusInternalServerError, "insert failed")
+			return
+		}
+		if err := setSubscribed(db, s.UserID, int(targetID), true); err != nil {
+			functions.JSONError(w, http.StatusInternalServerError, "update failed")
 			return
 		}
 	}
@@ -325,8 +362,8 @@ func handleCreateGroup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body.Name = strings.TrimSpace(body.Name)
-	if body.Name == "" || len(body.MemberIDs) == 0 {
-		functions.JSONError(w, http.StatusBadRequest, "name and at least one member are required")
+	if body.Name == "" {
+		functions.JSONError(w, http.StatusBadRequest, "name is required")
 		return
 	}
 
@@ -642,7 +679,16 @@ func handleUnfriend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if other != nil {
-		if err := setFriends(db, s.UserID, functions.Int(other["user_id"]), false); err != nil {
+		otherID := functions.Int(other["user_id"])
+		if err := setFriends(db, s.UserID, otherID, false); err != nil {
+			functions.JSONError(w, http.StatusInternalServerError, "update failed")
+			return
+		}
+		if err := setSubscribed(db, s.UserID, otherID, false); err != nil {
+			functions.JSONError(w, http.StatusInternalServerError, "update failed")
+			return
+		}
+		if err := setSubscribed(db, otherID, s.UserID, false); err != nil {
 			functions.JSONError(w, http.StatusInternalServerError, "update failed")
 			return
 		}

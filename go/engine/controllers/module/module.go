@@ -103,6 +103,11 @@ type ModuleAbstract[T any] struct {
 	// visible to every accepted friend (go/engine/modules/chats' `friends`
 	// table) of created_by — another OR'd alternative.
 	VisibilityFriendsField string
+	// VisibilitySubscribersField: boolean column that, when true, makes the
+	// row visible to every subscriber (go/engine/modules/chats'
+	// one-directional `subscriptions` table) of created_by — another OR'd
+	// alternative; a friend already satisfies this too, no need to OR both.
+	VisibilitySubscribersField string
 	// VisibilityBlockedOverrideField: boolean column that, when true, lets a
 	// viewer the row's author has blocked (the `blocks` table) see it anyway.
 	// Applied as an AND on top of the OR'd alternatives above — the default
@@ -475,6 +480,7 @@ func (m *ModuleAbstract[T]) Initialize(tableName string) {
 		VisibilityExtraWhere:           m.VisibilityExtraWhere,
 		VisibilityAnyoneField:          m.VisibilityAnyoneField,
 		VisibilityFriendsField:         m.VisibilityFriendsField,
+		VisibilitySubscribersField:     m.VisibilitySubscribersField,
 		VisibilityBlockedOverrideField: m.VisibilityBlockedOverrideField,
 		HideUsersField:                 m.HideUsersField,
 		ListAscending:                  m.ListAscending,

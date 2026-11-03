@@ -21,6 +21,7 @@
 //	GET    /api/blocks                      -> who the caller has blocked
 //	POST   /api/blocks/{userId}             -> block {userId}: see blocks.go
 //	DELETE /api/blocks/{userId}             -> unblock
+//	POST   /api/users/{userId}/report       -> "block and report": see blocks.go
 package chats
 
 import (
@@ -88,6 +89,22 @@ func setFriends(db *pgdb.Db, a, b int, areFriends bool) error {
 	return err
 }
 
+// setSubscribed is the only place that writes the `subscriptions` table —
+// one-directional (unlike setFriends' `friends`), written the instant a
+// direct chat request is sent (subscriber=sender, subscribedTo=recipient)
+// regardless of whether it's ever accepted, and cleared on unfriend/block
+// (see handleUnfriend, blockUser). Backs posts' visible_subscribers field.
+func setSubscribed(db *pgdb.Db, subscriber, subscribedTo int, subscribed bool) error {
+	if subscribed {
+		_, err := db.Exec(`
+			INSERT INTO subscriptions (subscriber_id, subscribed_to_id) VALUES ($1, $2)
+			ON CONFLICT (subscriber_id, subscribed_to_id) DO NOTHING`, subscriber, subscribedTo)
+		return err
+	}
+	_, err := db.Exec(`DELETE FROM subscriptions WHERE subscriber_id = $1 AND subscribed_to_id = $2`, subscriber, subscribedTo)
+	return err
+}
+
 // allowsChatsFromNonFriends reads one user's own opt-in (see profile.go's
 // matching self-service field).
 func allowsChatsFromNonFriends(ctx context.Context, userID int) (bool, error) {
@@ -124,5 +141,6 @@ func init() {
 		router.HandleFunc("/api/blocks", handleListBlocks).Methods("GET")
 		router.HandleFunc("/api/blocks/{userId}", handleBlock).Methods("POST")
 		router.HandleFunc("/api/blocks/{userId}", handleUnblock).Methods("DELETE")
+		router.HandleFunc("/api/users/{userId}/report", handleReportUser).Methods("POST")
 	})
 }

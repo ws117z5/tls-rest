@@ -252,6 +252,9 @@ func (p *Posts) fieldset() []Field {
 		NewField("visible_friends", TYPE_CHECKBOX, false).
 			WithLabel("Visible To Friends").
 			WithDescription("Let your friends see this post, besides the specific sharing above"),
+		NewField("visible_subscribers", TYPE_CHECKBOX, false).
+			WithLabel("Visible To Subscribers").
+			WithDescription("Let people who sent you a friend request you haven't responded to see this post too"),
 		NewField("visible_to_blocked", TYPE_CHECKBOX, false).
 			WithLabel("Visible To Blocked Users").
 			WithDescription("Let users you've blocked see this post anyway (by default they're excluded even if otherwise visible to them)"),
@@ -324,6 +327,7 @@ func NewPosts() *Posts {
 			// combine with the sharing lists above.
 			VisibilityAnyoneField:          "visible_anyone",
 			VisibilityFriendsField:         "visible_friends",
+			VisibilitySubscribersField:     "visible_subscribers",
 			VisibilityBlockedOverrideField: "visible_to_blocked",
 			HideUsersField:                 "hide_users",
 			// GET /posts/<ref>: a numeric ref is the id, same as always; anything else is looked up as a slug
