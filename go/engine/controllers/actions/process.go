@@ -36,7 +36,7 @@ func (a *Action) startProcess(params map[string]interface{}) error {
 	}
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = a.Dir
-	cmd.Env = append(os.Environ(), "TERM=xterm")
+	cmd.Env = append(append(os.Environ(), "TERM=xterm"), a.Env...)
 	f, err := pty.Start(cmd)
 	if err != nil {
 		return err

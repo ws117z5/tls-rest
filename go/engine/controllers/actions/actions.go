@@ -34,6 +34,13 @@ type Action struct {
 	Run         func() (string, error)
 	Command     []string // interactive alternative to Run: runs in a pty in Dir (see process.go)
 	Dir         string
+	// Env is extra "KEY=VALUE" entries appended after the host process's own
+	// environment for a Command/CommandFunc action's subprocess (see
+	// process.go's startProcess). A child process only inherits *real* OS
+	// environment variables — a secret resolved from .env via
+	// constants.Env/RequireEnv (not os.Setenv) never reaches it otherwise, so
+	// an action whose command needs one must forward it explicitly here.
+	Env []string
 
 	// Params declares this action's per-run configurable values, rendered on
 	// the detail page the same way a module's own fieldset renders a create

@@ -1,9 +1,11 @@
 package jobs
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
+	"tls-rest/go/app/constants"
 	actionsctl "tls-rest/go/engine/controllers/actions"
 	"tls-rest/go/engine/controllers/field"
 	"tls-rest/go/engine/controllers/functions"
@@ -55,6 +57,18 @@ func init() {
 				WithDescription(`Scenario-specific overrides, e.g. {"group_size": 8} or {"cleanup_emails": ["..."]}. Leave blank for defaults.`),
 		},
 		CommandFunc: buildRigCommand,
+		// The rig connects to Postgres directly (provisioning test users —
+		// see rust-callmesh-rig's db.rs) using these same names, but a
+		// subprocess only inherits *real* OS environment variables — these
+		// are resolved from .env via constants.Env/RequireEnv (os.Setenv is
+		// never called), so they don't exist as real env vars to inherit
+		// unless forwarded explicitly here (see actions.Action.Env's doc).
+		Env: []string{
+			"PG_ADDR=" + constants.PDb.Addr,
+			"PG_USER=" + constants.PDb.User,
+			"PG_PASSWORD=" + constants.PDb.Password,
+			fmt.Sprintf("USERS_GROUP_ID=%d", constants.UsersGroupID),
+		},
 	}
 	actionsctl.Register(a)
 }
