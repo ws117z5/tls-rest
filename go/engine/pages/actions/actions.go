@@ -11,6 +11,8 @@ import (
 
 	"tls-rest/go/app"
 	actionsctl "tls-rest/go/engine/controllers/actions"
+	"tls-rest/go/engine/controllers/db/cache"
+	"tls-rest/go/engine/controllers/db/pgdb"
 	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/module"
 
@@ -28,20 +30,70 @@ func List(w http.ResponseWriter, r *http.Request) {
 	functions.WriteJSON(w, http.StatusOK, map[string]interface{}{"actions": out})
 }
 
-// Run handles POST /api/actions/{id}/run. ADMIN ONLY, enforced by Page's
-// RequiresAdmin (see module.PageAbstract.guard).
+// Run handles POST /api/actions/{id}/run {params: {...}}. ADMIN ONLY,
+// enforced by Page's RequiresAdmin (see module.PageAbstract.guard). params
+// is optional — omitted/empty means "run with whatever last ran" (see
+// Action.RunNow). admin_uuid/server are filled in from the current request
+// whenever the caller didn't already set them — the Test rig action
+// (go/engine/pages/actions/jobs/rig.go) needs both to provision test
+// accounts and friend them with whoever is actually running the test,
+// without the admin having to look either value up by hand.
 func Run(w http.ResponseWriter, r *http.Request) {
 	a, ok := actionsctl.Get(mux.Vars(r)["id"])
 	if !ok {
 		functions.JSONError(w, http.StatusNotFound, "unknown action")
 		return
 	}
-	result, err := a.RunNow()
+	var body struct {
+		Params map[string]interface{} `json:"params"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&body)
+	if body.Params == nil {
+		body.Params = map[string]interface{}{}
+	}
+	fillRequestDefaults(r, body.Params)
+	result, err := a.RunNow(body.Params)
 	resp := map[string]interface{}{"result": result}
 	if err != nil {
 		resp["error"] = err.Error()
 	}
 	functions.WriteJSON(w, http.StatusOK, resp)
+}
+
+func fillRequestDefaults(r *http.Request, params map[string]interface{}) {
+	if _, ok := params["admin_uuid"]; !ok {
+		if s := cache.SessionFromContext(r.Context()); s != nil && s.UserID > 0 {
+			if db, err := pgdb.GetInstanceCtx(r.Context()); err == nil {
+				if row, err := db.GetOne("SELECT uuid FROM users WHERE id = $1", s.UserID); err == nil && row != nil {
+					if uuid := functions.Coerce[string](row["uuid"]); uuid != "" {
+						params["admin_uuid"] = uuid
+					}
+				}
+			}
+		}
+	}
+	if _, ok := params["server"]; !ok {
+		params["server"] = requestBaseURL(r)
+	}
+}
+
+// requestBaseURL reconstructs this request's own scheme+host — the rig
+// connects back to wherever it's actually running, not a hardcoded URL.
+// The app is HTTPS-only (see the Dockerfile's own comment on :8443) and may
+// sit behind a reverse proxy (see docker-compose.yml's Traefik labels), so a
+// proxy-set X-Forwarded-* header wins when present.
+func requestBaseURL(r *http.Request) string {
+	scheme := "https"
+	if proto := r.Header.Get("X-Forwarded-Proto"); proto != "" {
+		scheme = proto
+	} else if r.TLS == nil {
+		scheme = "http"
+	}
+	host := r.Header.Get("X-Forwarded-Host")
+	if host == "" {
+		host = r.Host
+	}
+	return scheme + "://" + host
 }
 
 // Output handles GET /api/actions/{id}/output?from=N: a Command action's terminal output since offset N.

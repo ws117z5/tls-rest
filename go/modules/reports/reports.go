@@ -33,9 +33,10 @@ func (m *Reports) fieldset() []Field {
 func New() *Reports {
 	m := &Reports{
 		ModuleAbstract: &ModuleAbstract[interface{}]{
-			ID:   "reports",
-			Name: "Reported users",
-			Icon: "statistics",
+			ID:      "reports",
+			Name:    "Reported users",
+			Icon:    "statistics",
+			Submenu: "users",
 			// No non-admin can see any report, even their own — admin-only by
 			// construction (is_admin bypasses rights entirely; everyone else
 			// gets no user_group_rights grant for this module at all).

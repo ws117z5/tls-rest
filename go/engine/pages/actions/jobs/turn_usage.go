@@ -18,5 +18,5 @@ func init() {
 	}
 	actionsctl.Register(a)
 	a.SetSchedule(usageCheckInterval)
-	go func() { _, _ = a.RunNow() }() // populate the cache once at startup rather than waiting a full interval
+	go func() { _, _ = a.RunNow(nil) }() // populate the cache once at startup rather than waiting a full interval
 }

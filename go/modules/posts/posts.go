@@ -144,6 +144,20 @@ func (p *Posts) fieldset() []Field {
 			AsReadOnly().
 			InModes(MODE_LIST | MODE_VIEW),
 
+		NewField("views_count", TYPE_INT, false).
+			WithLabel("Views").
+			WithSQL("(SELECT COUNT(*) FROM views WHERE views.module_id = 'posts' AND views.row_id = posts.id)").
+			AsVirtual().
+			AsReadOnly().
+			InModes(MODE_LIST | MODE_VIEW),
+
+		NewField("forwards_count", TYPE_INT, false).
+			WithLabel("Forwards").
+			WithSQL("(SELECT COUNT(*) FROM forwards WHERE forwards.module_id = 'posts' AND forwards.row_id = posts.id)").
+			AsVirtual().
+			AsReadOnly().
+			InModes(MODE_LIST | MODE_VIEW),
+
 		NewField("content", TYPE_MARKDOWN, true).
 			WithLabel("Content").
 			WithDescription("Post content").

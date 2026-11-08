@@ -24,9 +24,17 @@ type process struct {
 	done bool
 }
 
-// startProcess launches Command in a pty (so ssh/read prompts work) and records the run when it exits.
-func (a *Action) startProcess() error {
-	cmd := exec.Command(a.Command[0], a.Command[1:]...)
+// startProcess launches Command (or CommandFunc(params), when set) in a pty
+// (so ssh/read prompts work) and records the run when it exits.
+func (a *Action) startProcess(params map[string]interface{}) error {
+	argv := a.Command
+	if a.CommandFunc != nil {
+		argv = a.CommandFunc(params)
+	}
+	if len(argv) == 0 {
+		return errors.New("no command to run")
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = a.Dir
 	cmd.Env = append(os.Environ(), "TERM=xterm")
 	f, err := pty.Start(cmd)

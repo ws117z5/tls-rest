@@ -2,11 +2,23 @@ pipeline {
     agent any
     environment {
         APP_NAME = 'tls-rest'
+        // Separate repo (not part of this one) — the Dockerfile's "rig" stage
+        // builds whatever lands in ./rust-callmesh-rig at this exact path.
+        // Fill in the real URL (and swap to an `ssh-agent`/credentialsId clone
+        // below if the repo is private).
+        RIG_REPO_URL = 'https://github.com/ws117z5/rust-callmesh-rig.git'
     }
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
+            }
+        }
+        stage('Fetch rig') {
+            steps {
+                // Always re-fetch so a build picks up the rig repo's latest
+                // commit, same as checkout scm does for this repo itself.
+                sh 'rm -rf rust-callmesh-rig && git clone --depth 1 "$RIG_REPO_URL" rust-callmesh-rig'
             }
         }
         stage('Test') {

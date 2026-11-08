@@ -22,6 +22,7 @@
 //	POST   /api/blocks/{userId}             -> block {userId}: see blocks.go
 //	DELETE /api/blocks/{userId}             -> unblock
 //	POST   /api/users/{userId}/report       -> "block and report": see blocks.go
+//	GET    /api/users/{userId}/display-name -> {name: string|null} per canSeeUserName, for forwarded-message attribution
 package chats
 
 import (
@@ -72,6 +73,22 @@ func isDirectFriend(ctx context.Context, a, b int) (bool, error) {
 		return false, err
 	}
 	return row != nil, nil
+}
+
+// canSeeUserName is loadChat's member-name visibility rule, factored out so
+// handleDisplayName can reuse it outside a chat's own member list: the
+// caller themselves, a direct friend, or anyone who's opted into
+// allow_search_by_name. allowSearchByName is passed in rather than looked up
+// here since callers already have it on hand from their own row read.
+func canSeeUserName(ctx context.Context, callerID, targetID int, allowSearchByName bool) (bool, error) {
+	if callerID == targetID {
+		return true, nil
+	}
+	friend, err := isDirectFriend(ctx, callerID, targetID)
+	if err != nil {
+		return false, err
+	}
+	return friend || allowSearchByName, nil
 }
 
 // setFriends is the ONLY place that writes the `friends` table — every
@@ -142,5 +159,6 @@ func init() {
 		router.HandleFunc("/api/blocks/{userId}", handleBlock).Methods("POST")
 		router.HandleFunc("/api/blocks/{userId}", handleUnblock).Methods("DELETE")
 		router.HandleFunc("/api/users/{userId}/report", handleReportUser).Methods("POST")
+		router.HandleFunc("/api/users/{userId}/display-name", handleDisplayName).Methods("GET")
 	})
 }

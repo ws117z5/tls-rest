@@ -36,11 +36,10 @@ func (m *Words) fieldset() []Field {
 			WithValidation("maxLength", 10),
 
 		// Calculated, not stored. AsVirtual keeps it out of INSERT/UPDATE; the
-		// value is produced by the WithSQL expression at read time. The default
-		// returns an empty JSON array so the module runs out of the box — replace
-		// the expression with your translation source, e.g.:
-		//   (SELECT COALESCE(json_agg(t.text ORDER BY t.text), '[]'::json)
-		//      FROM word_translations t WHERE t.word_id = words.id)
+		// value is produced by the WithSQL expression at read time, from rows
+		// POST /words/{id}/translations writes (see translations.go) — fetched
+		// via the same free Google Translate lookup words-android's own
+		// GoogleTranslator uses, just persisted here instead of re-fetched live.
 		NewField("translations", TYPE_JSON, false).
 			WithLabel("Translations").
 			WithDescription("Known translations (computed)").
@@ -48,7 +47,7 @@ func (m *Words) fieldset() []Field {
 			AsReadOnly().
 			NonSortable().
 			NonSearchable().
-			WithSQL("'[]'::json"),
+			WithSQL("(SELECT COALESCE(json_agg(t.text ORDER BY t.text), '[]'::json) FROM word_translations t WHERE t.word_id = words.id)"),
 
 		NewField("tries", TYPE_INT, false).
 			WithLabel("Tries").
@@ -116,7 +115,9 @@ func NewWords() *Words {
 	// (same convention papers.go documents for its own literal segments).
 	m.ModuleAbstract.CustomRoutes = []CustomRoute{
 		{Path: "/{id}/register", Methods: []string{"POST"}, Handler: m.registerResult},
+		{Path: "/{id}/translations", Methods: []string{"POST"}, Handler: m.saveTranslations},
 		{Path: "/stats", Methods: []string{"GET"}, Handler: m.statsHandler},
+		{Path: "/lookup", Methods: []string{"GET"}, Handler: m.lookupHandler},
 	}
 
 	return m

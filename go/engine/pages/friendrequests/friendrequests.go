@@ -16,6 +16,7 @@ var Page = &module.PageAbstract{
 	Name:         "Friend requests",
 	Icon:         "messages",
 	RequiresAuth: true,
+	Submenu:      "users",
 }
 
 func init() { app.RegisterPage(Page) }

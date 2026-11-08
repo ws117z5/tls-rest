@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict JZuZrGKKQaEPSjVBIJEmMASYFOhg9ROVCCTy5DEB7axmgNWc5lVrVTIgwyLtDwh
+\restrict C6VotYtWggNvkt504Hwddjhb75ISlQnybUSuFJhd8UUIsmDOC2vdIkDr80EdHdU
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -581,6 +581,42 @@ CREATE SEQUENCE public.external_logs_id_seq
 --
 
 ALTER SEQUENCE public.external_logs_id_seq OWNED BY public.external_logs.id;
+
+
+--
+-- Name: forwards; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.forwards (
+    id bigint NOT NULL,
+    module_id character varying(50) NOT NULL,
+    row_id integer NOT NULL,
+    user_id integer NOT NULL,
+    created timestamp with time zone DEFAULT now() NOT NULL,
+    uuid uuid DEFAULT public.uuid_generate_v4(),
+    updated timestamp with time zone DEFAULT now(),
+    created_by integer,
+    access integer DEFAULT 0
+);
+
+
+--
+-- Name: forwards_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.forwards_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: forwards_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.forwards_id_seq OWNED BY public.forwards.id;
 
 
 --
@@ -1499,6 +1535,42 @@ CREATE TABLE public.users (
 
 
 --
+-- Name: views; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.views (
+    id bigint NOT NULL,
+    module_id character varying(50) NOT NULL,
+    row_id integer NOT NULL,
+    user_id integer NOT NULL,
+    created timestamp with time zone DEFAULT now() NOT NULL,
+    uuid uuid DEFAULT public.uuid_generate_v4(),
+    updated timestamp with time zone DEFAULT now(),
+    created_by integer,
+    access integer DEFAULT 0
+);
+
+
+--
+-- Name: views_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.views_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: views_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.views_id_seq OWNED BY public.views.id;
+
+
+--
 -- Name: word_attempts; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1531,6 +1603,37 @@ ALTER SEQUENCE public.word_attempts_id_seq OWNED BY public.word_attempts.id;
 
 
 --
+-- Name: word_translations; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.word_translations (
+    id bigint NOT NULL,
+    word_id integer NOT NULL,
+    text character varying(200) NOT NULL,
+    created timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: word_translations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+--
+
+CREATE SEQUENCE public.word_translations_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+--
+-- Name: word_translations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+--
+
+ALTER SEQUENCE public.word_translations_id_seq OWNED BY public.word_translations.id;
+
+
+--
 -- Name: words; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -1539,8 +1642,8 @@ CREATE TABLE public.words (
     uuid uuid NOT NULL,
     created_by integer NOT NULL,
     word character varying(50) NOT NULL,
-    tries integer NOT NULL,
-    success integer NOT NULL,
+    tries integer DEFAULT 0 NOT NULL,
+    success integer DEFAULT 0 NOT NULL,
     failure integer NOT NULL,
     created timestamp with time zone DEFAULT now(),
     updated timestamp with time zone DEFAULT now(),
@@ -1638,6 +1741,13 @@ ALTER TABLE ONLY public.external_config ALTER COLUMN id SET DEFAULT nextval('pub
 --
 
 ALTER TABLE ONLY public.external_logs ALTER COLUMN id SET DEFAULT nextval('public.external_logs_id_seq'::regclass);
+
+
+--
+-- Name: forwards id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.forwards ALTER COLUMN id SET DEFAULT nextval('public.forwards_id_seq'::regclass);
 
 
 --
@@ -1746,10 +1856,24 @@ ALTER TABLE ONLY public.user_rights ALTER COLUMN id SET DEFAULT nextval('public.
 
 
 --
+-- Name: views id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.views ALTER COLUMN id SET DEFAULT nextval('public.views_id_seq'::regclass);
+
+
+--
 -- Name: word_attempts id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.word_attempts ALTER COLUMN id SET DEFAULT nextval('public.word_attempts_id_seq'::regclass);
+
+
+--
+-- Name: word_translations id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.word_translations ALTER COLUMN id SET DEFAULT nextval('public.word_translations_id_seq'::regclass);
 
 
 --
@@ -1893,6 +2017,14 @@ ALTER TABLE ONLY public.external_config
 
 ALTER TABLE ONLY public.external_logs
     ADD CONSTRAINT external_logs_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: forwards forwards_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.forwards
+    ADD CONSTRAINT forwards_pkey PRIMARY KEY (id);
 
 
 --
@@ -2168,11 +2300,35 @@ ALTER TABLE ONLY public.users
 
 
 --
+-- Name: views views_module_id_row_id_user_id_key; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.views
+    ADD CONSTRAINT views_module_id_row_id_user_id_key UNIQUE (module_id, row_id, user_id);
+
+
+--
+-- Name: views views_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.views
+    ADD CONSTRAINT views_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: word_attempts word_attempts_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.word_attempts
     ADD CONSTRAINT word_attempts_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: word_translations word_translations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.word_translations
+    ADD CONSTRAINT word_translations_pkey PRIMARY KEY (id);
 
 
 --
@@ -2415,6 +2571,13 @@ CREATE INDEX idx_word_attempts_user_created ON public.word_attempts USING btree 
 
 
 --
+-- Name: idx_word_translations_word_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX idx_word_translations_word_id ON public.word_translations USING btree (word_id);
+
+
+--
 -- Name: images_hash_idx; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -2527,6 +2690,14 @@ ALTER TABLE ONLY public.external_logs
 
 
 --
+-- Name: forwards forwards_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.forwards
+    ADD CONSTRAINT forwards_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: friends friends_user_a_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2591,6 +2762,14 @@ ALTER TABLE ONLY public.user_rights
 
 
 --
+-- Name: views views_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.views
+    ADD CONSTRAINT views_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+
+
+--
 -- Name: word_attempts word_attempts_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2607,6 +2786,14 @@ ALTER TABLE ONLY public.word_attempts
 
 
 --
+-- Name: word_translations word_translations_word_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.word_translations
+    ADD CONSTRAINT word_translations_word_id_fkey FOREIGN KEY (word_id) REFERENCES public.words(id) ON DELETE CASCADE;
+
+
+--
 -- Name: words words_created_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -2618,7 +2805,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict JZuZrGKKQaEPSjVBIJEmMASYFOhg9ROVCCTy5DEB7axmgNWc5lVrVTIgwyLtDwh
+\unrestrict C6VotYtWggNvkt504Hwddjhb75ISlQnybUSuFJhd8UUIsmDOC2vdIkDr80EdHdU
 
 
 -- Durable role/rights seed.
@@ -2626,7 +2813,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict R7p0uEfwOcljJay8vRIH6of9TrkdhPT8DgVtaK1ipjbsULhsbYcfEOPRi5m0lau
+\restrict bzqjayZehDSW9hDFr55UWXBlv7tG5urk2EAWoPgtKM3WERKx4UJMNvCY96yWffl
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2763,5 +2950,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict R7p0uEfwOcljJay8vRIH6of9TrkdhPT8DgVtaK1ipjbsULhsbYcfEOPRi5m0lau
+\unrestrict bzqjayZehDSW9hDFr55UWXBlv7tG5urk2EAWoPgtKM3WERKx4UJMNvCY96yWffl
 

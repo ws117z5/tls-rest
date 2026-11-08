@@ -219,9 +219,13 @@ func (bc *BaseController) Create(w http.ResponseWriter, r *http.Request) {
 	filteredData := bc.filterValidFields(r, data, MODE_SUBMIT)
 
 	// Apply field defaults for anything the client didn't submit, so a field left
-	// at its default value is still persisted (create only).
+	// at its default value is still persisted (create only). ReadOnly fields are
+	// included here on purpose — words.go's tries/success/fail are exactly
+	// AsReadOnly()+WithDefault(0)+NotSubmitted(), meaning the client never sends
+	// them at all, so skipping readonly fields left them entirely absent from
+	// the INSERT and failed the DB's NOT NULL constraint.
 	for _, field := range bc.Module.Fields {
-		if field.Virtual || field.ReadOnly || field.DefaultValue == nil {
+		if field.Virtual || field.DefaultValue == nil {
 			continue
 		}
 		if _, ok := filteredData[field.Name]; !ok {

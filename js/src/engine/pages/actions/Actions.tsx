@@ -1,48 +1,42 @@
 import React from "react";
 import axios from "axios";
-import PageComponent from "@engine/containers/PageComponent";
+import PageComponent, { PageComponentProps } from "@engine/containers/PageComponent";
 import { t, subscribe } from "@engine/controllers/i18n";
-import ActionTerminal from "./ActionTerminal";
-
-interface ActionLogEntry {
-	time: string;
-	result?: string;
-	error?: string;
-}
+import ActionDetail from "./ActionDetail";
 
 interface ActionSnapshot {
 	id: string;
 	name: string;
 	description: string;
-	interval_seconds: number;
 	running: boolean;
 	interactive?: boolean;
-	last_run?: string;
-	last_result?: string;
-	last_error?: string;
-	log?: ActionLogEntry[];
+	params?: any[];
 }
 
 interface ActionsState {
 	actions: ActionSnapshot[];
 	error: string;
 	runningId: string;
-	runKeys: Record<string, number>;
-	intervalDrafts: Record<string, string>;
 }
 
 // Admin-only page over the actions registry (engine/controllers/actions):
 // every admin-triggerable job registered by a package's Init, runnable now
 // or on a recurring interval (in-memory only — schedules reset on restart).
-class Actions extends PageComponent<{}, ActionsState> {
-	constructor(props: {}) {
+// Just the list here (name/description/Run); clicking a row — or Run, for an
+// action that takes params — opens its own detail view (ActionDetail, via
+// extraRoutes below) with the full params form, schedule control, and log.
+class Actions extends PageComponent<PageComponentProps, ActionsState> {
+	// Reached via "/actions/:id" — same mechanism Profile.tsx uses for "/u/:id".
+	static extraRoutes = [{ href: "/actions/:id", component: ActionDetail }];
+
+	constructor(props: PageComponentProps) {
 		super(props);
 		this.title = "Actions";
 		this.href = "actions";
 		this.submenu = "engine";
 		this.requiresAuth = true;
 		this.requiresAdmin = true;
-		this.state = { actions: [], error: "", runningId: "", runKeys: {}, intervalDrafts: {} };
+		this.state = { actions: [], error: "", runningId: "" };
 	}
 
 	private unsubscribeI18n?: () => void;
@@ -64,28 +58,26 @@ class Actions extends PageComponent<{}, ActionsState> {
 		}
 	};
 
-	run = async (id: string) => {
-		this.setState({ runningId: id });
+	// Only a parameterless action runs straight from the list — one with
+	// Params has nothing to submit yet, so Run opens its detail view instead
+	// (same as clicking the row itself).
+	run = async (a: ActionSnapshot) => {
+		if (a.params && a.params.length > 0) {
+			this.props.navigate(`/actions/${a.id}`);
+			return;
+		}
+		this.setState({ runningId: a.id });
 		try {
-			await axios.post(`/api/actions/${id}/run`, null, { headers: { "X-Request-Type": "api" } });
+			await axios.post(`/api/actions/${a.id}/run`, null, { headers: { "X-Request-Type": "api" } });
 		} catch {
 			// The result/error is picked up from the refreshed snapshot below either way.
 		}
-		this.setState((s) => ({ runningId: "", runKeys: { ...s.runKeys, [id]: (s.runKeys[id] || 0) + 1 } }));
-		this.load();
-	};
-
-	setSchedule = async (id: string, seconds: number) => {
-		try {
-			await axios.post(`/api/actions/${id}/schedule`, { interval_seconds: seconds }, { headers: { "X-Request-Type": "api" } });
-		} catch {
-			// Reflected by the refreshed snapshot either way.
-		}
+		this.setState({ runningId: "" });
 		this.load();
 	};
 
 	render() {
-		const { actions, error, runningId, runKeys, intervalDrafts } = this.state;
+		const { actions, error, runningId } = this.state;
 		return (
 			<div style={{ padding: 16 }}>
 				<h2 style={{ marginBottom: 12 }}>{t("Actions")}</h2>
@@ -94,83 +86,33 @@ class Actions extends PageComponent<{}, ActionsState> {
 
 				{actions.length === 0 && !error && <div style={{ color: "#888" }}>{t("No actions registered.")}</div>}
 
-				<div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-					{actions.map((a) => {
-						const draft = intervalDrafts[a.id] ?? String(a.interval_seconds || "");
-						return (
-							<div key={a.id} className="card card-body py-2">
-								<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
-									<div>
-										<h4 style={{ margin: 0 }}>{a.name}</h4>
-										<div style={{ color: "#888", fontSize: 13 }}>{a.description}</div>
-									</div>
-									<button
-										type="button"
-										className="btn btn-primary btn-sm"
-										onClick={() => this.run(a.id)}
-										disabled={a.running || runningId === a.id}
-									>
-										{a.running || runningId === a.id ? "…" : t("Run now")}
-									</button>
+				<div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+					{actions.map((a) => (
+						<div
+							key={a.id}
+							className="card card-body py-2"
+							style={{ cursor: "pointer" }}
+							onClick={() => this.props.navigate(`/actions/${a.id}`)}
+						>
+							<div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
+								<div>
+									<h4 style={{ margin: 0 }}>{a.name}</h4>
+									<div style={{ color: "#888", fontSize: 13 }}>{a.description}</div>
 								</div>
-
-								<div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-									<label className="form-label mb-0 small text-muted">{t("Repeat every (seconds, 0 = off)")}</label>
-									<input
-										type="number"
-										min={0}
-										className="form-control form-control-sm"
-										style={{ width: 110 }}
-										value={draft}
-										onChange={(e) => this.setState({ intervalDrafts: { ...intervalDrafts, [a.id]: e.target.value } })}
-									/>
-									<button
-										type="button"
-										className="btn btn-outline-secondary btn-sm"
-										onClick={() => this.setSchedule(a.id, Number(draft) || 0)}
-									>
-										{t("Save")}
-									</button>
-									{a.interval_seconds > 0 && (
-										<span style={{ color: "#888", fontSize: 12 }}>
-											{t("Currently every")} {a.interval_seconds}s
-										</span>
-									)}
-								</div>
-
-								{a.interactive && <ActionTerminal key={`${a.id}-${runKeys[a.id] || 0}`} id={a.id} onDone={this.load} />}
-
-								{a.log && a.log.length > 0 && (
-									<div style={{ marginTop: 10 }}>
-										<div className="small text-muted mb-1">{t("Execution log")}</div>
-										<div
-											style={{
-												background: "#111",
-												color: "#ddd",
-												fontFamily: "monospace",
-												fontSize: 12,
-												padding: "8px 10px",
-												borderRadius: 4,
-												maxHeight: 180,
-												overflowY: "auto",
-											}}
-										>
-											{a.log.map((entry, i) => (
-												<div key={i} style={{ marginBottom: 4 }}>
-													<span style={{ color: "#888" }}>{new Date(entry.time).toLocaleString()}</span>{" "}
-													{entry.error ? (
-														<span style={{ color: "#f77" }}>{entry.error}</span>
-													) : (
-														<span>{entry.result}</span>
-													)}
-												</div>
-											))}
-										</div>
-									</div>
-								)}
+								<button
+									type="button"
+									className="btn btn-primary btn-sm"
+									onClick={(e) => {
+										e.stopPropagation();
+										this.run(a);
+									}}
+									disabled={a.running || runningId === a.id}
+								>
+									{a.running || runningId === a.id ? "…" : t("Run now")}
+								</button>
 							</div>
-						);
-					})}
+						</div>
+					))}
 				</div>
 			</div>
 		);

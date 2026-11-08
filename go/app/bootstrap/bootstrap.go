@@ -12,6 +12,7 @@ import (
 	_ "tls-rest/go/engine/modules/deletion"
 	_ "tls-rest/go/engine/modules/events"
 	_ "tls-rest/go/engine/modules/externalconfig"
+	_ "tls-rest/go/engine/modules/forwards"
 	_ "tls-rest/go/engine/modules/html"
 	_ "tls-rest/go/engine/modules/images"
 	_ "tls-rest/go/engine/modules/likes"
@@ -23,6 +24,7 @@ import (
 	_ "tls-rest/go/engine/modules/translations"
 	_ "tls-rest/go/engine/modules/usergroups"
 	_ "tls-rest/go/engine/modules/users"
+	_ "tls-rest/go/engine/modules/views"
 
 	// App modules
 	_ "tls-rest/go/modules/cart"

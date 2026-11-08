@@ -100,14 +100,7 @@ func loadChat(ctx context.Context, db *pgdb.Db, chatID int64, callerID int) (*ch
 			member.Message = functions.Coerce[string](m["message"])
 		}
 
-		canSeeName := isCaller
-		if !canSeeName {
-			if friend, _ := isDirectFriend(ctx, callerID, int(uid)); friend {
-				canSeeName = true
-			} else {
-				canSeeName = functions.Truthy(m["allow_search_by_name"])
-			}
-		}
+		canSeeName, _ := canSeeUserName(ctx, callerID, int(uid), functions.Truthy(m["allow_search_by_name"]))
 		if canSeeName {
 			member.FirstName = functions.Coerce[string](m["first_name"])
 			member.LastName = functions.Coerce[string](m["last_name"])
@@ -126,6 +119,50 @@ func loadChat(ctx context.Context, db *pgdb.Db, chatID int64, callerID int) (*ch
 		out.Members = append(out.Members, member)
 	}
 	return out, nil
+}
+
+// handleDisplayName resolves a target user's name the way the caller is
+// allowed to see it right now (canSeeUserName), independent of any shared
+// chat — used to attribute a forwarded message's original sender without
+// trusting a name the forwarding device might have embedded, since the
+// forwarder can't know the eventual recipient's relationship to that sender.
+func handleDisplayName(w http.ResponseWriter, r *http.Request) {
+	s := requireSession(w, r)
+	if s == nil {
+		return
+	}
+	targetID, ok := pathID(r, "userId")
+	if !ok {
+		functions.JSONError(w, http.StatusBadRequest, "bad user")
+		return
+	}
+
+	db, err := pgdb.GetInstanceCtx(r.Context())
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "db unavailable")
+		return
+	}
+	row, err := db.GetOne(`SELECT first_name, last_name, allow_search_by_name FROM users WHERE id = $1`, targetID)
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	if row == nil {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"name": nil})
+		return
+	}
+
+	allowed, err := canSeeUserName(r.Context(), s.UserID, int(targetID), functions.Truthy(row["allow_search_by_name"]))
+	if err != nil {
+		functions.JSONError(w, http.StatusInternalServerError, "query failed")
+		return
+	}
+	if !allowed {
+		writeJSON(w, http.StatusOK, map[string]interface{}{"name": nil})
+		return
+	}
+	name := strings.TrimSpace(functions.Coerce[string](row["first_name"]) + " " + functions.Coerce[string](row["last_name"]))
+	writeJSON(w, http.StatusOK, map[string]interface{}{"name": name})
 }
 
 // deleteIfAbandoned removes a chat once its count of "active" (pending or

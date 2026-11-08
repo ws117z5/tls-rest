@@ -3,6 +3,8 @@ import { Link } from "react-router";
 import { Field } from "@engine/fields/FormLayout";
 import CommentsThread from "@engine/modules/comments/CommentsThread";
 import Likes from "@engine/modules/likes/Likes";
+import Views from "@engine/modules/views/Views";
+import Forwards from "@engine/modules/forwards/Forwards";
 import Auth from "@controllers/auth";
 import useT from "@engine/controllers/useT";
 
@@ -145,8 +147,10 @@ const PostsView: React.FC<CustomContainerProps> = (props) => {
                 background: "linear-gradient(90deg, #0d6efd, #6610f2)",
               }}
             />
-            <div className="mt-3">
+            <div className="mt-3 d-flex align-items-center gap-3">
               <Likes module="posts" row={postId} />
+              <Views module="posts" row={postId} count={props.getValue("views_count") || 0} />
+              <Forwards count={props.getValue("forwards_count") || 0} />
             </div>
           </header>
 

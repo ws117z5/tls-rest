@@ -4,7 +4,8 @@
 # tls-rest — multi-stage build (with OpenCV + libpcap features enabled)
 #   1. frontend : webpack bundle -> js/dist/main.js
 #   2. backend  : CGO Go binary, built with -tags "opencv netmap_pcap"
-#   3. runtime  : slim image + OpenCV / libpcap runtime libraries
+#   3. rig      : rust-callmesh-rig binary (the Actions module's "Test rig")
+#   4. runtime  : slim image + OpenCV / libpcap runtime libraries
 # =============================================================================
 
 # ---- Stage 1: frontend bundle ----------------------------------------------
@@ -39,7 +40,21 @@ RUN CGO_ENABLED=1 GOOS=linux go build -tags "opencv netmap_pcap" \
         -trimpath -ldflags="-s -w" -o /out/tls-rest
 
 
-# ---- Stage 3: runtime -------------------------------------------------------
+# ---- Stage 3: rig binary (Rust) --------------------------------------------
+# A separate GitHub repo, not part of this one — Jenkins clones it into
+# rust-callmesh-rig/ (this exact path, sibling to go.mod) before running
+# `docker build`, same as checking out this repo's own source. A local build
+# outside Jenkins needs that same clone done by hand first; this stage has no
+# fallback for its absence (COPY fails outright), which is deliberate — a
+# silently-skipped rig binary would make the Actions page's "Test rig" entry
+# fail in a much more confusing way than the build itself failing up front.
+FROM rust:1.95-bookworm AS rig
+WORKDIR /src
+COPY rust-callmesh-rig/ .
+RUN cargo build --release -p rig
+
+
+# ---- Stage 4: runtime -------------------------------------------------------
 FROM ghcr.io/hybridgroup/opencv:4.13.0
 
 # App version for the ?v=… static-asset cache-buster, read at runtime as
@@ -70,7 +85,8 @@ RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_lin
 WORKDIR /app
 
 # Binary + the assets the server reads from its working directory at runtime.
-COPY --from=backend  /out/tls-rest      ./tls-rest
+COPY --from=backend  /out/tls-rest       ./tls-rest
+COPY --from=rig      /src/target/release/rig ./bin/rig
 COPY go.config.json                      ./go.config.json
 COPY templates                           ./templates
 COPY css                                 ./css
