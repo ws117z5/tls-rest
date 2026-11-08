@@ -4,8 +4,9 @@ pipeline {
         APP_NAME = 'tls-rest'
         // Separate repo (not part of this one) — the Dockerfile's "rig" stage
         // builds whatever lands in ./rust-callmesh-rig at this exact path.
-        // Fill in the real URL (and swap to an `ssh-agent`/credentialsId clone
-        // below if the repo is private).
+        // Private, so the Fetch rig stage below authenticates via a Jenkins
+        // credential rather than a bare URL — see that stage's own comment
+        // for what to create in Jenkins if 'rig-repo-github' doesn't exist yet.
         RIG_REPO_URL = 'https://github.com/ws117z5/rust-callmesh-rig.git'
     }
     stages {
@@ -18,7 +19,20 @@ pipeline {
             steps {
                 // Always re-fetch so a build picks up the rig repo's latest
                 // commit, same as checkout scm does for this repo itself.
-                sh 'rm -rf rust-callmesh-rig && git clone --depth 1 "$RIG_REPO_URL" rust-callmesh-rig'
+                // Private repo -> plain `git clone` has no TTY to prompt for a
+                // username in Jenkins and fails outright ("could not read
+                // Username ... No such device or address"); a Jenkins
+                // "Username with password" credential (password = a GitHub
+                // PAT with repo scope) gets embedded into the URL instead.
+                // Create it once: Manage Jenkins -> Credentials -> add
+                // "Username with password", ID "rig-repo-github" (or change
+                // the ID below to match whatever you actually name it).
+                withCredentials([usernamePassword(credentialsId: 'rig-repo-github', usernameVariable: 'RIG_GIT_USER', passwordVariable: 'RIG_GIT_TOKEN')]) {
+                    sh '''
+                        rm -rf rust-callmesh-rig
+                        git clone --depth 1 "https://${RIG_GIT_USER}:${RIG_GIT_TOKEN}@${RIG_REPO_URL#https://}" rust-callmesh-rig
+                    '''
+                }
             }
         }
         stage('Test') {
