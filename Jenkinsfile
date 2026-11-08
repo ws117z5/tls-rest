@@ -2,12 +2,6 @@ pipeline {
     agent any
     environment {
         APP_NAME = 'tls-rest'
-        // Separate repo (not part of this one) — the Dockerfile's "rig" stage
-        // builds whatever lands in ./rust-callmesh-rig at this exact path.
-        // Private, so the Fetch rig stage below authenticates via a Jenkins
-        // credential rather than a bare URL — see that stage's own comment
-        // for what to create in Jenkins if 'rig-repo-github' doesn't exist yet.
-        RIG_REPO_URL = 'https://github.com/ws117z5/rust-callmesh-rig.git'
     }
     stages {
         stage('Checkout') {
@@ -21,18 +15,19 @@ pipeline {
                 // commit, same as checkout scm does for this repo itself.
                 // Private repo -> plain `git clone` has no TTY to prompt for a
                 // username in Jenkins and fails outright ("could not read
-                // Username ... No such device or address"); a Jenkins
-                // "Username with password" credential (password = a GitHub
-                // PAT with repo scope) gets embedded into the URL instead.
-                // Create it once: Manage Jenkins -> Credentials -> add
-                // "Username with password", ID "rig-repo-github" (or change
-                // the ID below to match whatever you actually name it).
-                withCredentials([usernamePassword(credentialsId: 'rig-repo-github', usernameVariable: 'RIG_GIT_USER', passwordVariable: 'RIG_GIT_TOKEN')]) {
-                    sh '''
-                        rm -rf rust-callmesh-rig
-                        git clone --depth 1 "https://${RIG_GIT_USER}:${RIG_GIT_TOKEN}@${RIG_REPO_URL#https://}" rust-callmesh-rig
-                    '''
-                }
+                // Username ... No such device or address"). RIG_GIT_USER/
+                // RIG_GIT_TOKEN/RIG_GIT_REPO come from the same host-level
+                // /opt/workstation/.env the Test stage below already mounts —
+                // no separate Jenkins credential to manage. Unlike a real
+                // Jenkins credential this value isn't auto-masked in console
+                // output, so nothing downstream should ever echo it.
+                sh '''
+                    set -a
+                    . /opt/workstation/.env
+                    set +a
+                    rm -rf rust-callmesh-rig
+                    git clone --depth 1 "https://${RIG_GIT_USER}:${RIG_GIT_TOKEN}@github.com/${RIG_GIT_REPO}.git" rust-callmesh-rig
+                '''
             }
         }
         stage('Test') {
