@@ -6,7 +6,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict vn1y0bLbihVPQLSUYd28nmxf4ajFDeIqJ66dMa1HHINJeIa2pNQ8IDDRaIMXRzb
+\restrict dOzbWaGe0nvShhawI8C6rD2v0yAVBEnQp1F1F67MSB3c62XDIWcUmgX34yrO7a0
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2638,7 +2638,7 @@ CREATE TRIGGER trg_set_updated_at BEFORE UPDATE ON public.users FOR EACH ROW EXE
 --
 
 ALTER TABLE ONLY public.blocks
-    ADD CONSTRAINT blocks_blocked_id_fkey FOREIGN KEY (blocked_id) REFERENCES public.users(id);
+    ADD CONSTRAINT blocks_blocked_id_fkey FOREIGN KEY (blocked_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
@@ -2646,7 +2646,7 @@ ALTER TABLE ONLY public.blocks
 --
 
 ALTER TABLE ONLY public.blocks
-    ADD CONSTRAINT blocks_blocker_id_fkey FOREIGN KEY (blocker_id) REFERENCES public.users(id);
+    ADD CONSTRAINT blocks_blocker_id_fkey FOREIGN KEY (blocker_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
@@ -2670,7 +2670,7 @@ ALTER TABLE ONLY public.chat_members
 --
 
 ALTER TABLE ONLY public.chat_members
-    ADD CONSTRAINT chat_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id);
+    ADD CONSTRAINT chat_members_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
@@ -2702,7 +2702,7 @@ ALTER TABLE ONLY public.forwards
 --
 
 ALTER TABLE ONLY public.friends
-    ADD CONSTRAINT friends_user_a_fkey FOREIGN KEY (user_a) REFERENCES public.users(id);
+    ADD CONSTRAINT friends_user_a_fkey FOREIGN KEY (user_a) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
@@ -2710,7 +2710,7 @@ ALTER TABLE ONLY public.friends
 --
 
 ALTER TABLE ONLY public.friends
-    ADD CONSTRAINT friends_user_b_fkey FOREIGN KEY (user_b) REFERENCES public.users(id);
+    ADD CONSTRAINT friends_user_b_fkey FOREIGN KEY (user_b) REFERENCES public.users(id) ON DELETE CASCADE;
 
 
 --
@@ -2805,7 +2805,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump complete
 --
 
-\unrestrict vn1y0bLbihVPQLSUYd28nmxf4ajFDeIqJ66dMa1HHINJeIa2pNQ8IDDRaIMXRzb
+\unrestrict dOzbWaGe0nvShhawI8C6rD2v0yAVBEnQp1F1F67MSB3c62XDIWcUmgX34yrO7a0
 
 
 -- Durable role/rights seed.
@@ -2813,7 +2813,7 @@ ALTER TABLE ONLY public.words
 -- PostgreSQL database dump
 --
 
-\restrict A8fdpP8DegvaJVTJsOGL6h6AbMGKguQxH57YqHQI11NsLkRBHlCNQgXhRRUJcgK
+\restrict Qvi7qTSTeoYKtZbyaQFjRawjVP9aMKAGULQbESgaZN3Ytegn9WnScH0mGwKGHUf
 
 -- Dumped from database version 14.24 (Homebrew)
 -- Dumped by pg_dump version 14.24 (Homebrew)
@@ -2950,5 +2950,5 @@ SELECT pg_catalog.setval('public.user_groups_id_seq', 5, true);
 -- PostgreSQL database dump complete
 --
 
-\unrestrict A8fdpP8DegvaJVTJsOGL6h6AbMGKguQxH57YqHQI11NsLkRBHlCNQgXhRRUJcgK
+\unrestrict Qvi7qTSTeoYKtZbyaQFjRawjVP9aMKAGULQbESgaZN3Ytegn9WnScH0mGwKGHUf
 

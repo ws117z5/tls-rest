@@ -43,6 +43,10 @@ import (
 // shared mesh.QueueSignal/DrainSignal queue other features also use.
 const signalChatPrefix = "chat:"
 
+// streamWriteDeadline is refreshed before every write in handleStream, comfortably past its own
+// 25s ping ticker so a quiet period never lets the deadline lapse between writes.
+const streamWriteDeadline = 60 * time.Second
+
 func requireSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 	s := cache.SessionFromContext(r.Context())
 	if s == nil || s.UserID <= 0 {
@@ -191,11 +195,20 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 
+	// server.go's http.Server.WriteTimeout sets the connection's write deadline once, when the
+	// response starts, and Go never refreshes it on later writes — fatal for a stream this
+	// long-lived, since any write past that point (including the ping below) gets aborted
+	// mid-flight. Pushing the deadline out before every write keeps this one handler healthy
+	// without loosening the timeout that protects every other (short-lived) response.
+	rc := http.NewResponseController(w)
+	refreshWriteDeadline := func() { _ = rc.SetWriteDeadline(time.Now().Add(streamWriteDeadline)) }
+
 	send := func(event string, payload interface{}) {
 		data, err := json.Marshal(payload)
 		if err != nil {
 			return
 		}
+		refreshWriteDeadline()
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
 		flusher.Flush()
 	}
@@ -240,6 +253,7 @@ func handleStream(w http.ResponseWriter, r *http.Request) {
 		case <-ch:
 			drainSignals()
 		case <-ticker.C:
+			refreshWriteDeadline()
 			fmt.Fprint(w, ": ping\n\n")
 			flusher.Flush()
 		}

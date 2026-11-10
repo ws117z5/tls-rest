@@ -11,28 +11,30 @@ import (
 
 	config "tls-rest/go/app/constants"
 	actionsctl "tls-rest/go/engine/controllers/actions"
+	"tls-rest/go/engine/controllers/field"
+	"tls-rest/go/engine/controllers/functions"
 	"tls-rest/go/engine/controllers/turn"
 )
 
 const allocateTimeout = 5 * time.Second
 
-// checkTurnReachability performs a real TURN relay allocation with fresh credentials.
-func checkTurnReachability() (string, error) {
-	if config.CFTurnKeyID == "" || config.CFTurnToken == "" {
-		return "", fmt.Errorf("TURN not configured (CF_TURN_TOKEN_ID/CF_TURN_TOKEN_SECRET unset)")
+// checkTurnReachability mints fresh coturn credentials for serverHost and performs a real TURN
+// relay allocation against it — the self-hosted coturn path (TURN_HOST/TURN_SHARED_SECRET), not
+// Cloudflare's managed TURN, since that's the one GetIceServers actually hands to real clients
+// whenever TURN_SHARED_SECRET is set (see turn.go's GetIceServers: coturn is tried first).
+func checkTurnReachability(params map[string]any) (string, error) {
+	serverHost := strings.TrimSpace(functions.Coerce[string](params["server_url"]))
+	if serverHost == "" {
+		serverHost = config.TurnHost
+	}
+	if config.TurnSharedSecret == "" {
+		return "", fmt.Errorf("coturn not configured (TURN_SHARED_SECRET unset)")
 	}
 
-	servers, err := turn.FetchCredentials()
-	if err != nil {
-		return "", fmt.Errorf("fetching credentials: %w", err)
-	}
-	if len(servers) == 0 {
-		return "", fmt.Errorf("credentials response had no ICE servers")
-	}
-
-	username, _ := servers[0]["username"].(string)
-	credential, _ := servers[0]["credential"].(string)
-	urls, _ := servers[0]["urls"].([]string)
+	creds := turn.MintCoturnCredentialsForHost(serverHost, "turn_check", 0)
+	username, _ := creds["username"].(string)
+	credential, _ := creds["credential"].(string)
+	urls, _ := creds["urls"].([]string)
 
 	addr, err := firstTurnAddr(urls)
 	if err != nil {
@@ -92,7 +94,11 @@ func init() {
 	actionsctl.Register(&actionsctl.Action{
 		ID:          "turn_check",
 		Name:        "TURN reachability check",
-		Description: "Fetches fresh TURN credentials and performs a real relay allocation to confirm the TURN server is reachable and the credentials work.",
-		Run:         checkTurnReachability,
+		Description: "Mints fresh coturn credentials and performs a real relay allocation to confirm the TURN server is reachable and the credentials work.",
+		Params: []field.Field{
+			field.NewField("server_url", field.TYPE_STRING, false).
+				WithLabel("TURN server URL").WithDefault(config.TurnHost),
+		},
+		RunFunc: checkTurnReachability,
 	})
 }

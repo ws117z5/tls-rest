@@ -11,14 +11,7 @@ import (
 	"tls-rest/go/engine/controllers/functions"
 )
 
-// defaultRigBinary is where the Dockerfile's "rig" stage bakes the compiled
-// binary into the runtime image (rust-callmesh-rig, a separate repo — see
-// that Dockerfile stage's comment) — only meaningful inside that container.
-// Running the Go server directly on a dev machine (no /app there at all)
-// needs RIG_BINARY pointed at a locally built one instead, e.g.:
-//
-//	export RIG_BINARY=/path/to/rust-callmesh-rig/rig/target/release/rig
-//	(cd rust-callmesh-rig/rig && cargo build --release)  # builds that binary
+// Docker-only path; local dev overrides via RIG_BINARY.
 const defaultRigBinary = "/app/bin/rig"
 
 func rigBinaryPath() string {
@@ -37,13 +30,8 @@ func rigScenarioOptions() []map[string]interface{} {
 	}
 }
 
-// The rig provisions whatever test accounts a scenario needs on its own
-// (creates them, friends them with whoever is running the test, mints their
-// session tokens) — see go/engine/pages/actions/actions.go's fillRequestDefaults
-// for admin_uuid/server, which the admin never has to supply themselves. Every
-// scenario-specific knob (group size, message count, which users to delete, …)
-// goes in paramsJSON instead of its own field, since the knobs differ per
-// scenario and the rig is what actually interprets them.
+// The rig provisions its own test accounts per scenario; admin_uuid/server
+// are injected by actions.go's fillRequestDefaults, not supplied by the admin.
 func init() {
 	a := &actionsctl.Action{
 		ID:          "test_rig",
@@ -57,12 +45,7 @@ func init() {
 				WithDescription(`Scenario-specific overrides, e.g. {"group_size": 8} or {"cleanup_emails": ["..."]}. Leave blank for defaults.`),
 		},
 		CommandFunc: buildRigCommand,
-		// The rig connects to Postgres directly (provisioning test users —
-		// see rust-callmesh-rig's db.rs) using these same names, but a
-		// subprocess only inherits *real* OS environment variables — these
-		// are resolved from .env via constants.Env/RequireEnv (os.Setenv is
-		// never called), so they don't exist as real env vars to inherit
-		// unless forwarded explicitly here (see actions.Action.Env's doc).
+		// Forwarded explicitly: .env-resolved values aren't real OS env vars (see actions.Action.Env).
 		Env: []string{
 			"PG_ADDR=" + constants.PDb.Addr,
 			"PG_USER=" + constants.PDb.User,

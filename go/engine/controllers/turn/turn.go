@@ -30,13 +30,19 @@ const coturnCredentialTTL = 2 * time.Hour
 // (e.g. "papers", "p2pmsg") and user — coturn has one shared realm/secret, so
 // the module tag travels in the username itself for later log filtering.
 func MintCoturnCredentials(callingModule string, userID int) map[string]any {
+	return MintCoturnCredentialsForHost(config.TurnHost, callingModule, userID)
+}
+
+// MintCoturnCredentialsForHost is MintCoturnCredentials against an explicit host instead of the
+// configured TURN_HOST — for the "TURN reachability check" Action, which needs to test whatever
+// host the admin points it at, not just whichever one is currently configured.
+func MintCoturnCredentialsForHost(host, callingModule string, userID int) map[string]any {
 	expires := time.Now().Add(coturnCredentialTTL).Unix()
 	username := fmt.Sprintf("%d:%s:%d", expires, callingModule, userID)
 	mac := hmac.New(sha1.New, []byte(config.TurnSharedSecret))
 	mac.Write([]byte(username))
 	password := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
-	host := config.TurnHost
 	return map[string]any{
 		"urls": []string{
 			"stun:" + host + ":3478",

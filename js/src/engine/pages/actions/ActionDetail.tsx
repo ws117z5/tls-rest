@@ -79,14 +79,20 @@ class ActionDetail extends PageComponent<PageComponentProps, State> {
 				this.setState({ notFound: true });
 				return;
 			}
+			const defaults: Record<string, any> = {};
+			for (const p of action.params || []) {
+				if (p.default_value !== undefined && p.default_value !== null) defaults[p.name] = p.default_value;
+			}
 			this.setState((s) => ({
 				action,
 				notFound: false,
 				error: "",
 				running: action.running,
-				// last_params seeds the form once; the admin's own edits afterward
+				// Each field's own default_value seeds the form first (never shown before
+				// this fix - only last_params was); last_params then wins over it for a
+				// field an earlier run actually set. The admin's own edits afterward
 				// (tracked in formData) are never clobbered by a later poll.
-				formData: Object.keys(s.formData).length > 0 ? s.formData : { ...(action.last_params || {}) },
+				formData: Object.keys(s.formData).length > 0 ? s.formData : { ...defaults, ...(action.last_params || {}) },
 				intervalDraft: s.intervalDraft || String(action.interval_seconds || ""),
 			}));
 		} catch (e: any) {
