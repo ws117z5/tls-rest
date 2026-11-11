@@ -37,6 +37,7 @@ import (
 	_ "tls-rest/go/modules/posts"
 	_ "tls-rest/go/modules/products"
 	_ "tls-rest/go/modules/reports"
+	_ "tls-rest/go/modules/sessions"
 	_ "tls-rest/go/modules/words"
 
 	// Engine pages

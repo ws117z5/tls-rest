@@ -24,6 +24,18 @@ var SESSION_KEY = cache.SessionKey
 // rightsEpoch: bumped on any rights change; seeded from start time (not 0) so a Redis-persisted session can't coincidentally match it after a restart.
 var rightsEpoch = time.Now().Unix()
 
+// authenticatedSessionTTL is for a real logged-in session (web or mobile) — a
+// returning user shouldn't have to log back in constantly.
+const authenticatedSessionTTL = 30 * 24 * time.Hour
+
+// anonymousSessionTTL is for a session nobody ever authenticated on — every
+// cookie-less web hit (bots, crawlers, scanners, anyone with cookies blocked)
+// mints a fresh one of these on every single request, since there's no
+// identity to recognize it by, so 30 days per hit was piling up tens of
+// thousands of never-reused Redis keys. 8h still covers a normal browsing
+// session without that growth.
+const anonymousSessionTTL = 8 * time.Hour
+
 // CurrentRightsEpoch returns the current global rights epoch.
 func CurrentRightsEpoch() int64 { return atomic.LoadInt64(&rightsEpoch) }
 
@@ -83,7 +95,14 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 		if stored, e := cache.SessionCacheInstance.Get(cookie.Value); e == nil && stored != nil && stored.Expire.After(time.Now()) {
 			stored.UserAgent = ua
 			stored.IP = ip
-			stored.Expire = time.Now().Add(30 * 24 * time.Hour) // sliding 30 days
+			// Sliding renewal, same TTL split as a fresh session below — otherwise a
+			// returning (cookie-retaining) anonymous visitor would get bumped back up
+			// to the long TTL on their second hit within the window.
+			if stored.UserID > 0 {
+				stored.Expire = time.Now().Add(authenticatedSessionTTL)
+			} else {
+				stored.Expire = time.Now().Add(anonymousSessionTTL)
+			}
 			stored.LastAccess = time.Now()
 
 			// Rights are cached in the session; only re-resolve when a
@@ -101,7 +120,7 @@ func ManageSession(w http.ResponseWriter, r *http.Request) *cache.Session {
 	}
 
 	hash, _ := functions.GetRandomHash(16)
-	expire := time.Now().Add(30 * 24 * time.Hour)
+	expire := time.Now().Add(anonymousSessionTTL)
 	ci := cache.Session{UserAgent: ua, IP: ip, Expire: expire, LastAccess: time.Now()}
 	http.SetCookie(w, sessionCookie(r, hash, expire))
 	fillSessionRights(r.Context(), &ci)
@@ -137,7 +156,7 @@ func GetSessionID(ctx context.Context) string {
 // by both password login and OAuth callbacks — the one place that actually sets
 // UserID on a session.
 func Login(w http.ResponseWriter, r *http.Request, userID int, username string) {
-	expire := time.Now().Add(30 * 24 * time.Hour)
+	expire := time.Now().Add(authenticatedSessionTTL)
 
 	hash, _ := functions.GetRandomHash(16)
 	http.SetCookie(w, sessionCookie(r, hash, expire))
@@ -160,8 +179,14 @@ func Login(w http.ResponseWriter, r *http.Request, userID int, username string) 
 }
 
 // Logout clears the authenticated user from the current session, dropping it
-// back to anonymous (module defaults, not admin).
+// back to anonymous (module defaults, not admin) — for a cookie session — and
+// revokes a bearer token if one was presented instead, so a non-web client
+// (mobile, or the rig's own test-account cleanup) can actually end its
+// session instead of leaving it to expire on its own 30-day TTL.
 func Logout(w http.ResponseWriter, r *http.Request) {
+	if tok, ok := tokenFromHeader(r); ok {
+		RevokeToken(tok)
+	}
 	cookie, err := r.Cookie("X-Session-ID")
 	if err != nil {
 		return
@@ -208,7 +233,7 @@ func manageTokenSession(ctx context.Context, tok string) *cache.Session {
 		cache.SessionCacheInstance.Set(tok, *stored)
 		return stored
 	}
-	anon := cache.Session{Expire: time.Now().Add(30 * 24 * time.Hour), LastAccess: time.Now()}
+	anon := cache.Session{Expire: time.Now().Add(anonymousSessionTTL), LastAccess: time.Now()}
 	fillSessionRights(ctx, &anon)
 	return &anon
 }
@@ -221,7 +246,7 @@ func IssueToken(ctx context.Context, userID int, username string) (string, time.
 	if err != nil {
 		return "", time.Time{}, err
 	}
-	expire := time.Now().Add(30 * 24 * time.Hour)
+	expire := time.Now().Add(authenticatedSessionTTL)
 	s := cache.Session{UserID: userID, Username: username, Expire: expire, LastAccess: time.Now()}
 	fillSessionRights(ctx, &s)
 	cache.SessionCacheInstance.Set(tok, s)

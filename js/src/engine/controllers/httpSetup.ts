@@ -6,6 +6,11 @@ import Notify from "../containers/Notify";
 // body the backend now returns — { status, message, log_id } — and falls back
 // gracefully for plain-text or network errors. Call once at app startup.
 let installed = false;
+// Set on the first 401 seen outside login/register/oauth, so a burst of concurrent/polling
+// requests (e.g. the Actions page's 2s poll) failing together shows exactly one toast and
+// triggers exactly one redirect instead of stacking one per request. Never reset — the page
+// navigation below replaces this whole script anyway.
+let redirectingUnauthorized = false;
 
 export function installHttpErrorToasts(): void {
   if (installed) return;
@@ -14,6 +19,22 @@ export function installHttpErrorToasts(): void {
   axios.interceptors.response.use(
     (res: any) => res,
     (error: any) => {
+      const status = error?.response?.status;
+      const url: string = error?.config?.url || "";
+      // A 401 here is also the normal "wrong password"/"oauth failed" response for these
+      // specific endpoints (see login.go) — that's a form-level error the login page already
+      // displays inline, not a dead session to redirect away from.
+      const isAuthEndpoint = url.includes("/api/login") || url.includes("/api/register") || url.includes("/api/auth/oauth");
+
+      if (status === 401 && !isAuthEndpoint) {
+        if (!redirectingUnauthorized) {
+          redirectingUnauthorized = true;
+          Notify.error("Your session has expired. Redirecting to the home page…");
+          window.location.href = "/";
+        }
+        return Promise.reject(error);
+      }
+
       let message = "Request failed";
       let logId: string | undefined;
 
